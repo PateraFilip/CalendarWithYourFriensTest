@@ -1,78 +1,124 @@
 import { ThemedView } from '@/components/themed-view'
-import { useRouter } from 'expo-router'
+import { ThemedSafeView } from '@/components/ThemedSafeView'
+import { useThemeColor } from '@/hooks/use-theme-color'
+import { Link } from 'expo-router'
 import React, { useState } from 'react'
-import { StyleSheet } from 'react-native'
-import { Button, Card, TextInput } from 'react-native-paper'
+import { Image, StyleSheet, View } from 'react-native'
+import { Button, TextInput } from 'react-native-paper'
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 
 export default function Login() {
-    const [username, setUsername] = useState('')
+    const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
 
-    const router = useRouter()
+    const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
+    const buttonTextColor = useThemeColor(
+        { light: '#fff', dark: '#000' },
+        'text'
+    )
 
     const handleLogin = () => {
-        // TODO: Implement login logic
-        console.log('Login with:', username, password)
-
-        router.replace('/(tabs)')
+        console.log('Login pressed:', { email, password })
     }
 
     return (
-        <ThemedView style={styles.container}>
-            <Card style={styles.card}>
-                <Card.Content>
-                    <TextInput
-                        label="Uživatelské jméno"
-                        value={username}
-                        onChangeText={setUsername}
-                        mode="outlined"
-                        style={styles.input}
-                    />
-                    <TextInput
-                        label="Heslo"
-                        value={password}
-                        onChangeText={setPassword}
-                        mode="outlined"
-                        secureTextEntry
-                        style={styles.input}
-                    />
-                    <Button
-                        mode="contained"
-                        onPress={handleLogin}
-                        style={styles.button}
+        <ThemedSafeView style={styles.container}>
+            <ThemedView style={styles.box}>
+                <Image
+                    source={require('@/assets/images/logo.png')}
+                    style={styles.logo}
+                />
+                <TextInput
+                    label="E-mail"
+                    value={email}
+                    onChangeText={setEmail}
+                    mode="outlined"
+                    style={styles.input}
+                    left={
+                        <TextInput.Icon
+                            icon={() => (
+                                <MaterialCommunityIcons
+                                    name="account-outline"
+                                    size={20}
+                                    color={buttonColor}
+                                />
+                            )}
+                        />
+                    }
+                />
+
+                <TextInput
+                    label="Heslo"
+                    value={password}
+                    onChangeText={setPassword}
+                    mode="outlined"
+                    secureTextEntry
+                    style={styles.input}
+                    left={
+                        <TextInput.Icon
+                            icon={() => (
+                                <MaterialCommunityIcons
+                                    name="lock-outline"
+                                    size={20}
+                                    color={buttonColor}
+                                />
+                            )}
+                        />
+                    }
+                />
+
+                <Button
+                    mode="contained"
+                    style={styles.button}
+                    labelStyle={{ color: buttonTextColor }}
+                    buttonColor={buttonColor}
+                    onPress={handleLogin}
+                >
+                    Přihlásit se
+                </Button>
+                <View style={{ width: '100%' }}>
+                    <Link
+                        href="/modal"
+                        style={{
+                            color: buttonColor,
+                            textAlign: 'left',
+                            fontWeight: 'bold',
+                        }}
                     >
-                        Přihlásit se
-                    </Button>
-                </Card.Content>
-            </Card>
-        </ThemedView>
+                        Zapomenuté heslo
+                    </Link>
+                </View>
+            </ThemedView>
+        </ThemedSafeView>
     )
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    title: {
-        fontSize: 22,
-        marginBottom: 20,
-    },
-    modalContainer: {
         justifyContent: 'center',
         alignItems: 'center',
+        padding: 16,
+    },
+    logo: {
+        width: 300,
+        height: 300,
+        resizeMode: 'contain',
+    },
+    box: {
+        width: '85%',
+        borderRadius: 16,
         padding: 20,
-    },
-    card: {
-        width: '90%',
-        maxWidth: 400,
-        paddingVertical: 10,
+        elevation: 4,
+        gap: 20,
+        alignItems: 'center',
+        borderWidth: 1,
     },
     input: {
-        marginBottom: 15,
+        width: '100%',
     },
     button: {
-        marginTop: 10,
+        borderRadius: 6,
+        width: '100%',
     },
 })
