@@ -1,15 +1,17 @@
-import { ThemedView } from '@/components/themed-view'
-import { ThemedSafeView } from '@/components/ThemedSafeView'
-import { useThemeColor } from '@/hooks/use-theme-color'
-import { Link } from 'expo-router'
-import React, { useState } from 'react'
-import { Image, StyleSheet, View } from 'react-native'
-import { Button, TextInput } from 'react-native-paper'
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
+import { ThemedView } from '@/components/themed-view';
+import { ThemedSafeView } from '@/components/ThemedSafeView';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { Link, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Image, StyleSheet, View } from 'react-native';
+import { Button, TextInput } from 'react-native-paper';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { API_URL } from '../../constants/api'; // pokud je api.ts v kořenovém adresáři
 
 export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const router = useRouter()
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor(
@@ -17,9 +19,34 @@ export default function Login() {
         'text'
     )
 
-    const handleLogin = () => {
-        console.log('Login pressed:', { email, password })
+    // ----- FastAPI login -----
+    const handleLogin = async () => {
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: email, heslo: password }),
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                console.error("Login error:", errorData)
+                alert(errorData.detail ? JSON.stringify(errorData.detail) : "Nepodařilo se přihlásit")
+                return
+            }
+
+            const data = await response.json()
+            console.log("Login success:", data)
+            alert("Přihlášení proběhlo úspěšně!")
+
+            // Příklad: přesměrování po úspěšném přihlášení
+            router.replace('/(tabs)')
+        } catch (error) {
+            console.error("Error during login:", error)
+            alert("Chyba při přihlášení. Zkontroluj připojení k internetu.")
+        }
     }
+    // --------------------------
 
     return (
         <ThemedSafeView style={styles.container}>
@@ -72,7 +99,7 @@ export default function Login() {
                     style={styles.button}
                     labelStyle={{ color: buttonTextColor }}
                     buttonColor={buttonColor}
-                    onPress={handleLogin}
+                    onPress={handleLogin}  // volání FastAPI
                 >
                     Přihlásit se
                 </Button>
