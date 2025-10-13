@@ -1,98 +1,134 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import WeekCalendar from '@/components/CustomWeek/CustomWeek';
+import { ThemedSafeView } from '@/components/ThemedSafeView';
+import dayjs from 'dayjs';
+import 'dayjs/locale/cs';
+import React, { useState } from 'react';
+import { Modal, Button as RNButton, TextInput as RNTextInput, StyleSheet, Text, View } from 'react-native';
+import { Calendar } from 'react-native-big-calendar';
+dayjs.locale('cs')
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
 
-export default function HomeScreen() {
+
+
+
+export default function SharedCalendar() {
+  const [events, setEvents] = useState([
+    {
+      title: 'Událost A',
+      start: new Date(2025, 9, 13, 10, 0),
+      end: new Date(2025, 9, 13, 11, 0),
+      color: 'red',
+    },
+  ]);
+
+  const [mode, setMode] = useState('week'); // week | month | day
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newEventTitle, setNewEventTitle] = useState('');
+
+  const handlePressCell = (date) => {
+    if (mode === 'month') {
+      // kliknutí v měsíčním zobrazení → přepni na den
+      setSelectedDate(date);
+      setMode('day');
+    } else {
+      // kliknutí v týdnu/den → otevři modal pro přidání události
+      setSelectedDate(date);
+      setModalVisible(true);
+    }
+  };
+
+  const addEvent = () => {
+    if (!newEventTitle) return;
+    const colors = ['red', 'blue', 'green', 'orange'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+    setEvents([
+      ...events,
+      {
+        title: newEventTitle,
+        start: selectedDate,
+        end: new Date(selectedDate.getTime() + 60 * 60 * 1000),
+        color: randomColor,
+      },
+    ]);
+    setNewEventTitle('');
+    setModalVisible(false);
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ThemedSafeView style={styles.container}>
+      <RNButton onPress={() => {
+        if (mode === 'week') setMode('month');
+        else if (mode === 'month') setMode('day');
+        else setMode('week');
+      }} title={`Přepnout na ${mode === 'week' ? 'měsíc' : mode === 'month' ? 'den' : 'týden'}`} />
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <Calendar
+  events={events}
+  height={500}
+  mode={mode}
+  date={selectedDate}
+  weekStartsOn={1}
+  locale="cs"
+  onPressCell={handlePressCell}
+  onPressEvent={(event) => {
+    setSelectedDate(event.start);
+    setModalVisible(true);
+  }}  // menší výška
+  showAllDayEventCell={false} // <-- skryje prázdné top buňky
+  eventCellStyle={(event) => ({
+    backgroundColor: event.color,
+  })}
+/>
+
+<WeekCalendar
+      events={events}
+      onPressCell={(date) => {
+    console.log('Kliknuto na buňku:', date);
+  }}
+      />
+
+      {/* Modal pro přidání události */}
+      <Modal visible={modalVisible} transparent animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text>Přidat novou událost</Text>
+            <RNTextInput
+              placeholder="Název události"
+              value={newEventTitle}
+              onChangeText={setNewEventTitle}
+              style={styles.input}
+            />
+            <RNButton title="Přidat" onPress={addEvent} />
+            <RNButton title="Zrušit" onPress={() => setModalVisible(false)} />
+          </View>
+        </View>
+      </Modal>
+    </ThemedSafeView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 16,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  modalContent: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 6,
+    padding: 8,
+    marginVertical: 10,
   },
 });
