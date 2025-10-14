@@ -10,13 +10,18 @@ dayjs.locale('cs')
 
 
 
-
 export default function SharedCalendar() {
   const [events, setEvents] = useState([
     {
-      title: 'Událost A',
+      title: 'Událost B',
       start: new Date(2025, 9, 13, 10, 0),
       end: new Date(2025, 9, 13, 11, 0),
+      color: 'green',
+    },
+    {
+      title: 'Událost A',
+      start: new Date(2025, 9, 13, 10, 30),
+      end: new Date(2025, 9, 13, 12, 0),
       color: 'red',
     },
   ]);
@@ -28,11 +33,9 @@ export default function SharedCalendar() {
 
   const handlePressCell = (date) => {
     if (mode === 'month') {
-      // kliknutí v měsíčním zobrazení → přepni na den
       setSelectedDate(date);
       setMode('day');
     } else {
-      // kliknutí v týdnu/den → otevři modal pro přidání události
       setSelectedDate(date);
       setModalVisible(true);
     }
@@ -56,6 +59,42 @@ export default function SharedCalendar() {
     setModalVisible(false);
   };
 
+  const selectCalendar = () => {
+    if (mode == "week") {
+      return(
+      <WeekCalendar
+            events={events}
+            onPressCell={(date) => {
+          setSelectedDate(date);
+      setModalVisible(true);
+        }}
+        hourHeight={100}
+      />
+    )
+    }
+    else{
+      return(
+      <Calendar
+        events={events}
+        height={500}
+        mode={mode}
+        date={selectedDate}
+        weekStartsOn={1}
+        locale="cs"
+        onPressCell={handlePressCell}
+        onPressEvent={(event) => {
+          setSelectedDate(event.start);
+          setModalVisible(true);
+        }}
+        showAllDayEventCell={false}
+        eventCellStyle={(event) => ({
+          backgroundColor: event.color,
+        })}
+      />
+      )
+    }
+  }
+
   return (
     <ThemedSafeView style={styles.container}>
       <RNButton onPress={() => {
@@ -64,32 +103,10 @@ export default function SharedCalendar() {
         else setMode('week');
       }} title={`Přepnout na ${mode === 'week' ? 'měsíc' : mode === 'month' ? 'den' : 'týden'}`} />
 
-      <Calendar
-  events={events}
-  height={500}
-  mode={mode}
-  date={selectedDate}
-  weekStartsOn={1}
-  locale="cs"
-  onPressCell={handlePressCell}
-  onPressEvent={(event) => {
-    setSelectedDate(event.start);
-    setModalVisible(true);
-  }}  // menší výška
-  showAllDayEventCell={false} // <-- skryje prázdné top buňky
-  eventCellStyle={(event) => ({
-    backgroundColor: event.color,
-  })}
-/>
 
-<WeekCalendar
-      events={events}
-      onPressCell={(date) => {
-    console.log('Kliknuto na buňku:', date);
-  }}
-      />
 
-      {/* Modal pro přidání události */}
+      {selectCalendar()}
+
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
