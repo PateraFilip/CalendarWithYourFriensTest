@@ -80,6 +80,7 @@ export default function SharedCalendar() {
         mode={mode}
         date={selectedDate}
         weekStartsOn={1}
+        maxVisibleEventCount={20}
         locale="cs"
         onPressCell={handlePressCell}
         onPressEvent={(event) => {

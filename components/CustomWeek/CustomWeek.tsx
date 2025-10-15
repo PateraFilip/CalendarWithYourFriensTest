@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Button, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 interface Event {
@@ -28,10 +28,25 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
     return monday;
   });
 
+  const calendarRef = useRef<ScrollView>(null);
+  const hourScrollRef = useRef<ScrollView>(null);
+
+const isSyncingScroll = useRef(false);
+
+const onCalendarScroll = (e: any) => {
+  if (isSyncingScroll.current) return;
+
+  const x = e.nativeEvent.contentOffset.x;
+
+  hourScrollRef.current?.scrollTo({ x, animated: false });
+};
+
+
+
+
   // 🔹 Dny aktuálního týdne
   const days = useMemo(
     () => [
-      null,
       ...Array.from({ length: 7 }, (_, i) => {
         const d = new Date(currentWeekStart);
         d.setDate(currentWeekStart.getDate() + i);
@@ -63,6 +78,21 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
       eventDate < new Date(currentWeekStart.getTime() + 7 * 86400000)
     );
   });
+
+  function getColumnsForDay(day: Date, weekEvents: Event[]) {
+  // všechny eventy toho dne
+  const dayEvents = weekEvents.filter(e =>
+    e.start.getFullYear() === day.getFullYear() &&
+    e.start.getMonth() === day.getMonth() &&
+    e.start.getDate() === day.getDate()
+  );
+
+  // přiřazení sloupců pro všechny eventy
+  const { totalColumns } = assignEventColumns(dayEvents, []);
+  return totalColumns;
+}
+
+
 
   function assignEventColumns(eventsCurrent: Event[], previousEvents: Event[]) {
   const events = [...eventsCurrent, ...previousEvents];
@@ -109,20 +139,35 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
         </Text>
         <Button title="Následující →" onPress={() => changeWeek(1)} />
       </View>
+      <View style={{flexDirection: "row"}}>
+        <View style={[styles.dayHeader, { height: 30, width: 60 }]}></View>
+        <ScrollView ref={hourScrollRef} scrollEnabled={false} scrollEventThrottle={16} showsHorizontalScrollIndicator={false} horizontal style={{backgroundColor: "white"}}>
+          {hours.map((h) => {
+            return (
 
+              <View
+                key={`${h}`}
+                style={[styles.hourCell, { height: 30, width: hourWidth }]}
+              >
+                <Text>{h}:00</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+<ScrollView style={{minHeight: "100%"}}>
       <View style={{ flexDirection: 'row' }}>
         {/* 🗓️ Sloupec s dny */}
+
         <View style={{ width: 60 }}>
           {days.map((day, dayIndex) => {
-            if (!day) {
-                    return (
-                      <View key={dayIndex} style={[styles.dayHeader, { height: 30, width: 60 }]}>
+            const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
 
-            </View>
-                    );
-                  }
+
+
             return(
-            <View key={dayIndex} style={[styles.dayHeader, { height: hourHeight, width: 60 }]}>
+            <View key={dayIndex} style={[styles.dayHeader, { minHeight: hourHeight, height: totalCols* 20, width: 60 }]}>
                   <Text style={{ fontWeight: 'bold' }}>
                     {day.toLocaleDateString('cs-CZ', { weekday: 'short' })}
                   </Text>
@@ -134,7 +179,7 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
         </View>
 
         {/* ⏱️ ScrollView s hodinami */}
-        <ScrollView horizontal>
+        <ScrollView ref={calendarRef} onScroll={onCalendarScroll} scrollEventThrottle={16} horizontal>
           <View>
             {days.map((day, dayIndex) => (
               <View key={dayIndex} style={{ backgroundColor: 'white', flexDirection:'row'}}>
@@ -171,7 +216,7 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
                   });
 
                   const { eventColumns, totalColumns } = assignEventColumns(cellEvents, cellPrevious);
-
+                  const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
                   return (
                     <Pressable
                       key={`${dayIndex}-${h}`}
@@ -180,7 +225,8 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
                         styles.hourCell,
                         {
                           width: hourWidth,
-                          height: hourHeight,
+                          minHeight: hourHeight,
+                          height: totalCols * 20,
                           justifyContent: 'flex-start',
                           alignItems: 'stretch',
                           position: 'relative',
@@ -221,6 +267,7 @@ export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hou
           </View>
         </ScrollView>
       </View>
+      </ScrollView>
     </View>
   );
 }
