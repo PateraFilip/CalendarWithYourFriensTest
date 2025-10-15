@@ -1,3 +1,4 @@
+import DayCalendar from '@/components/CustomDay/CustomDay';
 import WeekCalendar from '@/components/CustomWeek/CustomWeek';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import dayjs from 'dayjs';
@@ -41,6 +42,11 @@ export default function SharedCalendar() {
     }
   };
 
+  const handlePressDay = (date) => {
+      setSelectedDate(date);
+      setMode('day');
+  };
+
   const addEvent = () => {
     if (!newEventTitle) return;
     const colors = ['red', 'blue', 'green', 'orange'];
@@ -68,6 +74,20 @@ export default function SharedCalendar() {
           setSelectedDate(date);
       setModalVisible(true);
         }}
+        onPressDay={handlePressDay}
+        hourHeight={100}
+      />
+    )
+    }
+    else if (mode == "day") {
+      return(
+      <DayCalendar
+            events={events}
+            defaultDate={selectedDate}
+            onPressCell={(date) => {
+          setSelectedDate(date);
+      setModalVisible(true);
+        }}
         hourHeight={100}
       />
     )
@@ -76,7 +96,7 @@ export default function SharedCalendar() {
       return(
       <Calendar
         events={events}
-        height={500}
+        height={800}
         mode={mode}
         date={selectedDate}
         weekStartsOn={1}

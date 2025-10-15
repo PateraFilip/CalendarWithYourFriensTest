@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Button, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Button, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 interface Event {
   title: string;
@@ -11,13 +11,12 @@ interface Event {
 interface WeekCalendarProps {
   events: Event[];
   onPressCell?: (date: Date) => void;
+  onPressDay?: (date: Date) => void;
   hourHeight?: number;
   hourWidth?: number;
 }
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
-export default function WeekCalendar({ events, onPressCell, hourHeight = 60, hourWidth = 80 }: WeekCalendarProps) {
+export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeight = 60, hourWidth = 80 }: WeekCalendarProps) {
   // 🗓️ Udržujeme pondělí aktuálního týdne
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const today = new Date();
@@ -63,6 +62,11 @@ const onCalendarScroll = (e: any) => {
     date.setHours(hour);
     date.setMinutes(0, 0, 0);
     onPressCell?.(date);
+  };
+
+  const handlePressDay = (day: Date) => {
+    const date = new Date(day);
+    onPressDay?.(date);
   };
 
   const changeWeek = (direction: number) => {
@@ -156,7 +160,7 @@ const onCalendarScroll = (e: any) => {
         </ScrollView>
       </View>
 
-<ScrollView style={{minHeight: "100%"}}>
+<ScrollView>
       <View style={{ flexDirection: 'row' }}>
         {/* 🗓️ Sloupec s dny */}
 
@@ -167,14 +171,21 @@ const onCalendarScroll = (e: any) => {
 
 
             return(
-            <View key={dayIndex} style={[styles.dayHeader, { minHeight: hourHeight, height: totalCols* 20, width: 60 }]}>
+            <Pressable
+      key={dayIndex}
+      onPress={() => handlePressDay(day)}
+      style={[
+        styles.dayHeader,
+        { minHeight: hourHeight, height: totalCols * 20, width: 60 },
+      ]}
+    >
                   <Text style={{ fontWeight: 'bold' }}>
                     {day.toLocaleDateString('cs-CZ', { weekday: 'short' })}
                   </Text>
                   <Text>
                     {day.getDate()}.{day.getMonth() + 1}
                   </Text>
-            </View>
+            </Pressable>
           )})}
         </View>
 
