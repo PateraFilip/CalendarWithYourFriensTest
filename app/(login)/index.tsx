@@ -6,10 +6,12 @@ import React, { useState } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
+import Loading from '../loading'
 
 export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [loading, setLoading] = useState(false)
     const [errors, setErrors] = useState<{ email: boolean; password: boolean }>(
         {
             email: false,
@@ -34,6 +36,7 @@ export default function Login() {
 
         setErrors(newErrors)
         if (!newErrors.email && !newErrors.password) {
+            setLoading(true)
             try {
                 const response = await fetch(
                     'https://tzbpcbmxwbsixrtorijk.supabase.co/functions/v1/smart-processor',
@@ -63,9 +66,13 @@ export default function Login() {
             } catch (err) {
                 console.error(err)
                 alert('Chyba připojení')
+            } finally {
+                setLoading(false)
             }
         }
     }
+
+    if (loading) return <Loading />
 
     return (
         <ThemedSafeView style={styles.container}>
