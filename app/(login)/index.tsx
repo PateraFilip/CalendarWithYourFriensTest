@@ -6,7 +6,6 @@ import React, { useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { Button, TextInput } from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { API_URL } from '../../constants/api'; // pokud je api.ts v kořenovém adresáři
 
 export default function Login() {
     const [email, setEmail] = useState('')
@@ -19,34 +18,38 @@ export default function Login() {
         'text'
     )
 
-    // ----- FastAPI login -----
+
+
     const handleLogin = async () => {
-        try {
-            const response = await fetch(`${API_URL}/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: email, heslo: password }),
-            })
-
-            if (!response.ok) {
-                const errorData = await response.json()
-                console.error("Login error:", errorData)
-                alert(errorData.detail ? JSON.stringify(errorData.detail) : "Nepodařilo se přihlásit")
-                return
-            }
-
-            const data = await response.json()
-            console.log("Login success:", data)
-            alert("Přihlášení proběhlo úspěšně!")
-
-            // Příklad: přesměrování po úspěšném přihlášení
-            router.replace('/(tabs)')
-        } catch (error) {
-            console.error("Error during login:", error)
-            alert("Chyba při přihlášení. Zkontroluj připojení k internetu.")
+  try {
+    const response = await fetch(
+      "https://tzbpcbmxwbsixrtorijk.supabase.co/functions/v1/smart-processor",
+      {
+        method: "POST",
+        headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw"
         }
+        ,
+        body: JSON.stringify({ username: email, password, action: "login" }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error || "Přihlášení selhalo");
+      return;
     }
-    // --------------------------
+
+    alert("Přihlášení úspěšné!");
+    router.replace("/(tabs)");
+  } catch (err) {
+    console.error(err);
+    alert("Chyba připojení");
+  }
+};
+
 
     return (
         <ThemedSafeView style={styles.container}>
