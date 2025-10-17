@@ -5,7 +5,7 @@ interface Event {
   title: string;
   start: Date;
   end: Date;
-  color?: string;
+  user_id: number;
 }
 
 interface DayCalendarProps {
@@ -28,13 +28,60 @@ export default function DayCalendar({
 
   const horizontalScrollRef = useRef<ScrollView>(null);
 
+  const COLORS = [
+    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
+    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
+    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
+    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
+  ];
+
+  const COLORS_TEXT = [
+    '#FFFFFF', // e6194b
+    '#FFFFFF', // 3cb44b
+    '#000000', // ffe119
+    '#FFFFFF', // 4363d8
+    '#FFFFFF', // f58231
+    '#FFFFFF', // 911eb4
+    '#000000', // 46f0f0
+    '#FFFFFF', // f032e6
+    '#000000', // bcf60c
+    '#000000', // fabebe
+    '#FFFFFF', // 008080
+    '#000000', // e6beff
+    '#FFFFFF', // 9a6324
+    '#000000', // fffac8
+    '#FFFFFF', // 800000
+    '#000000', // aaffc3
+    '#FFFFFF', // 808000
+    '#000000', // ffd8b1
+    '#FFFFFF', // 000075
+    '#FFFFFF', // 808080
+  ];
+
+  // Funkce na přiřazení barvy podle userId
+  function getColorByUserId(userId: string | number) {
+    const idNum = typeof userId === 'string'
+      ? userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      : userId;
+
+    return COLORS[idNum % COLORS.length];
+  }
+
+  function getColorTextByUserId(userId: string | number) {
+    const idNum = typeof userId === 'string'
+      ? userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      : userId;
+
+    return COLORS_TEXT[idNum % COLORS.length];
+  }
+
   // Pokud se defaultDate změní, aktualizujeme date
   useEffect(() => {
     if (defaultDate) setDate(defaultDate);
   }, [defaultDate]);
 
   useEffect(() => {
-    horizontalScrollRef.current?.scrollTo({x:0, animated: true})
+    horizontalScrollRef.current?.scrollTo({ x: 0, animated: true })
   }, [date]);
 
   const handleCellPress = (hour: number) => {
@@ -176,12 +223,12 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * duration,
-                              backgroundColor: e.color || '#9cf',
+                              backgroundColor: getColorByUserId(e.user_id),
                               borderRadius: 6,
                               padding: 2,
                             }}
                           >
-                            <Text style={{ fontSize: 11, color: '#000', fontWeight: '500' }}>
+                            <Text style={{ fontSize: 11, color: getColorTextByUserId(e.user_id), fontWeight: '500' }}>
                               {e.title}
                             </Text>
                           </View>

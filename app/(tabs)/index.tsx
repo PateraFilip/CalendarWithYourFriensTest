@@ -17,13 +17,13 @@ export default function SharedCalendar() {
       title: 'Událost B',
       start: new Date(2025, 9, 13, 10, 0),
       end: new Date(2025, 9, 13, 11, 0),
-      color: 'green',
+      user_id: 1,
     },
     {
       title: 'Událost A',
       start: new Date(2025, 9, 13, 10, 30),
       end: new Date(2025, 9, 13, 12, 0),
-      color: 'red',
+      user_id: 2,
     },
   ]);
 
@@ -32,25 +32,14 @@ export default function SharedCalendar() {
   const [modalVisible, setModalVisible] = useState(false);
   const [newEventTitle, setNewEventTitle] = useState('');
 
-  const handlePressCell = (date) => {
-    if (mode === 'month') {
-      setSelectedDate(date);
-      setMode('day');
-    } else {
-      setSelectedDate(date);
-      setModalVisible(true);
-    }
-  };
 
   const handlePressDay = (date) => {
-      setSelectedDate(date);
-      setMode('day');
+    setSelectedDate(date);
+    setMode('day');
   };
 
   const addEvent = () => {
     if (!newEventTitle) return;
-    const colors = ['red', 'blue', 'green', 'orange'];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
     setEvents([
       ...events,
@@ -58,7 +47,7 @@ export default function SharedCalendar() {
         title: newEventTitle,
         start: selectedDate,
         end: new Date(selectedDate.getTime() + 60 * 60 * 1000),
-        color: randomColor,
+        user_id: 1,
       },
     ]);
     setNewEventTitle('');
@@ -67,38 +56,38 @@ export default function SharedCalendar() {
 
   const selectCalendar = () => {
     if (mode == "week") {
-      return(
-      <WeekCalendar
-            events={events}
-            onPressCell={(date) => {
-          setSelectedDate(date);
-      setModalVisible(true);
-        }}
-        onPressDay={handlePressDay}
-        hourHeight={100}
-      />
-    )
+      return (
+        <WeekCalendar
+          events={events}
+          onPressCell={(date) => {
+            setSelectedDate(date);
+            setModalVisible(true);
+          }}
+          onPressDay={handlePressDay}
+          hourHeight={100}
+        />
+      )
     }
     else if (mode == "day") {
-      return(
-      <DayCalendar
-            events={events}
-            defaultDate={selectedDate}
-            onPressCell={(date) => {
-          setSelectedDate(date);
-      setModalVisible(true);
-        }}
-        hourHeight={100}
-      />
-    )
+      return (
+        <DayCalendar
+          events={events}
+          defaultDate={selectedDate}
+          onPressCell={(date) => {
+            setSelectedDate(date);
+            setModalVisible(true);
+          }}
+          hourHeight={100}
+        />
+      )
     }
-    else{
-      return(
-      <MonthCalendar
-            events={events}
-            defaultDate={selectedDate}
-            onPressDay={handlePressDay}
-      />
+    else {
+      return (
+        <MonthCalendar
+          events={events}
+          defaultDate={selectedDate}
+          onPressDay={handlePressDay}
+        />
       )
     }
   }

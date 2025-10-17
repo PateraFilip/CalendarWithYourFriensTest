@@ -5,7 +5,7 @@ interface Event {
   title: string;
   start: Date;
   end: Date;
-  color?: string;
+  user_id: number;
 }
 
 interface WeekCalendarProps {
@@ -27,18 +27,65 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
     return monday;
   });
 
+  const COLORS = [
+    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
+    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
+    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
+    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
+  ];
+
+  const COLORS_TEXT = [
+    '#FFFFFF', // e6194b
+    '#FFFFFF', // 3cb44b
+    '#000000', // ffe119
+    '#FFFFFF', // 4363d8
+    '#FFFFFF', // f58231
+    '#FFFFFF', // 911eb4
+    '#000000', // 46f0f0
+    '#FFFFFF', // f032e6
+    '#000000', // bcf60c
+    '#000000', // fabebe
+    '#FFFFFF', // 008080
+    '#000000', // e6beff
+    '#FFFFFF', // 9a6324
+    '#000000', // fffac8
+    '#FFFFFF', // 800000
+    '#000000', // aaffc3
+    '#FFFFFF', // 808000
+    '#000000', // ffd8b1
+    '#FFFFFF', // 000075
+    '#FFFFFF', // 808080
+  ];
+
+  // Funkce na přiřazení barvy podle userId
+  function getColorByUserId(userId: string | number) {
+    const idNum = typeof userId === 'string'
+      ? userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      : userId;
+
+    return COLORS[idNum % COLORS.length];
+  }
+
+  function getColorTextByUserId(userId: string | number) {
+    const idNum = typeof userId === 'string'
+      ? userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      : userId;
+
+    return COLORS_TEXT[idNum % COLORS.length];
+  }
+
   const calendarRef = useRef<ScrollView>(null);
   const hourScrollRef = useRef<ScrollView>(null);
 
-const isSyncingScroll = useRef(false);
+  const isSyncingScroll = useRef(false);
 
-const onCalendarScroll = (e: any) => {
-  if (isSyncingScroll.current) return;
+  const onCalendarScroll = (e: any) => {
+    if (isSyncingScroll.current) return;
 
-  const x = e.nativeEvent.contentOffset.x;
+    const x = e.nativeEvent.contentOffset.x;
 
-  hourScrollRef.current?.scrollTo({ x, animated: false });
-};
+    hourScrollRef.current?.scrollTo({ x, animated: false });
+  };
 
 
 
@@ -84,49 +131,49 @@ const onCalendarScroll = (e: any) => {
   });
 
   function getColumnsForDay(day: Date, weekEvents: Event[]) {
-  // všechny eventy toho dne
-  const dayEvents = weekEvents.filter(e =>
-    e.start.getFullYear() === day.getFullYear() &&
-    e.start.getMonth() === day.getMonth() &&
-    e.start.getDate() === day.getDate()
-  );
+    // všechny eventy toho dne
+    const dayEvents = weekEvents.filter(e =>
+      e.start.getFullYear() === day.getFullYear() &&
+      e.start.getMonth() === day.getMonth() &&
+      e.start.getDate() === day.getDate()
+    );
 
-  // přiřazení sloupců pro všechny eventy
-  const { totalColumns } = assignEventColumns(dayEvents, []);
-  return totalColumns;
-}
+    // přiřazení sloupců pro všechny eventy
+    const { totalColumns } = assignEventColumns(dayEvents, []);
+    return totalColumns;
+  }
 
 
 
   function assignEventColumns(eventsCurrent: Event[], previousEvents: Event[]) {
-  const events = [...eventsCurrent, ...previousEvents];
-  const sorted = [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
-  const columns: Event[][] = [];
+    const events = [...eventsCurrent, ...previousEvents];
+    const sorted = [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
+    const columns: Event[][] = [];
 
-  sorted.forEach(event => {
-    let placed = false;
-    for (let col = 0; col < columns.length; col++) {
-      const lastInCol = columns[col][columns[col].length - 1];
-      if (lastInCol.end <= event.start) {
-        columns[col].push(event);
-        placed = true;
-        break;
+    sorted.forEach(event => {
+      let placed = false;
+      for (let col = 0; col < columns.length; col++) {
+        const lastInCol = columns[col][columns[col].length - 1];
+        if (lastInCol.end <= event.start) {
+          columns[col].push(event);
+          placed = true;
+          break;
+        }
       }
-    }
-    if (!placed) {
-      // vytvoř nový sloupec
-      columns.push([event]);
-    }
-  });
+      if (!placed) {
+        // vytvoř nový sloupec
+        columns.push([event]);
+      }
+    });
 
-  // přiřadíme sloupec každému eventu
-  const eventColumns: Map<Event, number> = new Map();
-  columns.forEach((col, idx) => {
-    col.forEach(e => eventColumns.set(e, idx));
-  });
+    // přiřadíme sloupec každému eventu
+    const eventColumns: Map<Event, number> = new Map();
+    columns.forEach((col, idx) => {
+      col.forEach(e => eventColumns.set(e, idx));
+    });
 
-  return { eventColumns, totalColumns: columns.length };
-}
+    return { eventColumns, totalColumns: columns.length };
+  }
 
 
   return (
@@ -143,9 +190,9 @@ const onCalendarScroll = (e: any) => {
         </Text>
         <Button title="Následující →" onPress={() => changeWeek(1)} />
       </View>
-      <View style={{flexDirection: "row"}}>
+      <View style={{ flexDirection: "row" }}>
         <View style={[styles.dayHeader, { height: 30, width: 60 }]}></View>
-        <ScrollView ref={hourScrollRef} scrollEnabled={false} scrollEventThrottle={16} showsHorizontalScrollIndicator={false} horizontal style={{backgroundColor: "white"}}>
+        <ScrollView ref={hourScrollRef} scrollEnabled={false} scrollEventThrottle={16} showsHorizontalScrollIndicator={false} horizontal style={{ backgroundColor: "white" }}>
           {hours.map((h) => {
             return (
 
@@ -160,124 +207,126 @@ const onCalendarScroll = (e: any) => {
         </ScrollView>
       </View>
 
-<ScrollView>
-      <View style={{ flexDirection: 'row' }}>
-        {/* 🗓️ Sloupec s dny */}
+      <ScrollView>
+        <View style={{ flexDirection: 'row' }}>
+          {/* 🗓️ Sloupec s dny */}
 
-        <View style={{ width: 60 }}>
-          {days.map((day, dayIndex) => {
-            const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
+          <View style={{ width: 60 }}>
+            {days.map((day, dayIndex) => {
+              const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
 
 
 
-            return(
-            <Pressable
-      key={dayIndex}
-      onPress={() => handlePressDay(day)}
-      style={[
-        styles.dayHeader,
-        { minHeight: hourHeight, height: totalCols * 20, width: 60 },
-      ]}
-    >
+              return (
+                <Pressable
+                  key={dayIndex}
+                  onPress={() => handlePressDay(day)}
+                  style={[
+                    styles.dayHeader,
+                    { minHeight: hourHeight, height: totalCols * 20, width: 60 },
+                  ]}
+                >
                   <Text style={{ fontWeight: 'bold' }}>
                     {day.toLocaleDateString('cs-CZ', { weekday: 'short' })}
                   </Text>
                   <Text>
                     {day.getDate()}.{day.getMonth() + 1}
                   </Text>
-            </Pressable>
-          )})}
-        </View>
-
-        {/* ⏱️ ScrollView s hodinami */}
-        <ScrollView ref={calendarRef} onScroll={onCalendarScroll} scrollEventThrottle={16} horizontal>
-          <View>
-            {days.map((day, dayIndex) => (
-              <View key={dayIndex} style={{ backgroundColor: 'white', flexDirection:'row'}}>
-                {hours.map((h) => {
-                  if (!day) {
-                    return (
-                      <View
-                        key={`${dayIndex}-${h}`}
-                        style={[styles.hourCell, { height: 30, width: hourWidth }]}
-                      >
-                        <Text>{h}:00</Text>
-                      </View>
-                    );
-                  }
-
-                  // eventy, které začínají v této hodině
-                  const cellEvents = weekEvents.filter((e) => {
-                    return (
-                      e.start.getFullYear() === day.getFullYear() &&
-                      e.start.getMonth() === day.getMonth() &&
-                      e.start.getDate() === day.getDate() &&
-                      e.start.getHours() == h
-                    );
-                  });
-
-                  const cellPrevious = weekEvents.filter((e) => {
-                    return (
-                      e.start.getFullYear() === day.getFullYear() &&
-                      e.start.getMonth() === day.getMonth() &&
-                      e.start.getDate() === day.getDate() &&
-                      e.start.getHours() < h &&
-                      e.end.getHours() >= h
-                    );
-                  });
-
-                  const { eventColumns, totalColumns } = assignEventColumns(cellEvents, cellPrevious);
-                  const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
-                  return (
-                    <Pressable
-                      key={`${dayIndex}-${h}`}
-                      onPress={() => handleCellPress(day, h)}
-                      style={[
-                        styles.hourCell,
-                        {
-                          width: hourWidth,
-                          minHeight: hourHeight,
-                          height: totalCols * 20,
-                          justifyContent: 'flex-start',
-                          alignItems: 'stretch',
-                          position: 'relative',
-                        },
-                      ]}
-                    >
-                      <View style={{ flex: 1, backgroundColor: 'transparent', position: 'relative' }} />
-
-                      {cellEvents.map((e, i) => {
-                        const eventDurationHours = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60); // rozdíl v hodinách
-                        const eventStartHours = e.start.getMinutes() / 60;
-                        const col = eventColumns.get(e) || 0;
-
-                        return(
-                        <View
-                          key={i}
-                          pointerEvents="none"
-                          style={{
-                            position: 'absolute',
-                            top: col * 20,
-                            left: eventStartHours * hourWidth,
-                            height: 20,
-                            width: hourWidth * eventDurationHours,
-                            backgroundColor: e.color || '#9cf',
-                            borderRadius: 4,
-                            padding: 2,
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, color: '#000' }}>{e.title}</Text>
-                        </View>
-
-                      )})}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
+                </Pressable>
+              )
+            })}
           </View>
-        </ScrollView>
-      </View>
+
+          {/* ⏱️ ScrollView s hodinami */}
+          <ScrollView ref={calendarRef} onScroll={onCalendarScroll} scrollEventThrottle={16} horizontal>
+            <View>
+              {days.map((day, dayIndex) => (
+                <View key={dayIndex} style={{ backgroundColor: 'white', flexDirection: 'row' }}>
+                  {hours.map((h) => {
+                    if (!day) {
+                      return (
+                        <View
+                          key={`${dayIndex}-${h}`}
+                          style={[styles.hourCell, { height: 30, width: hourWidth }]}
+                        >
+                          <Text>{h}:00</Text>
+                        </View>
+                      );
+                    }
+
+                    // eventy, které začínají v této hodině
+                    const cellEvents = weekEvents.filter((e) => {
+                      return (
+                        e.start.getFullYear() === day.getFullYear() &&
+                        e.start.getMonth() === day.getMonth() &&
+                        e.start.getDate() === day.getDate() &&
+                        e.start.getHours() == h
+                      );
+                    });
+
+                    const cellPrevious = weekEvents.filter((e) => {
+                      return (
+                        e.start.getFullYear() === day.getFullYear() &&
+                        e.start.getMonth() === day.getMonth() &&
+                        e.start.getDate() === day.getDate() &&
+                        e.start.getHours() < h &&
+                        e.end.getHours() >= h
+                      );
+                    });
+
+                    const { eventColumns, totalColumns } = assignEventColumns(cellEvents, cellPrevious);
+                    const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
+                    return (
+                      <Pressable
+                        key={`${dayIndex}-${h}`}
+                        onPress={() => handleCellPress(day, h)}
+                        style={[
+                          styles.hourCell,
+                          {
+                            width: hourWidth,
+                            minHeight: hourHeight,
+                            height: totalCols * 20,
+                            justifyContent: 'flex-start',
+                            alignItems: 'stretch',
+                            position: 'relative',
+                          },
+                        ]}
+                      >
+                        <View style={{ flex: 1, backgroundColor: 'transparent', position: 'relative' }} />
+
+                        {cellEvents.map((e, i) => {
+                          const eventDurationHours = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60); // rozdíl v hodinách
+                          const eventStartHours = e.start.getMinutes() / 60;
+                          const col = eventColumns.get(e) || 0;
+
+                          return (
+                            <View
+                              key={i}
+                              pointerEvents="none"
+                              style={{
+                                position: 'absolute',
+                                top: col * 20,
+                                left: eventStartHours * hourWidth,
+                                height: 20,
+                                width: hourWidth * eventDurationHours,
+                                backgroundColor: getColorByUserId(e.user_id),
+                                borderRadius: 4,
+                                padding: 2,
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, color: getColorTextByUserId(e.user_id) }}>{e.title}</Text>
+                            </View>
+
+                          )
+                        })}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
       </ScrollView>
     </View>
   );
