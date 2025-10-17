@@ -1,11 +1,11 @@
 import DayCalendar from '@/components/CustomDay/CustomDay';
+import MonthCalendar from '@/components/CustomMonth/CustomMonth';
 import WeekCalendar from '@/components/CustomWeek/CustomWeek';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
 import React, { useState } from 'react';
 import { Modal, Button as RNButton, TextInput as RNTextInput, StyleSheet, Text, View } from 'react-native';
-import { Calendar } from 'react-native-big-calendar';
 dayjs.locale('cs')
 
 
@@ -94,23 +94,10 @@ export default function SharedCalendar() {
     }
     else{
       return(
-      <Calendar
-        events={events}
-        height={800}
-        mode={mode}
-        date={selectedDate}
-        weekStartsOn={1}
-        maxVisibleEventCount={20}
-        locale="cs"
-        onPressCell={handlePressCell}
-        onPressEvent={(event) => {
-          setSelectedDate(event.start);
-          setModalVisible(true);
-        }}
-        showAllDayEventCell={false}
-        eventCellStyle={(event) => ({
-          backgroundColor: event.color,
-        })}
+      <MonthCalendar
+            events={events}
+            defaultDate={selectedDate}
+            onPressDay={handlePressDay}
       />
       )
     }
