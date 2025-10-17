@@ -2,16 +2,18 @@ import DayCalendar from '@/components/CustomDay/CustomDay';
 import MonthCalendar from '@/components/CustomMonth/CustomMonth';
 import WeekCalendar from '@/components/CustomWeek/CustomWeek';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
 import React, { useState } from 'react';
-import { Modal, Button as RNButton, TextInput as RNTextInput, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Modal, Button as RNButton, TextInput as RNTextInput, StyleSheet, Text, View } from 'react-native';
 dayjs.locale('cs')
 
 
 
 
 export default function SharedCalendar() {
+  const SCREEN_HEIGHT = Dimensions.get('window').height;
   const [events, setEvents] = useState([
     {
       title: 'Událost B',
@@ -27,15 +29,15 @@ export default function SharedCalendar() {
     },
   ]);
 
-  const [mode, setMode] = useState('week'); // week | month | day
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [modalVisible, setModalVisible] = useState(false);
   const [newEventTitle, setNewEventTitle] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(1);
 
 
   const handlePressDay = (date) => {
     setSelectedDate(date);
-    setMode('day');
+    setSelectedIndex(0);
   };
 
   const addEvent = () => {
@@ -55,7 +57,7 @@ export default function SharedCalendar() {
   };
 
   const selectCalendar = () => {
-    if (mode == "week") {
+    if (selectedIndex == 1) {
       return (
         <WeekCalendar
           events={events}
@@ -64,11 +66,11 @@ export default function SharedCalendar() {
             setModalVisible(true);
           }}
           onPressDay={handlePressDay}
-          hourHeight={100}
+          hourHeight={(SCREEN_HEIGHT - 170) / 7}
         />
       )
     }
-    else if (mode == "day") {
+    else if (selectedIndex == 0) {
       return (
         <DayCalendar
           events={events}
@@ -94,12 +96,13 @@ export default function SharedCalendar() {
 
   return (
     <ThemedSafeView style={styles.container}>
-      <RNButton onPress={() => {
-        if (mode === 'week') setMode('month');
-        else if (mode === 'month') setMode('day');
-        else setMode('week');
-      }} title={`Přepnout na ${mode === 'week' ? 'měsíc' : mode === 'month' ? 'den' : 'týden'}`} />
-
+      <SegmentedControl
+        values={['Den', 'Týden', 'Měsíc']}
+        selectedIndex={selectedIndex}
+        onChange={(event) => {
+          setSelectedIndex(event.nativeEvent.selectedSegmentIndex);
+        }}
+      />
 
 
       {selectCalendar()}

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ThemedText } from '../themed-text';
+import { ThemedView } from '../themed-view';
 
 interface Event {
   title: string;
@@ -154,35 +156,35 @@ export default function DayCalendar({
   }, [dayEvents]);
 
   return (
-    <View style={{ flex: 1 }}>
+    <ThemedView style={{ flex: 1 }}>
       {/* 🔹 Horní navigace */}
-      <View style={styles.navBar}>
+      <ThemedView style={styles.navBar}>
         <Pressable onPress={handlePrevDay} style={styles.navButton}>
-          <Text style={styles.navText}>← Předchozí</Text>
+          <ThemedText style={styles.navText}>← Předchozí</ThemedText>
         </Pressable>
-        <Text style={styles.headerTitle}>
+        <ThemedText style={styles.headerTitle}>
           {date.toLocaleDateString('cs-CZ', {
             weekday: 'long',
             day: 'numeric',
             month: 'long',
           })}
-        </Text>
+        </ThemedText>
         <Pressable onPress={handleNextDay} style={styles.navButton}>
-          <Text style={styles.navText}>Další →</Text>
+          <ThemedText style={styles.navText}>Další →</ThemedText>
         </Pressable>
-      </View>
+      </ThemedView>
 
       {/* 📅 Kalendářní den */}
-      <ScrollView style={{ flex: 1, backgroundColor: "white" }}>
-        <View style={{ flexDirection: 'row' }}>
+      <ScrollView style={{ flex: 1 }}>
+        <ThemedView style={{ flexDirection: 'row' }}>
           {/* ⏰ Levý sloupec s hodinami */}
-          <View>
+          <ThemedView>
             {hours.map((h) => (
-              <View key={h} style={[styles.hourLabel, { height: hourHeight }]}>
-                <Text style={{ fontSize: 12, color: '#333' }}>{`${h}:00`}</Text>
-              </View>
+              <ThemedView key={h} style={[styles.hourLabel, { height: hourHeight }]}>
+                <ThemedText style={{ fontSize: 12 }}>{`${h}:00`}</ThemedText>
+              </ThemedView>
             ))}
-          </View>
+          </ThemedView>
 
           {/* 🟦 Eventy - horizontální ScrollView přes všechny hodiny */}
           <ScrollView
@@ -190,7 +192,7 @@ export default function DayCalendar({
             horizontal
             showsHorizontalScrollIndicator={true}
           >
-            <View>
+            <ThemedView>
               {hours.map((h) => {
                 const cellEvents = dayEvents.filter((e) => e.start.getHours() === h);
                 const cellPrevious = dayEvents.filter(
@@ -206,7 +208,8 @@ export default function DayCalendar({
                         height: hourHeight,
                         width: Math.max(maxColumns * 60, SCREEN_WIDTH - 50),
                         position: 'relative',
-                        borderWidth: 0.5
+                        borderWidth: 0.5,
+                        borderColor: '#ccc',
                       }}
                     >
                       {cellEvents.map((e, i) => {
@@ -215,7 +218,7 @@ export default function DayCalendar({
                         const col = eventColumns.get(e) || 0;
 
                         return (
-                          <View
+                          <ThemedView
                             key={i}
                             style={{
                               position: 'absolute',
@@ -228,21 +231,21 @@ export default function DayCalendar({
                               padding: 2,
                             }}
                           >
-                            <Text style={{ fontSize: 11, color: getColorTextByUserId(e.user_id), fontWeight: '500' }}>
+                            <ThemedText style={{ fontSize: 11, color: getColorTextByUserId(e.user_id), fontWeight: '500' }}>
                               {e.title}
-                            </Text>
-                          </View>
+                            </ThemedText>
+                          </ThemedView>
                         );
                       })}
                     </Pressable>
                   </View>
                 );
               })}
-            </View>
+            </ThemedView>
           </ScrollView>
-        </View>
+        </ThemedView>
       </ScrollView>
-    </View>
+    </ThemedView>
   );
 }
 
@@ -251,7 +254,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#eee',
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
@@ -259,7 +261,6 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   navText: {
-    color: '#007AFF',
     fontWeight: '500',
   },
   headerTitle: {
@@ -273,6 +274,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRightWidth: 0.5,
     borderColor: '#ccc',
-    backgroundColor: '#fafafa',
   },
 });

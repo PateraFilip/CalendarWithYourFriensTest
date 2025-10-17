@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Button, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ThemedText } from '../themed-text';
+import { ThemedView } from '../themed-view';
 
 interface Event {
   title: string;
@@ -116,9 +118,15 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
     onPressDay?.(date);
   };
 
-  const changeWeek = (direction: number) => {
+  const changePrevWeek = () => {
     const newDate = new Date(currentWeekStart);
-    newDate.setDate(currentWeekStart.getDate() + direction * 7);
+    newDate.setDate(currentWeekStart.getDate() - 1 * 7);
+    setCurrentWeekStart(newDate);
+  };
+
+  const changeNextWeek = () => {
+    const newDate = new Date(currentWeekStart);
+    newDate.setDate(currentWeekStart.getDate() + 1 * 7);
     setCurrentWeekStart(newDate);
   };
 
@@ -177,41 +185,45 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
 
 
   return (
-    <View style={{ flex: 1 }}>
+    <ThemedView style={{ flex: 1 }}>
       {/* 🔘 Tlačítka pro přepínání týdnů */}
-      <View style={styles.weekHeader}>
-        <Button title="← Předchozí" onPress={() => changeWeek(-1)} />
-        <Text style={styles.weekTitle}>
+      <ThemedView style={styles.navBar}>
+        <Pressable onPress={changePrevWeek} style={styles.navButton}>
+          <ThemedText style={styles.navText}>← Předchozí</ThemedText>
+        </Pressable>
+        <ThemedText style={styles.weekTitle}>
           {currentWeekStart.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' })} -{' '}
           {new Date(currentWeekStart.getTime() + 6 * 86400000).toLocaleDateString('cs-CZ', {
             day: 'numeric',
             month: 'short',
-          })}
-        </Text>
-        <Button title="Následující →" onPress={() => changeWeek(1)} />
-      </View>
-      <View style={{ flexDirection: "row" }}>
-        <View style={[styles.dayHeader, { height: 30, width: 60 }]}></View>
-        <ScrollView ref={hourScrollRef} scrollEnabled={false} scrollEventThrottle={16} showsHorizontalScrollIndicator={false} horizontal style={{ backgroundColor: "white" }}>
+          })} {currentWeekStart.getFullYear()}
+        </ThemedText>
+        <Pressable onPress={changeNextWeek} style={styles.navButton}>
+          <ThemedText style={styles.navText}>Další →</ThemedText>
+        </Pressable>
+      </ThemedView>
+      <ThemedView style={{ flexDirection: "row" }}>
+        <ThemedView style={[styles.dayHeader, { height: 30, width: 60 }]}></ThemedView>
+        <ScrollView ref={hourScrollRef} scrollEnabled={false} scrollEventThrottle={16} showsHorizontalScrollIndicator={false} horizontal>
           {hours.map((h) => {
             return (
 
-              <View
+              <ThemedView
                 key={`${h}`}
                 style={[styles.hourCell, { height: 30, width: hourWidth }]}
               >
-                <Text>{h}:00</Text>
-              </View>
+                <ThemedText>{h}:00</ThemedText>
+              </ThemedView>
             );
           })}
         </ScrollView>
-      </View>
+      </ThemedView>
 
       <ScrollView>
-        <View style={{ flexDirection: 'row' }}>
+        <ThemedView style={{ flexDirection: 'row' }}>
           {/* 🗓️ Sloupec s dny */}
 
-          <View style={{ width: 60 }}>
+          <ThemedView style={{ width: 60 }}>
             {days.map((day, dayIndex) => {
               const totalCols = day ? getColumnsForDay(day, weekEvents) : 0;
 
@@ -226,31 +238,31 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
                     { minHeight: hourHeight, height: totalCols * 20, width: 60 },
                   ]}
                 >
-                  <Text style={{ fontWeight: 'bold' }}>
-                    {day.toLocaleDateString('cs-CZ', { weekday: 'short' })}
-                  </Text>
-                  <Text>
+                  <ThemedText style={{ fontWeight: 'bold' }}>
+                    {day.toLocaleDateString('cs-CZ', { weekday: 'short' }).replace(/^./, c => c.toUpperCase())}
+                  </ThemedText>
+                  <ThemedText>
                     {day.getDate()}.{day.getMonth() + 1}
-                  </Text>
+                  </ThemedText>
                 </Pressable>
               )
             })}
-          </View>
+          </ThemedView>
 
           {/* ⏱️ ScrollView s hodinami */}
           <ScrollView ref={calendarRef} onScroll={onCalendarScroll} scrollEventThrottle={16} horizontal>
-            <View>
+            <ThemedView>
               {days.map((day, dayIndex) => (
-                <View key={dayIndex} style={{ backgroundColor: 'white', flexDirection: 'row' }}>
+                <ThemedView key={dayIndex} style={{ flexDirection: 'row' }}>
                   {hours.map((h) => {
                     if (!day) {
                       return (
-                        <View
+                        <ThemedView
                           key={`${dayIndex}-${h}`}
                           style={[styles.hourCell, { height: 30, width: hourWidth }]}
                         >
-                          <Text>{h}:00</Text>
-                        </View>
+                          <ThemedText>{h}:00</ThemedText>
+                        </ThemedView>
                       );
                     }
 
@@ -292,7 +304,7 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
                           },
                         ]}
                       >
-                        <View style={{ flex: 1, backgroundColor: 'transparent', position: 'relative' }} />
+                        <ThemedView style={{ flex: 1, backgroundColor: 'transparent', position: 'relative' }} />
 
                         {cellEvents.map((e, i) => {
                           const eventDurationHours = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60); // rozdíl v hodinách
@@ -300,7 +312,7 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
                           const col = eventColumns.get(e) || 0;
 
                           return (
-                            <View
+                            <ThemedView
                               key={i}
                               pointerEvents="none"
                               style={{
@@ -314,21 +326,21 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
                                 padding: 2,
                               }}
                             >
-                              <Text style={{ fontSize: 10, color: getColorTextByUserId(e.user_id) }}>{e.title}</Text>
-                            </View>
+                              <ThemedText style={{ fontSize: 10, lineHeight: 18, color: getColorTextByUserId(e.user_id) }}>{e.title}</ThemedText>
+                            </ThemedView>
 
                           )
                         })}
                       </Pressable>
                     );
                   })}
-                </View>
+                </ThemedView>
               ))}
-            </View>
+            </ThemedView>
           </ScrollView>
-        </View>
+        </ThemedView>
       </ScrollView>
-    </View>
+    </ThemedView>
   );
 }
 
@@ -338,11 +350,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 8,
-    backgroundColor: '#eee',
   },
   weekTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   hourCell: {
     justifyContent: 'center',
@@ -357,7 +368,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 0.5,
     borderColor: '#ccc',
-    backgroundColor: '#f0f0f0',
     flexDirection: 'column',
     borderRightWidth: 0.5,
   },
@@ -371,6 +381,17 @@ const styles = StyleSheet.create({
   },
   eventText: {
     fontSize: 12,
-    color: '#000',
+  },
+  navButton: {
+    padding: 6,
+  },
+  navText: {
+    fontWeight: '500',
+  },
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 8,
   },
 });

@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ThemedText } from '../themed-text';
+import { ThemedView } from '../themed-view';
 
 interface Event {
     title: string;
@@ -113,44 +115,44 @@ export default function MonthCalendar({ events, onPressDay, defaultDate }: Month
     };
 
     return (
-        <View style={{ flex: 1 }}>
+        <ThemedView style={{ flex: 1 }}>
             {/* 🔹 Navigace mezi měsíci */}
-            <View style={styles.navBar}>
+            <ThemedView style={styles.navBar}>
                 <Pressable onPress={handlePrevMonth} style={styles.navButton}>
-                    <Text style={styles.navText}>← Předchozí</Text>
+                    <ThemedText style={styles.navText}>← Předchozí</ThemedText>
                 </Pressable>
-                <Text style={styles.headerTitle}>
+                <ThemedText style={styles.headerTitle}>
                     {currentMonth.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' })}
-                </Text>
+                </ThemedText>
                 <Pressable onPress={handleNextMonth} style={styles.navButton}>
-                    <Text style={styles.navText}>Další →</Text>
+                    <ThemedText style={styles.navText}>Další →</ThemedText>
                 </Pressable>
-            </View>
+            </ThemedView>
 
             {/* 📅 Kalendářní mřížka */}
-            <View style={{ flex: 1, backgroundColor: "white", height: SCREEN_HEIGHT - 100 }}>
-                <View style={styles.weekDays}>
+            <ThemedView style={{ flex: 1, backgroundColor: "white", height: SCREEN_HEIGHT - 100 }}>
+                <ThemedView style={styles.weekDays}>
                     {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'].map((d, i) => (
-                        <View key={i} style={styles.weekDayCell}>
-                            <Text style={{ fontWeight: '600' }}>{d}</Text>
-                        </View>
+                        <ThemedView key={i} style={styles.weekDayCell}>
+                            <ThemedText style={{ fontWeight: '600' }}>{d}</ThemedText>
+                        </ThemedView>
                     ))}
-                </View>
+                </ThemedView>
 
-                <View style={{ marginTop: 0, flex: 1 }}>
+                <ThemedView style={{ marginTop: 0, flex: 1 }}>
                     {Array.from({ length: days.length / 7 }).map((_, rowIndex) => (
-                        <View key={rowIndex} style={{ flexDirection: 'row', flex: 1 }}>
+                        <ThemedView key={rowIndex} style={{ flexDirection: 'row', flex: 1 }}>
                             {days.slice(rowIndex * 7, rowIndex * 7 + 7).map((day, index) => {
-                                if (!day) return <View key={index} style={styles.dayCell} />;
+                                if (!day) return <ThemedView key={index} style={styles.dayCell} />;
 
                                 const dayEvents = getEventsForDay(day);
 
                                 return (
-                                    <View key={index} style={styles.dayCell}>
+                                    <ThemedView key={index} style={styles.dayCell}>
                                         <Pressable
                                             onPress={() => onPressDay?.(day)}
                                         >
-                                            <Text style={{ fontWeight: '500', margin: 2 }}>{day.getDate()}</Text>
+                                            <ThemedText style={{ fontWeight: '500', margin: 2 }}>{day.getDate()}</ThemedText>
                                         </Pressable>
 
                                         {dayEvents.length > 0 && (
@@ -164,7 +166,7 @@ export default function MonthCalendar({ events, onPressDay, defaultDate }: Month
                                                         style={[styles.eventBadge, { backgroundColor: getColorByUserId(e.user_id) }]}
                                                         onPress={() => onPressDay?.(day)}
                                                     >
-                                                        <Text style={{ fontSize: 10, color: getColorTextByUserId(e.user_id) }}>{e.title}</Text>
+                                                        <ThemedText style={{ fontSize: 10, lineHeight: 18, color: getColorTextByUserId(e.user_id) }}>{e.title}</ThemedText>
                                                     </Pressable>
                                                 ))}
                                             </ScrollView>
@@ -174,32 +176,30 @@ export default function MonthCalendar({ events, onPressDay, defaultDate }: Month
                                             style={{ flex: 1 }}
                                         >
                                         </Pressable>
-                                    </View>
+                                    </ThemedView>
 
                                 );
                             })}
-                        </View>
+                        </ThemedView>
                     ))}
-                </View>
+                </ThemedView>
 
-            </View>
-        </View>
+            </ThemedView>
+        </ThemedView>
     );
 }
 
 const styles = StyleSheet.create({
     navBar: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 10,
-        backgroundColor: '#eee',
+        justifyContent: 'space-between',
+        padding: 8,
     },
     navButton: {
         padding: 6,
     },
     navText: {
-        color: '#007AFF',
         fontWeight: '500',
     },
     headerTitle: {
@@ -216,7 +216,6 @@ const styles = StyleSheet.create({
         flex: 1,
         padding: 6,
         alignItems: 'center',
-        backgroundColor: '#f9f9f9',
         borderRightWidth: 0.5,
         borderColor: '#ccc',
     },
@@ -237,11 +236,9 @@ const styles = StyleSheet.create({
         borderColor: '#ccc'
     },
     eventBadge: {
-        top: 0,
-        left: 0,
         borderRadius: 8,
-        paddingHorizontal: 4,
-        paddingVertical: 2,
-        height: 18
+        paddingHorizontal: 2,
+        height: 18,
+        paddingTop: 0
     },
 });
