@@ -1,12 +1,13 @@
 import DayCalendar from '@/components/CustomDay/CustomDay';
 import MonthCalendar from '@/components/CustomMonth/CustomMonth';
 import WeekCalendar from '@/components/CustomWeek/CustomWeek';
+import { EventModal } from '@/components/EventModal';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
 import React, { useState } from 'react';
-import { Dimensions, Modal, Button as RNButton, TextInput as RNTextInput, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 dayjs.locale('cs')
 
 
@@ -107,21 +108,7 @@ export default function SharedCalendar() {
 
       {selectCalendar()}
 
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text>Přidat novou událost</Text>
-            <RNTextInput
-              placeholder="Název události"
-              value={newEventTitle}
-              onChangeText={setNewEventTitle}
-              style={styles.input}
-            />
-            <RNButton title="Přidat" onPress={addEvent} />
-            <RNButton title="Zrušit" onPress={() => setModalVisible(false)} />
-          </View>
-        </View>
-      </Modal>
+      <EventModal visible={modalVisible} onCreate={addEvent} onDismiss={() => setModalVisible(false)} />
     </ThemedSafeView>
   );
 }
