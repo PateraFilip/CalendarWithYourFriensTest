@@ -1,20 +1,21 @@
-import DayCalendar from '@/components/CustomDay/CustomDay';
-import MonthCalendar from '@/components/CustomMonth/CustomMonth';
-import WeekCalendar from '@/components/CustomWeek/CustomWeek';
-import { EventModal } from '@/components/EventModal';
-import { ThemedSafeView } from '@/components/ThemedSafeView';
-import SegmentedControl from '@react-native-segmented-control/segmented-control';
-import dayjs from 'dayjs';
-import 'dayjs/locale/cs';
-import React, { useState } from 'react';
-import { Dimensions, StyleSheet } from 'react-native';
+import SegmentedControl from '@react-native-segmented-control/segmented-control'
+import dayjs from 'dayjs'
+import 'dayjs/locale/cs'
+import React, { useState } from 'react'
+import { Dimensions, StyleSheet } from 'react-native'
+
+import { CellModal } from '@/components/CellModal'
+import DayCalendar from '@/components/CustomDay/CustomDay'
+import MonthCalendar from '@/components/CustomMonth/CustomMonth'
+import WeekCalendar from '@/components/CustomWeek/CustomWeek'
+import { EventModal } from '@/components/EventModal'
+import { ThemedSafeView } from '@/components/ThemedSafeView'
+
 dayjs.locale('cs')
 
-
-
-
 export default function SharedCalendar() {
-  const SCREEN_HEIGHT = Dimensions.get('window').height;
+  const SCREEN_HEIGHT = Dimensions.get('window').height
+
   const [events, setEvents] = useState([
     {
       title: 'Událost B',
@@ -28,67 +29,66 @@ export default function SharedCalendar() {
       end: new Date(2025, 9, 13, 12, 0),
       user_id: 2,
     },
-  ]);
+  ])
 
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [modalVisible, setModalVisible] = useState(false);
-  const [newEventTitle, setNewEventTitle] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(1);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [cellModalVisible, setCellModalVisible] = useState(false)
+  const [eventModalVisible, setEventModalVisible] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(1)
+  const [newEventTitle, setNewEventTitle] = useState('')
+  const [newEventPeopleCount, setNewEventPeopleCount] = useState(1)
 
+  const handlePressDay = (date: Date) => {
+    setSelectedDate(date)
+    setSelectedIndex(0)
+  }
 
-  const handlePressDay = (date) => {
-    setSelectedDate(date);
-    setSelectedIndex(0);
-  };
+  const handleCellPress = (date: Date) => {
+    setSelectedDate(date)
+    setCellModalVisible(true)
+  }
 
-  const addEvent = () => {
-    if (!newEventTitle) return;
+  const addEvent = (title: string, peopleCount: number) => {
+    if (!title || !selectedDate) return
 
-    setEvents([
-      ...events,
+    setEvents(prev => [
+      ...prev,
       {
-        title: newEventTitle,
+        title,
         start: selectedDate,
         end: new Date(selectedDate.getTime() + 60 * 60 * 1000),
         user_id: 1,
       },
-    ]);
-    setNewEventTitle('');
-    setModalVisible(false);
-  };
+    ])
+    setNewEventTitle('')
+    setNewEventPeopleCount(1)
+    setEventModalVisible(false)
+  }
 
   const selectCalendar = () => {
-    if (selectedIndex == 1) {
+    if (selectedIndex === 1) {
       return (
         <WeekCalendar
           events={events}
-          onPressCell={(date) => {
-            setSelectedDate(date);
-            setModalVisible(true);
-          }}
+          onPressCell={handleCellPress}
           onPressDay={handlePressDay}
           hourHeight={(SCREEN_HEIGHT - 170) / 7}
         />
       )
-    }
-    else if (selectedIndex == 0) {
+    } else if (selectedIndex === 0) {
       return (
         <DayCalendar
           events={events}
-          defaultDate={selectedDate}
-          onPressCell={(date) => {
-            setSelectedDate(date);
-            setModalVisible(true);
-          }}
+          defaultDate={selectedDate ?? new Date()}
+          onPressCell={handleCellPress}
           hourHeight={100}
         />
       )
-    }
-    else {
+    } else {
       return (
         <MonthCalendar
           events={events}
-          defaultDate={selectedDate}
+          defaultDate={selectedDate ?? new Date()}
           onPressDay={handlePressDay}
         />
       )
@@ -100,39 +100,35 @@ export default function SharedCalendar() {
       <SegmentedControl
         values={['Den', 'Týden', 'Měsíc']}
         selectedIndex={selectedIndex}
-        onChange={(event) => {
-          setSelectedIndex(event.nativeEvent.selectedSegmentIndex);
-        }}
+        onChange={event =>
+          setSelectedIndex(event.nativeEvent.selectedSegmentIndex)
+        }
       />
-
 
       {selectCalendar()}
 
-      <EventModal visible={modalVisible} onCreate={addEvent} onDismiss={() => setModalVisible(false)} />
+      <CellModal
+        visible={cellModalVisible}
+        date={selectedDate}
+        events={events}
+        onClose={() => setCellModalVisible(false)}
+        onCreateEvent={() => {
+          setCellModalVisible(false)
+          setEventModalVisible(true)
+        }}
+      />
+
+      <EventModal
+        visible={eventModalVisible}
+        onDismiss={() => setEventModalVisible(false)}
+        onCreate={addEvent}
+      />
     </ThemedSafeView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 16,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    padding: 8,
-    marginVertical: 10,
-  },
-});
+})
