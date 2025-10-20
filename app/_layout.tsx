@@ -5,9 +5,10 @@ import {
 } from '@react-navigation/native'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import 'react-native-reanimated'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import 'react-native-reanimated'
 
+import { AuthProvider } from '@/contexts/AuthContext'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 import { Provider } from 'react-native-paper'
 
@@ -24,21 +25,23 @@ export default function RootLayout() {
                 <ThemeProvider
                     value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
                 >
-                    <Stack initialRouteName="(login)">
-                        <Stack.Screen
-                            name="(login)"
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name="(tabs)"
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name="modal"
-                            options={{ presentation: 'modal', title: 'Modal' }}
-                        />
-                    </Stack>
-                    <StatusBar style="auto" />
+                    <AuthProvider>
+                        <Stack initialRouteName="(login)">
+                            <Stack.Screen
+                                name="(login)"
+                                options={{ headerShown: false }}
+                            />
+                            <Stack.Screen
+                                name="(tabs)"
+                                options={{ headerShown: false }}
+                            />
+                            <Stack.Screen
+                                name="modal"
+                                options={{ presentation: 'modal', title: 'Modal' }}
+                            />
+                        </Stack>
+                        <StatusBar style="auto" />
+                    </AuthProvider>
                 </ThemeProvider>
             </Provider>
         </GestureHandlerRootView>

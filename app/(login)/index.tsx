@@ -1,6 +1,7 @@
 import { ThemedView } from '@/components/themed-view'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
 import { useThemeColor } from '@/hooks/use-theme-color'
+import { useAuth } from '@/hooks/useAuth'
 import { Link, useRouter } from 'expo-router'
 import React, { useState } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
@@ -12,7 +13,6 @@ import Loading from '../loading'
 export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [loading, setLoading] = useState(false)
     const [errors, setErrors] = useState<{ email: boolean; password: boolean }>(
         {
             email: false,
@@ -22,6 +22,8 @@ export default function Login() {
 
     const router = useRouter()
     const theme = useTheme()
+
+    const { login, loading } = useAuth()
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor(
@@ -37,38 +39,13 @@ export default function Login() {
 
         setErrors(newErrors)
         if (!newErrors.email && !newErrors.password) {
-            setLoading(true)
             try {
-                const response = await fetch(
-                    'https://tzbpcbmxwbsixrtorijk.supabase.co/functions/v1/smart-processor',
-                    {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Authorization:
-                                'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw',
-                        },
-                        body: JSON.stringify({
-                            username: email,
-                            password,
-                            action: 'login',
-                        }),
-                    }
-                )
-
-                const data = await response.json()
-
-                if (!response.ok) {
-                    alert(data.error || 'Přihlášení selhalo')
-                    return
-                }
+                await login(email, password)
 
                 router.replace('/(tabs)')
             } catch (err) {
                 console.error(err)
                 alert('Chyba připojení')
-            } finally {
-                setLoading(false)
             }
         }
     }
