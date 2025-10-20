@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'expo-router'
 
 const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOweyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDE5MjAyMSwiZXhwIjoyMDc1NzY4MDIxfQ.MCzDxBh6eBVgjdsOQDdlz57O1hvfBWLRZ4u10fSbLug'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 dayjs.locale('cs')
@@ -34,34 +34,31 @@ export default function SharedCalendar() {
   }
 
   useEffect(() => {
-    // načti události při mountu
-    loadEvents()
+    let mounted = true;
 
-    // subscribni se na realtime změny tabulky events
-    const subscription = supabase
-      .channel('events-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'events' },
-        () => loadEvents()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'events' },
-        () => loadEvents()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'events' },
-        () => loadEvents()
-      )
-      .subscribe()
+    loadEvents(); // načtení na start
 
+    const channel = supabase.channel('realtime:public:events');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'events'
+    }, (payload) => {
+      console.log('Change in events:', payload);
+      if (mounted) loadEvents(); // načti nové eventy
+    });
+
+    channel.subscribe();
 
     return () => {
-      supabase.removeChannel(subscription)
-    }
-  }, [])
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+
+  // run once
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [cellModalVisible, setCellModalVisible] = useState(false)
