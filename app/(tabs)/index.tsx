@@ -4,34 +4,64 @@ import 'dayjs/locale/cs'
 import React, { useEffect, useState } from 'react'
 import { Dimensions, StyleSheet } from 'react-native'
 
+import { fetchEvents } from '@/api/get_events'
 import { CellModal } from '@/components/CellModal'
 import DayCalendar from '@/components/CustomDay/CustomDay'
 import MonthCalendar from '@/components/CustomMonth/CustomMonth'
 import WeekCalendar from '@/components/CustomWeek/CustomWeek'
-import { EventModal } from '@/components/EventModal'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
+import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'expo-router'
+
+const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOweyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDE5MjAyMSwiZXhwIjoyMDc1NzY4MDIxfQ.MCzDxBh6eBVgjdsOQDdlz57O1hvfBWLRZ4u10fSbLug'
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 dayjs.locale('cs')
 
 export default function SharedCalendar() {
   const SCREEN_HEIGHT = Dimensions.get('window').height
   const router = useRouter()
+  const [events, setEvents] = useState<Event[]>([])
 
-  const [events, setEvents] = useState([
-    {
-      title: 'Událost B',
-      start: new Date(2025, 9, 13, 10, 0),
-      end: new Date(2025, 9, 13, 11, 0),
-      user_id: 1,
-    },
-    {
-      title: 'Událost A',
-      start: new Date(2025, 9, 13, 10, 30),
-      end: new Date(2025, 9, 13, 12, 0),
-      user_id: 2,
-    },
-  ])
+  const loadEvents = async () => {
+    try {
+      const data = await fetchEvents()
+      setEvents(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  useEffect(() => {
+    // načti události při mountu
+    loadEvents()
+
+    // subscribni se na realtime změny tabulky events
+    const subscription = supabase
+      .channel('events-changes')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'events' },
+        () => loadEvents()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'events' },
+        () => loadEvents()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'events' },
+        () => loadEvents()
+      )
+      .subscribe()
+
+
+    return () => {
+      supabase.removeChannel(subscription)
+    }
+  }, [])
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [cellModalVisible, setCellModalVisible] = useState(false)
@@ -51,22 +81,7 @@ export default function SharedCalendar() {
     setCellModalVisible(true)
   }
 
-  const addEvent = (title: string, peopleCount: number) => {
-    if (!title || !selectedDate) return
 
-    setEvents(prev => [
-      ...prev,
-      {
-        title,
-        start: selectedDate,
-        end: new Date(selectedDate.getTime() + 60 * 60 * 1000),
-        user_id: 1,
-      },
-    ])
-    setNewEventTitle('')
-    setNewEventPeopleCount(1)
-    setEventModalVisible(false)
-  }
 
   const selectCalendar = () => {
     if (selectedIndex === 1) {
@@ -127,11 +142,6 @@ export default function SharedCalendar() {
         }}
       />
 
-      <EventModal
-        visible={eventModalVisible}
-        onDismiss={() => setEventModalVisible(false)}
-        onCreate={addEvent}
-      />
     </ThemedSafeView>
   )
 }

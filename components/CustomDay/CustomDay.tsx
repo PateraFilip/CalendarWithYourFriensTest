@@ -8,6 +8,9 @@ interface Event {
   start: Date;
   end: Date;
   user_id: number;
+  pocet_lidi: number;
+  pravidelnost: boolean;
+  is_group: boolean;
 }
 
 interface DayCalendarProps {

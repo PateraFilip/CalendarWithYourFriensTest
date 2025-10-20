@@ -9,7 +9,15 @@ import { ThemedView } from './themed-view'
 interface CellModalProps {
     visible: boolean
     date: Date | null
-    events: { title: string; start: Date; end: Date; user_id: number }[]
+    events: {
+        title: string;
+        start: Date;
+        end: Date;
+        user_id: number;
+        pocet_lidi: number;
+        pravidelnost: boolean;
+        is_group: boolean;
+    }[]
     onCreateEvent: () => void
 }
 

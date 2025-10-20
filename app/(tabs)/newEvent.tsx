@@ -1,7 +1,9 @@
+import { createEvent } from '@/api/create_event';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAuth } from '@/hooks/useAuth';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
 import React, { useState } from 'react';
@@ -17,6 +19,7 @@ export default function NewEvent() {
     const [type, setType] = useState(false);
     const [pravidelnost, setPravidelnost] = useState(false);
     const [peopleCount, setPeopleCount] = useState(1);
+    const { user } = useAuth()
 
     // ---- Date & Time Range state ----
     const [dateRange, setDateRange] = useState<{ startDate?: Date; endDate?: Date }>({});
@@ -32,8 +35,8 @@ export default function NewEvent() {
     const increase = () => setPeopleCount(prev => prev + 1);
     const decrease = () => setPeopleCount(prev => (prev > 1 ? prev - 1 : 1));
 
-    const handleCreate = () => {
-        if (!name.trim() || !dateRange.startDate || !timeRange.start) return;
+    const handleCreate = async () => {
+        if (!name.trim() || !dateRange.startDate || !timeRange.start || !user?.id) return;
 
         const start = new Date(dateRange.startDate);
         start.setHours(timeRange.start.getHours());
@@ -45,14 +48,27 @@ export default function NewEvent() {
             end.setMinutes(timeRange.end.getMinutes());
         }
 
-        console.log('📅 Vytvářím událost:', { name, start, end, type, pravidelnost, peopleCount });
+        try {
+            await createEvent({
+                title: name,
+                user_id: user.id,
+                start,
+                end,
+                peopleCount,
+                pravidelnost: pravidelnost,
+                is_group: type,
+            })
 
-        // reset form
-        setName('');
-        setPeopleCount(1);
-        setDateRange({});
-        setTimeRange({});
-    };
+            // reset form
+            setName('')
+            setPeopleCount(1)
+            setDateRange({})
+            setTimeRange({})
+        } catch (err) {
+            console.error('❌ Chyba při vytváření události:', err)
+        }
+    }
+
 
     const formatDate = (d?: Date) => (d ? dayjs(d).format('DD. MM. YYYY') : '');
     const formatTime = (d?: Date) => (d ? dayjs(d).format('HH:mm') : '');
