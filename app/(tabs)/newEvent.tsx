@@ -12,7 +12,7 @@ import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react
 dayjs.locale('cs');
 registerTranslation('cs', cs);
 
-export default function Add_events() {
+export default function NewEvent() {
     const [name, setName] = useState('');
     const [type, setType] = useState(false);
     const [pravidelnost, setPravidelnost] = useState(false);

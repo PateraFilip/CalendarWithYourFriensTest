@@ -20,6 +20,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'calendar.fill': 'calendar-month',
   'person.fill': 'person',
+  'plus.circle.fill': 'event',
 } as const satisfies Record<string, string>;
 
 

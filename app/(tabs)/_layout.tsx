@@ -39,6 +39,19 @@ export default function TabLayout() {
                     ),
                 }}
             />
+            <Tabs.Screen
+                name="newEvent"
+                options={{
+                    title: 'Nová událost',
+                    tabBarIcon: ({ color }) => (
+                        <IconSymbol
+                            size={28}
+                            name="plus.circle.fill"
+                            color={color}
+                        />
+                    ),
+                }}
+            />
         </Tabs>
     )
 }
