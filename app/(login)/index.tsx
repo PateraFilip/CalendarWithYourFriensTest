@@ -5,6 +5,7 @@ import { Link, useRouter } from 'expo-router'
 import React, { useState } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
+import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import Loading from '../loading'
 
@@ -174,18 +175,18 @@ const styles = StyleSheet.create({
         padding: 16,
     },
     logo: {
-        width: 300,
-        height: 300,
+        width: wp('60%'),
+        height: hp('30%'),
         resizeMode: 'contain',
     },
     box: {
         width: '85%',
         borderRadius: 16,
         padding: 20,
-        elevation: 4,
+        elevation: 2,
         gap: 20,
         alignItems: 'center',
-        borderWidth: 1,
+        borderWidth: 0,
     },
     input: {
         width: '100%',

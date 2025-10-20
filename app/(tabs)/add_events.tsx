@@ -1,272 +1,238 @@
-import { ThemedSafeView } from '@/components/ThemedSafeView'
-import { ThemedText } from '@/components/themed-text'
-import { ThemedView } from '@/components/themed-view'
-import { useThemeColor } from '@/hooks/use-theme-color'
-import dayjs from 'dayjs'
-import 'dayjs/locale/cs'
-import { ChevronDown } from 'lucide-react-native'
-import React, { useState } from 'react'
-import { Pressable, StyleSheet, Switch, TextInput } from 'react-native'
-import DateTimePickerModal from 'react-native-modal-datetime-picker'
-import { Button, IconButton, TextInput as PaperTextInput } from 'react-native-paper'
+import { ThemedSafeView } from '@/components/ThemedSafeView';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import dayjs from 'dayjs';
+import 'dayjs/locale/cs';
+import React, { useState } from 'react';
+import { ScrollView, StyleSheet } from 'react-native';
+import { Button, IconButton, TextInput as PaperTextInput, Switch, TextInput } from 'react-native-paper';
+import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react-native-paper-dates';
 
-dayjs.locale('cs')
+dayjs.locale('cs');
+registerTranslation('cs', cs);
 
 export default function Add_events() {
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-    const [name, setName] = useState('')
-    const [type, setType] = useState(false)
-    const [pravidelnost, setPravidelnost] = useState(false)
-    const [isStartDatePickerVisible, setStartDatePickerVisibility] = useState(false);
-    const [isEndDatePickerVisible, setEndDatePickerVisibility] = useState(false);
-    const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null)
-    const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null)
-    const [peopleCount, setPeopleCount] = useState(1)
+    const [name, setName] = useState('');
+    const [type, setType] = useState(false);
+    const [pravidelnost, setPravidelnost] = useState(false);
+    const [peopleCount, setPeopleCount] = useState(1);
 
+    // ---- Date & Time Range state ----
+    const [dateRange, setDateRange] = useState<{ startDate?: Date; endDate?: Date }>({});
+    const [dateModalVisible, setDateModalVisible] = useState(false);
 
-    const addEvent = async () => {
-        const response = await fetch("https://<your-project>.functions.supabase.co/addEvent", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                nazev: name,
-                zakladatel_id: 1,
-                pocet_lidi: peopleCount,
-                den_od: selectedStartDate?.getDate(),
-                cas_od: selectedStartDate?.getTime(),
-                cas_do: selectedEndDate?.getTime(),
-                den_do: selectedEndDate?.getDate(),
-                pravidelnost: pravidelnost,
-                group: type
-            }),
-        });
+    const [timeRange, setTimeRange] = useState<{ start?: Date; end?: Date }>({});
+    const [timeModalVisible, setTimeModalVisible] = useState(false);
+    const [timeStep, setTimeStep] = useState<'start' | 'end'>('start'); // krok výběru času
 
-        const data = await response.json();
-        if (response.ok) {
-            console.log("Event added:", data);
+    const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
+    const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text');
+
+    const increase = () => setPeopleCount(prev => prev + 1);
+    const decrease = () => setPeopleCount(prev => (prev > 1 ? prev - 1 : 1));
+
+    const handleCreate = () => {
+        if (!name.trim() || !dateRange.startDate || !timeRange.start) return;
+
+        const start = new Date(dateRange.startDate);
+        start.setHours(timeRange.start.getHours());
+        start.setMinutes(timeRange.start.getMinutes());
+
+        const end = dateRange.endDate && timeRange.end ? new Date(dateRange.endDate) : null;
+        if (end && timeRange.end) {
+            end.setHours(timeRange.end.getHours());
+            end.setMinutes(timeRange.end.getMinutes());
+        }
+
+        console.log('📅 Vytvářím událost:', { name, start, end, type, pravidelnost, peopleCount });
+
+        // reset form
+        setName('');
+        setPeopleCount(1);
+        setDateRange({});
+        setTimeRange({});
+    };
+
+    const formatDate = (d?: Date) => (d ? dayjs(d).format('DD. MM. YYYY') : '');
+    const formatTime = (d?: Date) => (d ? dayjs(d).format('HH:mm') : '');
+
+    // --- Funkce pro potvrzení času ---
+    const handleTimeConfirm = ({ hours, minutes }: { hours: number; minutes: number }) => {
+        if (timeStep === 'start') {
+            const start = new Date();
+            start.setHours(hours);
+            start.setMinutes(minutes);
+            setTimeRange({ start });
+            setTimeStep('end');
+            setTimeout(() => setTimeModalVisible(true), 100); // otevře modal pro end
         } else {
-            console.error("Error adding event:", data.error);
+            const end = new Date();
+            end.setHours(hours);
+            end.setMinutes(minutes);
+            setTimeRange(prev => ({ ...prev, end }));
+            setTimeStep('start'); // reset na start pro další kliknutí
+            setTimeModalVisible(false);
         }
     };
 
-
-
-    const handleStartConfirm = (date: Date) => {
-        setSelectedStartDate(date);
-        setStartDatePickerVisibility(false);
-    };
-
-    const handleStartCancel = () => {
-        setStartDatePickerVisibility(false);
-    };
-
-    const handleEndConfirm = (date: Date) => {
-        setSelectedEndDate(date);
-        setEndDatePickerVisibility(false);
-    };
-
-    const handleEndCancel = () => {
-        setEndDatePickerVisibility(false);
-    };
-
-    const handleCreate = () => {
-        if (!name.trim()) return
-        setName('')
-        setPeopleCount(1)
-    }
-
-    const increase = () => setPeopleCount(prev => prev + 1)
-    const decrease = () => setPeopleCount(prev => (prev > 1 ? prev - 1 : 1))
-
-    const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
-    const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
-
     return (
         <ThemedSafeView style={styles.container}>
-            <ThemedView style={styles.field}>
-                <ThemedText style={styles.label}>Název události</ThemedText>
-                <TextInput
-                    accessible
-                    accessibilityLabel="Název události"
-                    placeholder="Zadej název..."
-                    placeholderTextColor={buttonColor}
-                    value={name}
-                    onChangeText={text => setName(text)}
-                    returnKeyType="next"
-                    style={[styles.input, { color: buttonColor }]}
-                />
+            <ScrollView>
 
-            </ThemedView>
-            <ThemedView style={[styles.field, styles.rowCenter]}>
-                <ThemedText style={styles.label}>Skupinová událost</ThemedText>
-                <Switch
-                    accessibilityLabel="Skupinová událost"
-                    value={type}
-                    onValueChange={val => setType(val)}
-                />
-            </ThemedView>
-            {!type && (
-                <ThemedView style={[styles.field, styles.rowCenter]}>
-                    <ThemedText style={styles.label}>Týdenní pravidelnost</ThemedText>
-                    <Switch
-                        accessibilityLabel="Týdenní pravidelnost"
-                        value={pravidelnost}
-                        onValueChange={val => setPravidelnost(val)}
-                    />
-                </ThemedView>
-            )}
-            <ThemedView style={styles.field}>
-                <ThemedText style={styles.label}>Začátek</ThemedText>
-                <Pressable
-                    style={[styles.input, { justifyContent: 'space-between', flexDirection: "row", alignContent: "center" }]}
-                    onPress={() => setStartDatePickerVisibility(true)}
-                >
-                    <ThemedText>
-                        {selectedStartDate
-                            ? dayjs(selectedStartDate).format('DD. MM. YYYY HH:mm')
-                            : 'Vyber datum a čas'}
-                    </ThemedText>
-                    <ChevronDown size={24} color={buttonColor} />
-                </Pressable>
-                <DateTimePickerModal
-                    isVisible={isStartDatePickerVisible}
-                    mode="datetime"
-                    date={selectedStartDate || new Date()}
-                    onConfirm={handleStartConfirm}
-                    onCancel={handleStartCancel}
-                    locale="cs-CZ"
-                    is24Hour={true}
-                />
-            </ThemedView>
-            <ThemedView style={styles.field}>
-                <ThemedText style={styles.label}>Konec</ThemedText>
-                <Pressable
-                    style={[styles.input, { justifyContent: 'space-between', flexDirection: "row", alignContent: "center" }]}
-                    onPress={() => setEndDatePickerVisibility(true)}
-                >
-                    <ThemedText>
-                        {selectedEndDate
-                            ? dayjs(selectedEndDate).format('DD. MM. YYYY HH:mm')
-                            : 'Vyber datum a čas'}
-                    </ThemedText>
-                    <ChevronDown size={24} color={buttonColor} />
-                </Pressable>
-                <DateTimePickerModal
-                    isVisible={isEndDatePickerVisible}
-                    mode="datetime"
-                    date={selectedEndDate || new Date()}
-                    onConfirm={handleEndConfirm}
-                    onCancel={handleEndCancel}
-                    locale="cs-CZ"
-                    is24Hour={true}
-                />
-            </ThemedView>
-            <ThemedView style={styles.peopleSection}>
-                <ThemedText style={styles.label}>Počet lidí</ThemedText>
-
-                <ThemedView style={styles.counterRow}>
-                    <IconButton
-                        icon="minus"
-                        mode="contained"
-                        onPress={decrease}
-                        iconColor={buttonTextColor}
-                        containerColor={buttonColor}
-                    />
+                {/* Název události */}
+                <ThemedView style={styles.field}>
+                    <ThemedText style={styles.label}>Název události</ThemedText>
                     <PaperTextInput
-                        value={String(peopleCount)}
-                        onChangeText={text => {
-                            const num = parseInt(text, 10)
-                            if (!isNaN(num)) setPeopleCount(num)
-                        }}
-                        keyboardType="numeric"
+                        placeholder="Zadej název..."
+                        value={name}
+                        onChangeText={setName}
                         mode="outlined"
-                        style={styles.counterInput}
-                        activeOutlineColor={buttonColor}
-                    />
-                    <IconButton
-                        icon="plus"
-                        mode="contained"
-                        onPress={increase}
-                        iconColor={buttonTextColor}
-                        containerColor={buttonColor}
+                        style={styles.input}
                     />
                 </ThemedView>
-                <Button
-                    mode="contained"
-                    onPress={handleCreate}
-                    disabled={!name.trim()}
-                    buttonColor={buttonColor}
-                    labelStyle={{ color: buttonTextColor }}
-                    style={styles.createButton}
-                >
-                    Vytvořit událost
-                </Button>
-            </ThemedView>
 
+                {/* Skupinová událost */}
+                <ThemedView style={[styles.field, styles.rowCenter]}>
+                    <ThemedText style={styles.label}>Skupinová událost</ThemedText>
+                    <Switch value={type} color={buttonColor} onValueChange={setType} />
+                </ThemedView>
 
+                {/* Týdenní pravidelnost */}
+                {!type && (
+                    <ThemedView style={[styles.field, styles.rowCenter]}>
+                        <ThemedText style={styles.label}>Týdenní pravidelnost</ThemedText>
+                        <Switch value={pravidelnost} color={buttonColor} onValueChange={setPravidelnost} />
+                    </ThemedView>
+                )}
+
+                {/* --- Date Range Picker --- */}
+                <ThemedView style={styles.field}>
+                    <PaperTextInput
+                        value={
+                            dateRange.startDate
+                                ? `${formatDate(dateRange.startDate)} → ${dateRange.endDate ? formatDate(dateRange.endDate) : ''}`
+                                : 'Vyber datum'
+                        }
+                        mode="outlined"
+                        editable={false}
+                        onPressIn={() => setDateModalVisible(true)}
+                        right={
+                            <TextInput.Icon
+                                icon="calendar-outline"
+                                onPress={() => setDateModalVisible(true)}
+                            />
+                        }
+                    />
+
+                    <DatePickerModal
+                        locale="cs"
+                        mode="range"
+                        visible={dateModalVisible}
+                        onDismiss={() => setDateModalVisible(false)}
+                        startDate={dateRange.startDate}
+                        endDate={dateRange.endDate}
+                        onConfirm={({ startDate, endDate }) => {
+                            setDateModalVisible(false);
+                            // pokud uživatel vybral jen jeden den, nastavíme start = end
+                            if (!endDate) endDate = startDate;
+                            setDateRange({ startDate, endDate });
+                        }}
+                    />
+                </ThemedView>
+
+                {/* --- Time Range Picker --- */}
+                <ThemedView style={styles.field}>
+                    <PaperTextInput
+                        value={
+                            timeRange.start
+                                ? `${formatTime(timeRange.start)} → ${timeRange.end ? formatTime(timeRange.end) : ''}`
+                                : 'Vyber čas'
+                        }
+                        mode="outlined"
+                        editable={false}
+                        onPressIn={() => {
+                            setTimeStep('start');
+                            setTimeModalVisible(true);
+                        }}
+                        right={
+                            <TextInput.Icon
+                                icon="clock-outline"
+                                onPress={() => {
+                                    setTimeStep('start');
+                                    setTimeModalVisible(true);
+                                }}
+                            />
+                        }
+                    />
+
+                    <TimePickerModal
+                        visible={timeModalVisible}
+                        onDismiss={() => setTimeModalVisible(false)}
+                        onConfirm={handleTimeConfirm}
+                        hours={12}
+                        minutes={0}
+                        use24HourClock
+                        label={timeStep === 'start' ? 'Vyber čas od' : 'Vyber čas do'}
+                    />
+                </ThemedView>
+
+                {/* Počet lidí */}
+                <ThemedView style={styles.peopleSection}>
+                    <ThemedText style={styles.label}>Počet lidí</ThemedText>
+                    <ThemedView style={styles.counterRow}>
+                        <IconButton
+                            icon="minus"
+                            mode="contained"
+                            onPress={decrease}
+                            iconColor={buttonTextColor}
+                            containerColor={buttonColor}
+                        />
+                        <PaperTextInput
+                            value={String(peopleCount)}
+                            onChangeText={text => {
+                                const num = parseInt(text, 10);
+                                if (!isNaN(num)) setPeopleCount(num);
+                            }}
+                            keyboardType="numeric"
+                            mode="outlined"
+                            style={styles.counterInput}
+                            activeOutlineColor={buttonColor}
+                        />
+                        <IconButton
+                            icon="plus"
+                            mode="contained"
+                            onPress={increase}
+                            iconColor={buttonTextColor}
+                            containerColor={buttonColor}
+                        />
+                    </ThemedView>
+
+                    <Button
+                        mode="contained"
+                        onPress={handleCreate}
+                        disabled={!name.trim() || !dateRange.startDate || !timeRange.start}
+                        buttonColor={buttonColor}
+                        labelStyle={{ color: buttonTextColor }}
+                        style={styles.createButton}
+                    >
+                        Vytvořit událost
+                    </Button>
+                </ThemedView>
+
+            </ScrollView>
         </ThemedSafeView>
-    )
+    );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    field: {
-        marginBottom: 12,
-    },
-    label: {
-        fontSize: 14,
-        marginBottom: 6,
-        fontWeight: '600',
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        fontSize: 16
-    },
-    textarea: {
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        padding: 12,
-        fontSize: 16,
-        minHeight: 100,
-        textAlignVertical: 'top',
-        backgroundColor: '#fff',
-    },
-    inputError: {
-        borderColor: '#d9534f',
-    },
-    error: {
-        marginTop: 6,
-        color: '#d9534f',
-    },
-    rowCenter: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    peopleSection: {
-        alignItems: 'center',
-        gap: 6,
-    },
-    counterRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 10,
-        marginBottom: 10
-    },
-    counterInput: {
-        textAlign: 'center',
-    },
-    createButton: {
-        borderRadius: 6,
-    },
-})
+    container: { flex: 1, padding: 16 },
+    field: { marginBottom: 12 },
+    label: { fontSize: 14, marginBottom: 6, fontWeight: '600' },
+    input: { fontSize: 16 },
+    rowCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    peopleSection: { alignItems: 'center', gap: 6 },
+    counterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 10 },
+    counterInput: { textAlign: 'center', width: 60 },
+    createButton: { borderRadius: 6, width: '100%' },
+});
