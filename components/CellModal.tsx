@@ -8,13 +8,15 @@ import { ThemedView } from './themed-view'
 
 interface CellModalProps {
     visible: boolean
-    onClose: () => void
     date: Date | null
     events: { title: string; start: Date; end: Date; user_id: number }[]
     onCreateEvent: () => void
 }
 
-export const CellModal: React.FC<CellModalProps> = ({ visible, onClose, date, events, onCreateEvent }) => {
+export const CellModal: React.FC<CellModalProps> = ({ visible,
+    date,
+    events,
+    onCreateEvent }) => {
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
 
@@ -71,7 +73,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible, onClose, date, ev
 
     return (
         <Portal>
-            <Modal visible={visible} onDismiss={onClose} contentContainerStyle={styles.modalContainer}>
+            <Modal visible={visible} contentContainerStyle={styles.modalContainer}>
                 <ThemedView style={styles.content}>
                     <ThemedText type="subtitle" style={styles.title}>
                         {capitalize(dayjs(date).format('dddd D. MMMM YYYY - HH:mm'))}

@@ -1,7 +1,7 @@
 import SegmentedControl from '@react-native-segmented-control/segmented-control'
 import dayjs from 'dayjs'
 import 'dayjs/locale/cs'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Dimensions, StyleSheet } from 'react-native'
 
 import { CellModal } from '@/components/CellModal'
@@ -10,11 +10,13 @@ import MonthCalendar from '@/components/CustomMonth/CustomMonth'
 import WeekCalendar from '@/components/CustomWeek/CustomWeek'
 import { EventModal } from '@/components/EventModal'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
+import { useRouter } from 'expo-router'
 
 dayjs.locale('cs')
 
 export default function SharedCalendar() {
   const SCREEN_HEIGHT = Dimensions.get('window').height
+  const router = useRouter()
 
   const [events, setEvents] = useState([
     {
@@ -34,6 +36,7 @@ export default function SharedCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [cellModalVisible, setCellModalVisible] = useState(false)
   const [eventModalVisible, setEventModalVisible] = useState(false)
+  const [navigateAfterClose, setNavigateAfterClose] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(1)
   const [newEventTitle, setNewEventTitle] = useState('')
   const [newEventPeopleCount, setNewEventPeopleCount] = useState(1)
@@ -95,6 +98,13 @@ export default function SharedCalendar() {
     }
   }
 
+  // useEffect sleduje zavření modalu a spustí navigaci
+  useEffect(() => {
+    if (!cellModalVisible && navigateAfterClose) {
+      router.replace('/newEvent')
+    }
+  }, [cellModalVisible, navigateAfterClose])
+
   return (
     <ThemedSafeView style={styles.container}>
       <SegmentedControl
@@ -111,10 +121,9 @@ export default function SharedCalendar() {
         visible={cellModalVisible}
         date={selectedDate}
         events={events}
-        onClose={() => setCellModalVisible(false)}
         onCreateEvent={() => {
-          setCellModalVisible(false)
-          setEventModalVisible(true)
+          setNavigateAfterClose(true) // flag pro navigaci po zavření
+          setCellModalVisible(false)   // zavření modalu
         }}
       />
 
