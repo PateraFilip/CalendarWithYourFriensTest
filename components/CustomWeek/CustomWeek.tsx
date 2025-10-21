@@ -134,45 +134,58 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
   };
 
   const weekEvents = events.filter((e) => {
-    const eventDate = new Date(e.start);
+    const eventStart = new Date(e.start);
+    const eventEnd = new Date(e.end)
     return (
-      eventDate >= currentWeekStart &&
-      eventDate < new Date(currentWeekStart.getTime() + 7 * 86400000)
+      (eventStart >= currentWeekStart &&
+        eventStart < new Date(currentWeekStart.getTime() + 7 * 86400000)) ||
+      (eventStart < currentWeekStart &&
+        eventEnd >= currentWeekStart) ||
+      (eventStart < new Date(currentWeekStart.getTime() + 7 * 86400000) &&
+        eventStart >= new Date(currentWeekStart.getTime() + 7 * 86400000))
     );
   });
 
   function getColumnsForDay(day: Date, weekEvents: Event[]) {
-    // všechny eventy toho dne
     const dayEvents = weekEvents.filter(e =>
-      e.start.getFullYear() === day.getFullYear() &&
-      e.start.getMonth() === day.getMonth() &&
-      e.start.getDate() === day.getDate()
+      e.start >= new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59) &&
+      e.end <= new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0)
     );
 
-    // přiřazení sloupců pro všechny eventy
     const { totalColumns } = assignEventColumns(dayEvents, []);
     return totalColumns;
   }
 
 
 
+
   function assignEventColumns(eventsCurrent: Event[], previousEvents: Event[]) {
     const events = [...eventsCurrent, ...previousEvents];
+
+    // 1️⃣ seřadíme podle začátku
     const sorted = [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
+
     const columns: Event[][] = [];
 
     sorted.forEach(event => {
       let placed = false;
+
       for (let col = 0; col < columns.length; col++) {
         const lastInCol = columns[col][columns[col].length - 1];
-        if (lastInCol.end <= event.start) {
+
+        // vezmeme časový rozsah předchozí události včetně vícedenních
+        const lastEndTime = lastInCol.end.getTime();
+        const eventStartTime = event.start.getTime();
+
+        if (lastEndTime <= eventStartTime) {
           columns[col].push(event);
           placed = true;
           break;
         }
       }
+
       if (!placed) {
-        // vytvoř nový sloupec
+        console.log(event)
         columns.push([event]);
       }
     });
@@ -185,6 +198,7 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
 
     return { eventColumns, totalColumns: columns.length };
   }
+
 
 
   return (
@@ -279,13 +293,19 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
                       );
                     });
 
+                    const cellEventsLong = weekEvents.filter((e) => {
+                      return (
+                        e.start.getTime() < day.getTime() &&
+                        e.end.getTime() >= day.getTime() &&
+                        h === 0
+                      );
+                    });
+
                     const cellPrevious = weekEvents.filter((e) => {
                       return (
-                        e.start.getFullYear() === day.getFullYear() &&
-                        e.start.getMonth() === day.getMonth() &&
-                        e.start.getDate() === day.getDate() &&
-                        e.start.getHours() < h &&
-                        e.end.getHours() >= h
+                        (e.start.getTime() < day.getTime() + h * 60 * 60 * 1000 && e.end.getTime() >= day.getTime() + h * 60 * 60 * 1000) ||
+                        (e.start.getTime() < day.getTime() && e.end.getDate() === day.getDate())
+
                       );
                     });
 
@@ -322,6 +342,30 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
                                 position: 'absolute',
                                 top: col * 20,
                                 left: eventStartHours * hourWidth,
+                                height: 20,
+                                width: hourWidth * eventDurationHours,
+                                backgroundColor: getColorByUserId(e.user_id),
+                                borderRadius: 4,
+                                padding: 2,
+                              }}
+                            >
+                              <ThemedText style={{ fontSize: 10, lineHeight: 18, color: getColorTextByUserId(e.user_id) }}>{e.title}</ThemedText>
+                            </ThemedView>
+
+                          )
+                        })}{cellEventsLong.map((e, i) => {
+                          const eventDurationHours = (e.end.getTime() - day.getTime()) / (1000 * 60 * 60); // rozdíl v hodinách
+
+                          const col = eventColumns.get(e) || 0;
+
+                          return (
+                            <ThemedView
+                              key={i}
+                              pointerEvents="none"
+                              style={{
+                                position: 'absolute',
+                                top: col * 20,
+                                left: 0,
                                 height: 20,
                                 width: hourWidth * eventDurationHours,
                                 backgroundColor: getColorByUserId(e.user_id),

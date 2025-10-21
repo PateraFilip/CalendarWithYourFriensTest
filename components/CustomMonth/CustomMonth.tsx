@@ -109,12 +109,17 @@ export default function MonthCalendar({ events, onPressDay, defaultDate }: Month
     };
 
     const getEventsForDay = (day: Date) => {
-        return events.filter(
-            e =>
-                e.start.getFullYear() === day.getFullYear() &&
-                e.start.getMonth() === day.getMonth() &&
-                e.start.getDate() === day.getDate()
-        );
+        const dayStart = new Date(day)
+        dayStart.setHours(0, 0, 0, 0)
+
+        // Vytvoř i konec dne (23:59:59)
+        const dayEnd = new Date(day)
+        dayEnd.setHours(23, 59, 59, 999)
+        return events.filter(e => {
+            const start = new Date(e.start)
+            const end = new Date(e.end)
+            return start <= dayEnd && end >= dayStart
+        })
     };
 
     return (

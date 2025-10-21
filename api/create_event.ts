@@ -1,3 +1,6 @@
+import dayjs from 'dayjs';
+import 'dayjs/locale/cs';
+
 const API_URL_CREATE =
   'https://tzbpcbmxwbsixrtorijk.supabase.co/functions/v1/clever-service'
 const API_KEY =
@@ -23,10 +26,10 @@ export const createEvent = async (event: CreateEventInput) => {
     body: JSON.stringify({
       nazev: event.title,
       zakladatel_id: event.user_id,
-      den_od: event.start.toISOString().split('T')[0],
-      cas_od: event.start.toISOString().split('T')[1].slice(0, 5),
-      den_do: event.end ? event.end.toISOString().split('T')[0] : null,
-      cas_do: event.end ? event.end.toISOString().split('T')[1].slice(0, 5) : null,
+      den_od: dayjs(event.start).format('YYYY-MM-DD'),
+      cas_od: dayjs(event.start).format('HH:mm'),
+      den_do: event.end ? dayjs(event.end).format('YYYY-MM-DD') : null,
+      cas_do: event.end ? dayjs(event.end).format('HH:mm') : null,
       pocet_lidi: event.peopleCount ?? 1,
       pravidelnost: event.pravidelnost ?? false,
       is_group: event.is_group ?? false,

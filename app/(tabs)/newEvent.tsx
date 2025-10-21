@@ -6,7 +6,8 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import React, { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { Button, IconButton, TextInput as PaperTextInput, Switch, TextInput } from 'react-native-paper';
 import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react-native-paper-dates';
@@ -20,6 +21,7 @@ export default function NewEvent() {
     const [pravidelnost, setPravidelnost] = useState(false);
     const [peopleCount, setPeopleCount] = useState(1);
     const { user } = useAuth()
+    const { pickedDate } = useLocalSearchParams();
 
     // ---- Date & Time Range state ----
     const [dateRange, setDateRange] = useState<{ startDate?: Date; endDate?: Date }>({});
@@ -28,6 +30,28 @@ export default function NewEvent() {
     const [timeRange, setTimeRange] = useState<{ start?: Date; end?: Date }>({});
     const [timeModalVisible, setTimeModalVisible] = useState(false);
     const [timeStep, setTimeStep] = useState<'start' | 'end'>('start'); // krok výběru času
+
+    useEffect(() => {
+        if (!pickedDate) return
+
+        // pokud je pickedDate pole, vezmi první hodnotu
+        const dateStr = Array.isArray(pickedDate) ? pickedDate[0] : pickedDate
+        const start = new Date(dateStr)
+
+        // vytvoří nový objekt o hodinu později
+        const end = new Date(start.getTime() + 60 * 60 * 1000) // 60min * 60s * 1000ms
+
+        setDateRange({
+            startDate: start,
+            endDate: end,
+        })
+
+        setTimeRange({
+            start,
+            end,
+        })
+    }, [pickedDate])
+
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text');

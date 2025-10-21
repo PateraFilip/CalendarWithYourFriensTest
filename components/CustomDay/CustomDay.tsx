@@ -152,9 +152,15 @@ export default function DayCalendar({
     for (let h of hours) {
       const cellEvents = dayEvents.filter((e) => e.start.getHours() === h);
       const cellPrevious = dayEvents.filter((e) => e.start.getHours() < h && e.end.getHours() >= h);
+      const cellPreviousLong = events.filter((e) =>
+        e.start.getTime() < date.getTime() &&
+        e.end.getTime() >= date.getTime() &&
+        h === 0
+      )
       const { totalColumns } = assignEventColumns(cellEvents, cellPrevious);
       if (totalColumns > max) max = totalColumns;
     }
+
     return max;
   }, [dayEvents]);
 
@@ -198,9 +204,16 @@ export default function DayCalendar({
             <ThemedView>
               {hours.map((h) => {
                 const cellEvents = dayEvents.filter((e) => e.start.getHours() === h);
-                const cellPrevious = dayEvents.filter(
-                  (e) => e.start.getHours() < h && e.end.getHours() >= h
+                const cellPrevious = events.filter(
+                  (e) => (e.start.getTime() < date.getTime() + h * 60 * 60 * 1000 && e.end.getTime() >= date.getTime() + h * 60 * 60 * 1000) ||
+                    (e.start.getTime() < date.getTime() && e.end.getDate() === date.getDate())
                 );
+                const cellPreviousLong = events.filter((e) =>
+                  e.start.getTime() < date.getTime() &&
+                  e.end.getTime() >= date.getTime() &&
+                  h === 0
+                )
+
                 const { eventColumns } = assignEventColumns(cellEvents, cellPrevious);
 
                 return (
@@ -217,6 +230,31 @@ export default function DayCalendar({
                     >
                       {cellEvents.map((e, i) => {
                         const duration = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60);
+                        const topOffset = (e.start.getMinutes() / 60) * hourHeight;
+                        const col = eventColumns.get(e) || 0;
+
+                        return (
+                          <ThemedView
+                            key={i}
+                            style={{
+                              position: 'absolute',
+                              top: topOffset,
+                              left: col * 60,
+                              width: 60,
+                              height: hourHeight * duration,
+                              backgroundColor: getColorByUserId(e.user_id),
+                              borderRadius: 6,
+                              padding: 2,
+                            }}
+                          >
+                            <ThemedText style={{ fontSize: 11, color: getColorTextByUserId(e.user_id), fontWeight: '500' }}>
+                              {e.title}
+                            </ThemedText>
+                          </ThemedView>
+                        );
+                      })}
+                      {cellPreviousLong.map((e, i) => {
+                        const duration = (e.end.getTime() - date.getTime()) / (1000 * 60 * 60);
                         const topOffset = (e.start.getMinutes() / 60) * hourHeight;
                         const col = eventColumns.get(e) || 0;
 

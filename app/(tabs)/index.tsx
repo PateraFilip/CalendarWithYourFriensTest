@@ -113,7 +113,12 @@ export default function SharedCalendar() {
   // useEffect sleduje zavření modalu a spustí navigaci
   useEffect(() => {
     if (!cellModalVisible && navigateAfterClose) {
-      router.replace('/newEvent')
+      router.replace({
+        pathname: '/newEvent',
+        params: {
+          pickedDate: selectedDate?.toISOString()
+        }
+      })
     }
   }, [cellModalVisible, navigateAfterClose])
 
