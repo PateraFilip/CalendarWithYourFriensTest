@@ -75,8 +75,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     }
 
     if (!date) return null
-
-    const dayEvents = events.filter(e => dayjs(e.start).isSame(dayjs(date), 'day'))
+    const hourEvents = events.filter(e => e.start.getTime() < (date.getTime() + 60 * 60 * 1000) && e.end.getTime() > date.getTime())
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
     return (
@@ -87,15 +86,15 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                         {capitalize(dayjs(date).format('dddd D. MMMM YYYY - HH:mm'))}
                     </ThemedText>
 
-                    {dayEvents.length > 0 ? (
+                    {hourEvents.length > 0 ? (
                         <FlatList
-                            data={dayEvents}
+                            data={hourEvents}
                             keyExtractor={(_, i) => i.toString()}
                             renderItem={({ item }) => (
                                 <View style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}>
                                     <Text style={[styles.eventTitle, { color: getColorTextByUserId(item.user_id) }]}>{item.title}</Text>
                                     <Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>
-                                        {dayjs(item.start).format('HH:mm')} - {dayjs(item.end).format('HH:mm')}
+                                        {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
                                     </Text>
                                 </View>
                             )}

@@ -21,7 +21,7 @@ export default function NewEvent() {
     const [pravidelnost, setPravidelnost] = useState(false);
     const [peopleCount, setPeopleCount] = useState(1);
     const { user } = useAuth()
-    const { pickedDate } = useLocalSearchParams();
+    const { pickedDate, signal } = useLocalSearchParams();
 
     // ---- Date & Time Range state ----
     const [dateRange, setDateRange] = useState<{ startDate?: Date; endDate?: Date }>({});
@@ -38,6 +38,7 @@ export default function NewEvent() {
         const dateStr = Array.isArray(pickedDate) ? pickedDate[0] : pickedDate
         const start = new Date(dateStr)
 
+
         // vytvoří nový objekt o hodinu později
         const end = new Date(start.getTime() + 60 * 60 * 1000) // 60min * 60s * 1000ms
 
@@ -50,7 +51,7 @@ export default function NewEvent() {
             start,
             end,
         })
-    }, [pickedDate])
+    }, [pickedDate, signal])
 
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
@@ -88,6 +89,7 @@ export default function NewEvent() {
             setPeopleCount(1)
             setDateRange({})
             setTimeRange({})
+
         } catch (err) {
             console.error('❌ Chyba při vytváření události:', err)
         }
@@ -103,13 +105,15 @@ export default function NewEvent() {
             const start = new Date();
             start.setHours(hours);
             start.setMinutes(minutes);
-            setTimeRange({ start });
+            const end = new Date(start.getTime() + 60 * 60 * 1000);
+            setTimeRange({ start, end });
             setTimeStep('end');
             setTimeout(() => setTimeModalVisible(true), 100); // otevře modal pro end
         } else {
             const end = new Date();
             end.setHours(hours);
             end.setMinutes(minutes);
+            const start = timeRange.start;
             setTimeRange(prev => ({ ...prev, end }));
             setTimeStep('start'); // reset na start pro další kliknutí
             setTimeModalVisible(false);
@@ -210,8 +214,8 @@ export default function NewEvent() {
                         visible={timeModalVisible}
                         onDismiss={() => setTimeModalVisible(false)}
                         onConfirm={handleTimeConfirm}
-                        hours={12}
-                        minutes={0}
+                        hours={timeStep === 'start' ? timeRange.start?.getHours() : timeRange.end?.getHours()}
+                        minutes={timeStep === 'start' ? timeRange.start?.getMinutes() : timeRange.end?.getMinutes()}
                         use24HourClock
                         label={timeStep === 'start' ? 'Vyber čas od' : 'Vyber čas do'}
                     />

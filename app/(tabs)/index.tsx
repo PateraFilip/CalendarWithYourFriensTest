@@ -116,7 +116,8 @@ export default function SharedCalendar() {
       router.replace({
         pathname: '/newEvent',
         params: {
-          pickedDate: selectedDate?.toISOString()
+          pickedDate: selectedDate?.toISOString(),
+          signal: Date.now()
         }
       })
     }
