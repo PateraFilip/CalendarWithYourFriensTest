@@ -8,7 +8,7 @@ export default function TabTwoScreen() {
     const { user } = useAuth()
     return (
         <ThemedView style={styles.titleContainer}>
-            <ThemedText>{user?.id}</ThemedText>
+            <ThemedText>{user?.username}</ThemedText>
         </ThemedView>
     )
 }

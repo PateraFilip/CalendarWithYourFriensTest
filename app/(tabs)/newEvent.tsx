@@ -133,6 +133,7 @@ export default function NewEvent() {
                         onChangeText={setName}
                         mode="outlined"
                         style={styles.input}
+                        activeOutlineColor={buttonColor}
                     />
                 </ThemedView>
 
@@ -167,6 +168,7 @@ export default function NewEvent() {
                                 onPress={() => setDateModalVisible(true)}
                             />
                         }
+                        style={{ backgroundColor: 'transparent' }}
                     />
 
                     <DatePickerModal
@@ -208,6 +210,7 @@ export default function NewEvent() {
                                 }}
                             />
                         }
+                        style={{ backgroundColor: 'transparent' }}
                     />
 
                     <TimePickerModal
@@ -273,10 +276,10 @@ const styles = StyleSheet.create({
     container: { flex: 1, padding: 16 },
     field: { marginBottom: 12 },
     label: { fontSize: 14, marginBottom: 6, fontWeight: '600' },
-    input: { fontSize: 16 },
+    input: { fontSize: 16, backgroundColor: 'transparent' },
     rowCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     peopleSection: { alignItems: 'center', gap: 6 },
     counterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 10 },
-    counterInput: { textAlign: 'center', width: 60 },
+    counterInput: { textAlign: 'center', width: 60, backgroundColor: 'transparent' },
     createButton: { borderRadius: 6, width: '100%' },
 });

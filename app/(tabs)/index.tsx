@@ -143,6 +143,7 @@ export default function SharedCalendar() {
           setNavigateAfterClose(true) // flag pro navigaci po zavření
           setCellModalVisible(false)   // zavření modalu
         }}
+        onDismiss={() => setCellModalVisible(false)}
       />
 
     </ThemedSafeView>

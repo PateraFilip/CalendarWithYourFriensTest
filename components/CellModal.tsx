@@ -19,12 +19,14 @@ interface CellModalProps {
         is_group: boolean;
     }[]
     onCreateEvent: () => void
+    onDismiss: () => void
 }
 
 export const CellModal: React.FC<CellModalProps> = ({ visible,
     date,
     events,
-    onCreateEvent }) => {
+    onCreateEvent,
+    onDismiss, }) => {
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
 
@@ -80,7 +82,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
 
     return (
         <Portal>
-            <Modal visible={visible} contentContainerStyle={styles.modalContainer}>
+            <Modal visible={visible} onDismiss={onDismiss} contentContainerStyle={styles.modalContainer}>
                 <ThemedView style={styles.content}>
                     <ThemedText type="subtitle" style={styles.title}>
                         {capitalize(dayjs(date).format('dddd D. MMMM YYYY - HH:mm'))}

@@ -1,10 +1,11 @@
+import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { Link, useRouter } from 'expo-router'
 import React, { useState } from 'react'
-import { Image, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
@@ -55,10 +56,9 @@ export default function Login() {
     return (
         <ThemedSafeView style={styles.container}>
             <ThemedView style={styles.box}>
-                <Image
-                    source={require('@/assets/images/logo.png')}
-                    style={styles.logo}
-                />
+                <ThemedText type='title'>
+                    Kalendář
+                </ThemedText>
                 <TextInput
                     label="E-mail"
                     value={email}
@@ -167,6 +167,7 @@ const styles = StyleSheet.create({
     },
     input: {
         width: '100%',
+        backgroundColor: 'transparent'
     },
     button: {
         borderRadius: 6,
