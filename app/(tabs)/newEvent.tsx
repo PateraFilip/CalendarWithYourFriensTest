@@ -11,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { Button, IconButton, TextInput as PaperTextInput, Switch, TextInput } from 'react-native-paper';
 import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react-native-paper-dates';
+import RNPickerSelect from 'react-native-picker-select';
 
 dayjs.locale('cs');
 registerTranslation('cs', cs);
@@ -146,10 +147,21 @@ export default function NewEvent() {
                 {/* Týdenní pravidelnost */}
                 {!type && (
                     <ThemedView style={[styles.field, styles.rowCenter]}>
-                        <ThemedText style={styles.label}>Týdenní pravidelnost</ThemedText>
+                        <ThemedText style={styles.label}>Pravidelnost</ThemedText>
                         <Switch value={pravidelnost} color={buttonColor} onValueChange={setPravidelnost} />
                     </ThemedView>
                 )}
+
+                {!type && pravidelnost && (
+                    <RNPickerSelect
+                        onValueChange={(value) => console.log(value)}
+                        items={[
+                            { label: 'Týdenní', value: 'weekly' },
+                            { label: 'Směny na měsíc', value: 'monthly' },
+                        ]}
+                    />
+                )}
+
 
                 {/* --- Date Range Picker --- */}
                 <ThemedView style={styles.field}>
@@ -225,47 +237,50 @@ export default function NewEvent() {
                 </ThemedView>
 
                 {/* Počet lidí */}
-                <ThemedView style={styles.peopleSection}>
-                    <ThemedText style={styles.label}>Počet lidí</ThemedText>
-                    <ThemedView style={styles.counterRow}>
-                        <IconButton
-                            icon="minus"
-                            mode="contained"
-                            onPress={decrease}
-                            iconColor={buttonTextColor}
-                            containerColor={buttonColor}
-                        />
-                        <PaperTextInput
-                            value={String(peopleCount)}
-                            onChangeText={text => {
-                                const num = parseInt(text, 10);
-                                if (!isNaN(num)) setPeopleCount(num);
-                            }}
-                            keyboardType="numeric"
-                            mode="outlined"
-                            style={styles.counterInput}
-                            activeOutlineColor={buttonColor}
-                        />
-                        <IconButton
-                            icon="plus"
-                            mode="contained"
-                            onPress={increase}
-                            iconColor={buttonTextColor}
-                            containerColor={buttonColor}
-                        />
+                {type && (
+                    <ThemedView style={styles.peopleSection}>
+                        <ThemedText style={styles.label}>Počet lidí</ThemedText>
+                        <ThemedView style={styles.counterRow}>
+                            <IconButton
+                                icon="minus"
+                                mode="contained"
+                                onPress={decrease}
+                                iconColor={buttonTextColor}
+                                containerColor={buttonColor}
+                            />
+                            <PaperTextInput
+                                value={String(peopleCount)}
+                                onChangeText={text => {
+                                    const num = parseInt(text, 10);
+                                    if (!isNaN(num)) setPeopleCount(num);
+                                }}
+                                keyboardType="numeric"
+                                mode="outlined"
+                                style={styles.counterInput}
+                                activeOutlineColor={buttonColor}
+                            />
+                            <IconButton
+                                icon="plus"
+                                mode="contained"
+                                onPress={increase}
+                                iconColor={buttonTextColor}
+                                containerColor={buttonColor}
+                            />
+                        </ThemedView>
                     </ThemedView>
+                )}
 
-                    <Button
-                        mode="contained"
-                        onPress={handleCreate}
-                        disabled={!name.trim() || !dateRange.startDate || !timeRange.start}
-                        buttonColor={buttonColor}
-                        labelStyle={{ color: buttonTextColor }}
-                        style={styles.createButton}
-                    >
-                        Vytvořit událost
-                    </Button>
-                </ThemedView>
+                <Button
+                    mode="contained"
+                    onPress={handleCreate}
+                    disabled={!name.trim() || !dateRange.startDate || !timeRange.start}
+                    buttonColor={buttonColor}
+                    labelStyle={{ color: buttonTextColor }}
+                    style={styles.createButton}
+                >
+                    Vytvořit událost
+                </Button>
+
 
             </ScrollView>
         </ThemedSafeView>
