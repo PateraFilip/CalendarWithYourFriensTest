@@ -185,7 +185,6 @@ export default function WeekCalendar({ events, onPressCell, onPressDay, hourHeig
       }
 
       if (!placed) {
-        console.log(event)
         columns.push([event]);
       }
     });
