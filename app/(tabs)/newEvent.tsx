@@ -8,10 +8,27 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
-import { Button, IconButton, TextInput as PaperTextInput, Switch, TextInput } from 'react-native-paper';
+import { ScrollView, StyleSheet, Text } from 'react-native';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { Button, Checkbox, Dialog, IconButton, TextInput as PaperTextInput, Portal, Switch, TextInput } from 'react-native-paper';
 import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react-native-paper-dates';
 import RNPickerSelect from 'react-native-picker-select';
+
+LocaleConfig.locales['cs'] = {
+    monthNames: [
+        'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
+        'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
+    ],
+    monthNamesShort: [
+        'Led', 'Úno', 'Bře', 'Dub', 'Kvě', 'Čer',
+        'Čvc', 'Srp', 'Zář', 'Říj', 'Lis', 'Pro'
+    ],
+    dayNames: ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'],
+    dayNamesShort: ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'], // české zkratky
+    today: 'Dnes'
+};
+LocaleConfig.defaultLocale = 'cs';
+
 
 dayjs.locale('cs');
 registerTranslation('cs', cs);
@@ -23,10 +40,43 @@ export default function NewEvent() {
     const [peopleCount, setPeopleCount] = useState(1);
     const { user } = useAuth()
     const { pickedDate, signal } = useLocalSearchParams();
+    const [repeatType, setRepeatType] = useState<'weekly' | 'monthly'>('weekly');
+    const weekDays = [
+        { label: 'Po', key: 'monday' },
+        { label: 'Út', key: 'tuesday' },
+        { label: 'St', key: 'wednesday' },
+        { label: 'Čt', key: 'thursday' },
+        { label: 'Pá', key: 'friday' },
+        { label: 'So', key: 'saturday' },
+        { label: 'Ne', key: 'sunday' },
+    ];
+
+    type CalendarDay = {
+        selected: boolean;
+        marked: boolean;
+        selectedColor?: string;
+    };
+
+    type DayTime = { start?: Date; end?: Date };
+
+    const [selectedDays, setSelectedDays] = useState<Record<string, { checked: boolean; time?: DayTime }>>({});
+
+    const [dayForTime, setDayForTime] = useState<string | null>(null);
+    const [timePickerVisible, setTimePickerVisible] = useState(false);
+    const [selectedDaysCalendar, setSelectedDaysCalendar] = useState<Record<string, CalendarDay>>({});
+    const [calendarTimes, setCalendarTimes] = useState<Record<string, Date | undefined>>({});
+    const [dayForCalendarTime, setDayForCalendarTime] = useState<string | null>(null);
+    const [calendarTimePickerVisible, setCalendarTimePickerVisible] = useState(false);
+    const [shiftLengthText, setShiftLengthText] = useState(''); // pro input
+    const [shiftLength, setShiftLength] = useState<number | null>(null); // pro číslo
+    const [error, setError] = useState('');
+
+
 
     // ---- Date & Time Range state ----
     const [dateRange, setDateRange] = useState<{ startDate?: Date; endDate?: Date }>({});
     const [dateModalVisible, setDateModalVisible] = useState(false);
+    const [modalVisible, setModalVisible] = useState(false);
 
     const [timeRange, setTimeRange] = useState<{ start?: Date; end?: Date }>({});
     const [timeModalVisible, setTimeModalVisible] = useState(false);
@@ -60,6 +110,78 @@ export default function NewEvent() {
 
     const increase = () => setPeopleCount(prev => prev + 1);
     const decrease = () => setPeopleCount(prev => (prev > 1 ? prev - 1 : 1));
+
+    const handleToggleDay = (dayKey: string) => {
+        setSelectedDays(prev => ({
+            ...prev,
+            [dayKey]: { checked: !prev[dayKey]?.checked, time: prev[dayKey]?.time },
+        }));
+    };
+
+    const openTimePickerForDay = (dayKey: string, step: 'start' | 'end') => {
+        setDayForTime(dayKey);
+        setTimeStep(step);
+        setTimePickerVisible(true);
+    };
+
+    const handleConfirmTime = ({ hours, minutes }: { hours: number; minutes: number }) => {
+        if (!dayForTime) return;
+
+        const time = new Date();
+        time.setHours(hours);
+        time.setMinutes(minutes);
+
+        setSelectedDays(prev => {
+            const prevTime = prev[dayForTime]?.time || {};
+            return {
+                ...prev,
+                [dayForTime]: {
+                    ...prev[dayForTime],
+                    checked: true,
+                    time: { ...prevTime, [timeStep]: time }
+                }
+            };
+        });
+
+        if (timeStep === 'start') {
+            setTimeStep('end');
+            setTimeout(() => setTimePickerVisible(true), 100); // hned otevře end
+        } else {
+            setDayForTime(null);
+            setTimeStep('start');
+            setTimePickerVisible(false);
+        }
+    };
+
+    const toggleDay = (day) => {
+        const date = day.dateString;
+        setSelectedDaysCalendar(prev => ({
+            ...prev,
+            [date]: prev[date]
+                ? undefined
+                : { selected: true, marked: true, selectedColor: '#00adf5' },
+        }));
+    };
+
+    const openCalendarTimePicker = (date: string) => {
+        setDayForCalendarTime(date);
+        setCalendarTimePickerVisible(true);
+    };
+
+    const handleCalendarTimeConfirm = ({ hours, minutes }: { hours: number; minutes: number }) => {
+        if (!dayForCalendarTime) return;
+        const time = new Date();
+        time.setHours(hours);
+        time.setMinutes(minutes);
+
+        setCalendarTimes(prev => ({
+            ...prev,
+            [dayForCalendarTime]: time,
+        }));
+
+        setDayForCalendarTime(null);
+        setCalendarTimePickerVisible(false);
+    };
 
     const handleCreate = async () => {
         if (!name.trim() || !dateRange.startDate || !timeRange.start || !user?.id) return;
@@ -141,7 +263,10 @@ export default function NewEvent() {
                 {/* Skupinová událost */}
                 <ThemedView style={[styles.field, styles.rowCenter]}>
                     <ThemedText style={styles.label}>Skupinová událost</ThemedText>
-                    <Switch value={type} color={buttonColor} onValueChange={setType} />
+                    <Switch value={type} color={buttonColor} onValueChange={(value) => {
+                        setType(value);
+                        if (value) setPravidelnost(false);
+                    }} />
                 </ThemedView>
 
                 {/* Týdenní pravidelnost */}
@@ -154,87 +279,95 @@ export default function NewEvent() {
 
                 {!type && pravidelnost && (
                     <RNPickerSelect
-                        onValueChange={(value) => console.log(value)}
+                        onValueChange={(value) => setRepeatType(value)}
+                        value={repeatType}
                         items={[
                             { label: 'Týdenní', value: 'weekly' },
                             { label: 'Směny na měsíc', value: 'monthly' },
                         ]}
+                        placeholder={{}}
                     />
                 )}
 
 
                 {/* --- Date Range Picker --- */}
-                <ThemedView style={styles.field}>
-                    <PaperTextInput
-                        value={
-                            dateRange.startDate
-                                ? `${formatDate(dateRange.startDate)} → ${dateRange.endDate ? formatDate(dateRange.endDate) : ''}`
-                                : 'Vyber datum'
-                        }
-                        mode="outlined"
-                        editable={false}
-                        onPressIn={() => setDateModalVisible(true)}
-                        right={
-                            <TextInput.Icon
-                                icon="calendar-outline"
-                                onPress={() => setDateModalVisible(true)}
+                {/* --- Date & Time Range Picker --- */}
+                {!pravidelnost && (
+                    <>
+                        {/* --- Date Range Picker --- */}
+                        <ThemedView style={styles.field}>
+                            <PaperTextInput
+                                value={
+                                    dateRange.startDate
+                                        ? `${formatDate(dateRange.startDate)} → ${dateRange.endDate ? formatDate(dateRange.endDate) : ''}`
+                                        : 'Vyber datum'
+                                }
+                                mode="outlined"
+                                editable={false}
+                                onPressIn={() => setDateModalVisible(true)}
+                                right={
+                                    <TextInput.Icon
+                                        icon="calendar-outline"
+                                        onPress={() => setDateModalVisible(true)}
+                                    />
+                                }
+                                style={{ backgroundColor: 'transparent' }}
                             />
-                        }
-                        style={{ backgroundColor: 'transparent' }}
-                    />
 
-                    <DatePickerModal
-                        locale="cs"
-                        mode="range"
-                        visible={dateModalVisible}
-                        onDismiss={() => setDateModalVisible(false)}
-                        startDate={dateRange.startDate}
-                        endDate={dateRange.endDate}
-                        onConfirm={({ startDate, endDate }) => {
-                            setDateModalVisible(false);
-                            // pokud uživatel vybral jen jeden den, nastavíme start = end
-                            if (!endDate) endDate = startDate;
-                            setDateRange({ startDate, endDate });
-                        }}
-                    />
-                </ThemedView>
+                            <DatePickerModal
+                                locale="cs"
+                                mode="range"
+                                visible={dateModalVisible}
+                                onDismiss={() => setDateModalVisible(false)}
+                                startDate={dateRange.startDate}
+                                endDate={dateRange.endDate}
+                                onConfirm={({ startDate, endDate }) => {
+                                    setDateModalVisible(false);
+                                    if (!endDate) endDate = startDate;
+                                    setDateRange({ startDate, endDate });
+                                }}
+                            />
+                        </ThemedView>
 
-                {/* --- Time Range Picker --- */}
-                <ThemedView style={styles.field}>
-                    <PaperTextInput
-                        value={
-                            timeRange.start
-                                ? `${formatTime(timeRange.start)} → ${timeRange.end ? formatTime(timeRange.end) : ''}`
-                                : 'Vyber čas'
-                        }
-                        mode="outlined"
-                        editable={false}
-                        onPressIn={() => {
-                            setTimeStep('start');
-                            setTimeModalVisible(true);
-                        }}
-                        right={
-                            <TextInput.Icon
-                                icon="clock-outline"
-                                onPress={() => {
+                        {/* --- Time Range Picker --- */}
+                        <ThemedView style={styles.field}>
+                            <PaperTextInput
+                                value={
+                                    timeRange.start
+                                        ? `${formatTime(timeRange.start)} → ${timeRange.end ? formatTime(timeRange.end) : ''}`
+                                        : 'Vyber čas'
+                                }
+                                mode="outlined"
+                                editable={false}
+                                onPressIn={() => {
                                     setTimeStep('start');
                                     setTimeModalVisible(true);
                                 }}
+                                right={
+                                    <TextInput.Icon
+                                        icon="clock-outline"
+                                        onPress={() => {
+                                            setTimeStep('start');
+                                            setTimeModalVisible(true);
+                                        }}
+                                    />
+                                }
+                                style={{ backgroundColor: 'transparent' }}
                             />
-                        }
-                        style={{ backgroundColor: 'transparent' }}
-                    />
 
-                    <TimePickerModal
-                        visible={timeModalVisible}
-                        onDismiss={() => setTimeModalVisible(false)}
-                        onConfirm={handleTimeConfirm}
-                        hours={timeStep === 'start' ? timeRange.start?.getHours() : timeRange.end?.getHours()}
-                        minutes={timeStep === 'start' ? timeRange.start?.getMinutes() : timeRange.end?.getMinutes()}
-                        use24HourClock
-                        label={timeStep === 'start' ? 'Vyber čas od' : 'Vyber čas do'}
-                    />
-                </ThemedView>
+                            <TimePickerModal
+                                visible={timeModalVisible}
+                                onDismiss={() => setTimeModalVisible(false)}
+                                onConfirm={handleTimeConfirm}
+                                hours={timeStep === 'start' ? timeRange.start?.getHours() : timeRange.end?.getHours()}
+                                minutes={timeStep === 'start' ? timeRange.start?.getMinutes() : timeRange.end?.getMinutes()}
+                                use24HourClock
+                                label={timeStep === 'start' ? 'Vyber čas od' : 'Vyber čas do'}
+                            />
+                        </ThemedView>
+                    </>
+                )}
+
 
                 {/* Počet lidí */}
                 {type && (
@@ -267,6 +400,190 @@ export default function NewEvent() {
                                 containerColor={buttonColor}
                             />
                         </ThemedView>
+                    </ThemedView>
+                )}
+
+                {pravidelnost && repeatType == "weekly" && (
+                    <ThemedView style={{ marginTop: 10 }}>
+                        {weekDays.map(({ label, key }) => (
+                            <ThemedView key={key} style={{ marginBottom: 8 }}>
+                                <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <ThemedText>{label}</ThemedText>
+                                    <Checkbox
+                                        status={selectedDays[key]?.checked ? 'checked' : 'unchecked'}
+                                        onPress={() => handleToggleDay(key)}
+                                    />
+                                </ThemedView>
+
+                                {/* pokud je den vybrán, zobraz čas */}
+                                {selectedDays[key]?.checked && (
+                                    <>
+                                        <PaperTextInput
+                                            mode="outlined"
+                                            value={selectedDays[key]?.time?.start ? dayjs(selectedDays[key].time.start).format('HH:mm') : ''}
+                                            placeholder="Začátek"
+                                            editable={false}
+                                            onPressIn={() => openTimePickerForDay(key, 'start')}
+                                            right={<TextInput.Icon icon="clock-outline" onPress={() => openTimePickerForDay(key, 'start')} />}
+                                            style={{ backgroundColor: 'transparent', marginLeft: 20, marginRight: 20, marginTop: 4 }}
+                                        />
+                                        <PaperTextInput
+                                            mode="outlined"
+                                            value={selectedDays[key]?.time?.end ? dayjs(selectedDays[key].time.end).format('HH:mm') : ''}
+                                            placeholder="Konec"
+                                            editable={false}
+                                            onPressIn={() => openTimePickerForDay(key, 'end')}
+                                            right={<TextInput.Icon icon="clock-outline" onPress={() => openTimePickerForDay(key, 'end')} />}
+                                            style={{ backgroundColor: 'transparent', marginLeft: 20, marginRight: 20, marginTop: 4 }}
+                                        />
+                                    </>
+                                )}
+                            </ThemedView>
+                        ))}
+
+                        <TimePickerModal
+                            visible={timePickerVisible}
+                            onDismiss={() => setTimePickerVisible(false)}
+                            onConfirm={handleConfirmTime}
+                            hours={
+                                dayForTime && selectedDays[dayForTime]?.time
+                                    ? selectedDays[dayForTime]!.time!.start?.getHours()
+                                    : undefined
+                            }
+                            minutes={
+                                dayForTime && selectedDays[dayForTime]?.time
+                                    ? selectedDays[dayForTime]!.time!.start?.getMinutes()
+                                    : undefined
+                            }
+                            use24HourClock
+                            label={
+                                dayForTime
+                                    ? `Vyber čas pro ${weekDays.find(d => d.key === dayForTime)?.label}`
+                                    : 'Vyber čas'
+                            }
+                        />
+                    </ThemedView>
+                )}
+                {repeatType === 'monthly' && (
+                    <>
+                        <Button
+                            mode="contained"
+                            buttonColor={buttonColor}
+                            labelStyle={{ color: buttonTextColor }}
+                            style={styles.createButton}
+                            onPress={() => setModalVisible(true)}
+                        >
+                            Vybrat dny
+                        </Button>
+
+                        {/* --- Modal s kalendářem --- */}
+                        <Portal>
+                            <Dialog visible={modalVisible} onDismiss={() => setModalVisible(false)}>
+                                <Dialog.Title>Vyber dny</Dialog.Title>
+                                <Dialog.ScrollArea>
+                                    <ScrollView>
+                                        <Calendar
+                                            onDayPress={toggleDay}
+                                            markedDates={selectedDaysCalendar}
+                                            firstDay={1}
+                                        />
+                                    </ScrollView>
+                                </Dialog.ScrollArea>
+                                <Dialog.Actions>
+                                    <Button onPress={() => setModalVisible(false)}>Hotovo</Button>
+                                </Dialog.Actions>
+                            </Dialog>
+                        </Portal>
+                    </>
+                )}
+
+                {repeatType === 'monthly' && (
+                    <>
+                        <PaperTextInput
+                            label="Délka směny (h)"
+                            value={shiftLengthText}
+                            onChangeText={text => {
+                                setShiftLengthText(text); // aktualizuj text
+
+                                const num = parseInt(text, 10);
+
+                                if (text === '') {
+                                    setShiftLength(null);
+                                    setError(''); // prázdný input není chyba
+                                } else if (!isNaN(num) && num >= 1 && num <= 24) {
+                                    setShiftLength(num);
+                                    setError(''); // validní
+                                } else {
+                                    setShiftLength(null);
+                                    setError('Zadej číslo od 1 do 24');
+                                }
+                            }}
+                            keyboardType="numeric"
+                            mode="outlined"
+                            error={!!error}
+                        />
+
+                        {error ? (
+                            <Text style={{ color: 'red', marginTop: 4 }}>{error}</Text>
+                        ) : null}
+                    </>
+                )}
+
+                {repeatType === 'monthly' && (
+                    <ThemedView style={{ marginTop: 16 }}>
+                        <ThemedText style={{ fontWeight: '600', marginBottom: 8 }}>Vybrané dny:</ThemedText>
+                        {Object.keys(selectedDaysCalendar)
+                            .filter(date => selectedDaysCalendar[date]) // filtrujeme undefined
+                            .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+                            .map(date => (
+                                <ThemedView key={date} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                    <ThemedText style={{ flex: 1 }}>{dayjs(date).format('DD. MM. YYYY')}</ThemedText>
+
+                                    <PaperTextInput
+                                        value={calendarTimes[date] ? dayjs(calendarTimes[date]).format('HH:mm') : ''}
+                                        placeholder="Vyber čas"
+                                        editable={false}
+                                        onPressIn={() => openCalendarTimePicker(date)}
+                                        right={
+                                            <TextInput.Icon
+                                                icon="clock-outline"
+                                                onPress={() => openCalendarTimePicker(date)}
+                                            />
+                                        }
+                                        style={{ marginLeft: 8, flex: 1 }}
+                                    />
+
+                                    {/* Křížek pro odstranění dne */}
+                                    <IconButton
+                                        icon="close"
+                                        size={20}
+                                        onPress={() => {
+                                            setSelectedDaysCalendar(prev => {
+                                                const copy = { ...prev };
+                                                delete copy[date];
+                                                return copy;
+                                            });
+                                            setCalendarTimes(prev => {
+                                                const copy = { ...prev };
+                                                delete copy[date];
+                                                return copy;
+                                            });
+                                        }}
+                                        containerColor="transparent"
+                                    />
+                                </ThemedView>
+                            ))}
+
+
+                        <TimePickerModal
+                            visible={calendarTimePickerVisible}
+                            onDismiss={() => setCalendarTimePickerVisible(false)}
+                            onConfirm={handleCalendarTimeConfirm}
+                            hours={dayForCalendarTime ? calendarTimes[dayForCalendarTime]?.getHours() : undefined}
+                            minutes={dayForCalendarTime ? calendarTimes[dayForCalendarTime]?.getMinutes() : undefined}
+                            use24HourClock
+                            label="Vyber čas"
+                        />
                     </ThemedView>
                 )}
 
