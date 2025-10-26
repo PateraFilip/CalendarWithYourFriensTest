@@ -447,21 +447,33 @@ export default function NewEvent() {
                             onConfirm={handleConfirmTime}
                             hours={
                                 dayForTime && selectedDays[dayForTime]?.time
-                                    ? selectedDays[dayForTime]!.time!.start?.getHours()
+                                    ? (() => {
+                                        const start = selectedDays[dayForTime]!.time!.start;
+                                        if (!start) return undefined;
+                                        const end = new Date(start.getTime() + 8 * 60 * 60 * 1000); // +8h
+                                        return end.getHours();
+                                    })()
                                     : undefined
                             }
                             minutes={
                                 dayForTime && selectedDays[dayForTime]?.time
-                                    ? selectedDays[dayForTime]!.time!.start?.getMinutes()
+                                    ? (() => {
+                                        const start = selectedDays[dayForTime]!.time!.start;
+                                        if (!start) return undefined;
+                                        const end = new Date(start.getTime() + 8 * 60 * 60 * 1000); // +8h
+                                        return end.getMinutes();
+                                    })()
                                     : undefined
                             }
                             use24HourClock
                             label={
                                 dayForTime
-                                    ? `Vyber čas pro ${weekDays.find(d => d.key === dayForTime)?.label}`
+                                    ? `Vyber čas ${timeStep === 'start' ? 'od' : 'do'} pro ${weekDays.find(d => d.key === dayForTime)?.label}`
                                     : 'Vyber čas'
                             }
+
                         />
+
                     </ThemedView>
                 )}
                 {repeatType === 'monthly' && (
@@ -505,7 +517,7 @@ export default function NewEvent() {
                             onChangeText={text => {
                                 setShiftLengthText(text); // aktualizuj text
 
-                                const num = parseInt(text, 10);
+                                const num = parseFloat(text);
 
                                 if (text === '') {
                                     setShiftLength(null);
@@ -540,7 +552,8 @@ export default function NewEvent() {
                                     <ThemedText style={{ flex: 1 }}>{dayjs(date).format('DD. MM. YYYY')}</ThemedText>
 
                                     <PaperTextInput
-                                        value={calendarTimes[date] ? dayjs(calendarTimes[date]).format('HH:mm') : ''}
+                                        value={calendarTimes[date] ? `${dayjs(calendarTimes[date]).format('HH:mm')} →  ${dayjs(calendarTimes[date]).add(shiftLength, 'hour').format('HH:mm')
+                                            }` : ''}
                                         placeholder="Vyber čas"
                                         editable={false}
                                         onPressIn={() => openCalendarTimePicker(date)}
