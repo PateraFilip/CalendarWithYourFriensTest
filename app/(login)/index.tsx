@@ -55,7 +55,7 @@ export default function Login() {
 
     return (
         <ThemedSafeView style={styles.container}>
-            <ThemedView style={styles.box}>
+            <ThemedView type='surface' style={styles.box}>
                 <ThemedText type='title'>
                     Kalendář
                 </ThemedText>
@@ -68,7 +68,7 @@ export default function Login() {
                             setErrors((e) => ({ ...e, email: false }))
                     }}
                     mode="outlined"
-                    activeOutlineColor="#000"
+                    activeOutlineColor={buttonColor}
                     style={styles.input}
                     error={errors.email}
                     left={
@@ -97,7 +97,7 @@ export default function Login() {
                             setErrors((e) => ({ ...e, password: false }))
                     }}
                     mode="outlined"
-                    activeOutlineColor="#000"
+                    activeOutlineColor={buttonColor}
                     secureTextEntry
                     style={styles.input}
                     error={errors.password}
@@ -160,10 +160,10 @@ const styles = StyleSheet.create({
         width: '85%',
         borderRadius: 16,
         padding: 20,
-        elevation: 2,
         gap: 20,
         alignItems: 'center',
         borderWidth: 0,
+        elevation: 1
     },
     input: {
         width: '100%',
