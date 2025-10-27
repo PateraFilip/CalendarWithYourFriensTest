@@ -19,6 +19,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 interface WeeklyEvent {
+  id: number;
   title: string;
   cas_od: Date;
   cas_do: Date;
@@ -56,7 +57,6 @@ export default function SharedCalendar() {
     let mounted = true;
 
     loadEvents(); // načtení na start
-    loadWeeklyEvents()
 
     const channel = supabase.channel('realtime:public:events');
 
@@ -67,6 +67,30 @@ export default function SharedCalendar() {
     }, (payload) => {
       console.log('Change in events:', payload);
       if (mounted) loadEvents(); // načti nové eventy
+    });
+
+    channel.subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadWeeklyEvents()
+
+    const channel = supabase.channel('realtime:public:weekly_events');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'weekly_events'
+    }, (payload) => {
+      console.log('Change in events:', payload);
+      if (mounted) loadWeeklyEvents(); // načti nové eventy
     });
 
     channel.subscribe();
@@ -163,6 +187,7 @@ export default function SharedCalendar() {
         visible={cellModalVisible}
         date={selectedDate}
         events={events}
+        weeklyEvents={weeklyEvents}
         onCreateEvent={() => {
           setNavigateAfterClose(true) // flag pro navigaci po zavření
           setCellModalVisible(false)   // zavření modalu

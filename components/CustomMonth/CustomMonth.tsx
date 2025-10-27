@@ -4,6 +4,7 @@ import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
 
 interface Event {
+    id: number;
     title: string;
     start: Date;
     end: Date;
@@ -14,6 +15,7 @@ interface Event {
 }
 
 interface WeeklyEvent {
+    id: number;
     title: string;
     cas_od: Date;
     cas_do: Date;
@@ -101,6 +103,7 @@ export default function MonthCalendar({ events, weeklyEvents, onPressDay, defaul
             }
 
             weeklyDayEvents.push({
+                id: w.id,
                 title: w.title,
                 start,
                 end,
@@ -161,8 +164,8 @@ export default function MonthCalendar({ events, weeklyEvents, onPressDay, defaul
                                     </Pressable>
 
                                     {dayEvents.map((e, i) => (
-                                        <Pressable key={i} style={[styles.eventBadge, { backgroundColor: getColor(e.user_id) }]}>
-                                            <ThemedText style={{ fontSize: 10, color: getTextColor(e.user_id), lineHeight: 16 }}>{e.title}</ThemedText>
+                                        <Pressable key={i} style={[styles.eventBadge, { backgroundColor: e.is_group ? "red" : getColor(e.user_id) }]}>
+                                            <ThemedText style={{ fontSize: 10, color: e.is_group ? "white" : getTextColor(e.user_id), lineHeight: 16 }}>{e.title}</ThemedText>
                                         </Pressable>
                                     ))}
                                 </ThemedView>

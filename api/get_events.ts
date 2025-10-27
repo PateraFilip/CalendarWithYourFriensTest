@@ -24,6 +24,7 @@ export const fetchEvents = async (): Promise<Event[]> => {
   const endTime = e.cas_do ?? '23:59'
 
   return {
+    id: e.id,
     title: e.nazev,
     user_id: e.zakladatel_id,
     pocet_lidi: e.pocet_lidi ?? 0,
