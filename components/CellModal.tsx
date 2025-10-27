@@ -1,32 +1,28 @@
+import { CalendarEvent } from '@/app/(tabs)'
 import { ThemedText } from '@/components/themed-text'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import dayjs from 'dayjs'
 import React from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
+import { FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { Button, Modal, Portal } from 'react-native-paper'
 import { ThemedView } from './themed-view'
 
 interface CellModalProps {
     visible: boolean
     date: Date | null
-    events: {
-        title: string;
-        start: Date;
-        end: Date;
-        user_id: number;
-        pocet_lidi: number;
-        pravidelnost: boolean;
-        is_group: boolean;
-    }[]
+    events: CalendarEvent[];
     onCreateEvent: () => void
     onDismiss: () => void
+    onPressEvent?: (event: CalendarEvent) => void;
 }
 
 export const CellModal: React.FC<CellModalProps> = ({ visible,
     date,
     events,
     onCreateEvent,
-    onDismiss, }) => {
+    onDismiss,
+    onPressEvent }) => {
+
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
 
@@ -38,26 +34,10 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     ];
 
     const COLORS_TEXT = [
-        '#FFFFFF', // e6194b
-        '#FFFFFF', // 3cb44b
-        '#000000', // ffe119
-        '#FFFFFF', // 4363d8
-        '#FFFFFF', // f58231
-        '#FFFFFF', // 911eb4
-        '#000000', // 46f0f0
-        '#FFFFFF', // f032e6
-        '#000000', // bcf60c
-        '#000000', // fabebe
-        '#FFFFFF', // 008080
-        '#000000', // e6beff
-        '#FFFFFF', // 9a6324
-        '#000000', // fffac8
-        '#FFFFFF', // 800000
-        '#000000', // aaffc3
-        '#FFFFFF', // 808000
-        '#000000', // ffd8b1
-        '#FFFFFF', // 000075
-        '#FFFFFF', // 808080
+        '#FFFFFF', '#FFFFFF', '#000000', '#FFFFFF', '#FFFFFF',
+        '#FFFFFF', '#000000', '#FFFFFF', '#000000', '#000000',
+        '#FFFFFF', '#000000', '#FFFFFF', '#000000', '#FFFFFF',
+        '#000000', '#FFFFFF', '#000000', '#FFFFFF', '#FFFFFF',
     ];
 
     function getColorByUserId(userId: string | number) {
@@ -91,14 +71,17 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                     {hourEvents.length > 0 ? (
                         <FlatList
                             data={hourEvents}
-                            keyExtractor={(_, i) => i.toString()}
+                            keyExtractor={(item, index) => (item.id ? item.id.toString() : index.toString())}
                             renderItem={({ item }) => (
-                                <View style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}>
+                                <TouchableOpacity
+                                    onPress={() => onPressEvent?.(item)}
+                                    style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}
+                                >
                                     <Text style={[styles.eventTitle, { color: getColorTextByUserId(item.user_id) }]}>{item.title}</Text>
                                     <Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>
                                         {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
                                     </Text>
-                                </View>
+                                </TouchableOpacity>
                             )}
                             style={{ maxHeight: 200 }}
                         />
@@ -148,8 +131,5 @@ const styles = StyleSheet.create({
     },
     createButton: {
         borderRadius: 6,
-    },
-    closeButton: {
-        marginTop: 6,
     },
 })

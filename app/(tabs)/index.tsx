@@ -26,12 +26,24 @@ interface WeeklyEvent {
   den: string;
 }
 
+export interface CalendarEvent {
+  id: string | number;
+  title: string;
+  start: Date;
+  end: Date;
+  user_id: number;
+  pocet_lidi: number;
+  pravidelnost: boolean;
+  is_group: boolean;
+}
+
+
 dayjs.locale('cs')
 
 export default function SharedCalendar() {
   const SCREEN_HEIGHT = Dimensions.get('window').height
   const router = useRouter()
-  const [events, setEvents] = useState<Event[]>([])
+  const [events, setEvents] = useState<CalendarEvent[]>([])
   const [weeklyEvents, setWeeklyEvents] = useState<WeeklyEvent[]>([])
 
   const loadEvents = async () => {
@@ -164,11 +176,21 @@ export default function SharedCalendar() {
         date={selectedDate}
         events={events}
         onCreateEvent={() => {
-          setNavigateAfterClose(true) // flag pro navigaci po zavření
-          setCellModalVisible(false)   // zavření modalu
+          setNavigateAfterClose(true)
+          setCellModalVisible(false)
         }}
+        onPressEvent={(event: CalendarEvent) => {
+          setCellModalVisible(false)
+          router.push({
+            pathname: `/events/${event.id}`,
+            params: { event: JSON.stringify(event) } // serializace objektu
+          })
+        }}
+
         onDismiss={() => setCellModalVisible(false)}
       />
+
+
 
     </ThemedSafeView>
   )
