@@ -26,7 +26,7 @@ export const fetchWeeklyEvents = async (): Promise<WeeklyEvent[]> => {
     }
 
     const data = await response.json()
-    console.log(data)
+
 
     const events: WeeklyEvent[] = data.map((e: any) => {
 

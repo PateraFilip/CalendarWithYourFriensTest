@@ -27,8 +27,8 @@ interface WeeklyEvent {
   den: string;
 }
 
-export interface CalendarEvent {
-  id: string | number;
+interface Event {
+  id: number;
   title: string;
   start: Date;
   end: Date;
@@ -137,7 +137,6 @@ export default function SharedCalendar() {
 
 
   const selectCalendar = () => {
-    console.log(weeklyEvents)
     if (selectedIndex === 1) {
       return (
         <WeekCalendar
@@ -204,7 +203,7 @@ export default function SharedCalendar() {
           setNavigateAfterClose(true)
           setCellModalVisible(false)
         }}
-        onPressEvent={(event: CalendarEvent) => {
+        onPressEvent={(event: Event) => {
           setCellModalVisible(false)
           router.push({
             pathname: `/events/${event.id}`,

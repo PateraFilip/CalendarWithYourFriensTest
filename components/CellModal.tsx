@@ -1,4 +1,3 @@
-import { CalendarEvent } from '@/app/(tabs)'
 import { fetchUserEvents } from '@/api/getUserEvents'
 import { joinEvent } from '@/api/join_event'
 import { ThemedText } from '@/components/themed-text'
@@ -6,10 +5,8 @@ import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@supabase/supabase-js'
 import dayjs from 'dayjs'
-import React from 'react'
-import { FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native'
 import React, { useEffect, useState } from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Button, Modal, Portal } from 'react-native-paper'
 import { ThemedView } from './themed-view'
 
@@ -40,7 +37,7 @@ interface CellModalProps {
     }[]
     onCreateEvent: () => void
     onDismiss: () => void
-    onPressEvent?: (event: CalendarEvent) => void;
+    onPressEvent?: (event: Event) => void;
 }
 
 interface UserEvent {
@@ -199,19 +196,6 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                     {hourEvents.length > 0 ? (
                         <FlatList
                             data={hourEvents}
-                            keyExtractor={(item, index) => (item.id ? item.id.toString() : index.toString())}
-                            renderItem={({ item }) => (
-                                <TouchableOpacity
-                                    onPress={() => onPressEvent?.(item)}
-                                    style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}
-                                >
-                                    <Text style={[styles.eventTitle, { color: getColorTextByUserId(item.user_id) }]}>{item.title}</Text>
-                                    <Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>
-                                        {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
-                            style={{ maxHeight: 200 }}
                             keyExtractor={(_, i) => i.toString()}
                             style={{ maxHeight: 500 }}
                             renderItem={({ item }) => {
@@ -220,27 +204,32 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                 const userJoined = userEvents.filter(u => u.event_id === item.id && u.user_id === user?.id)
 
                                 return (
-                                    <View style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}>
-                                        <View style={{ flexDirection: 'row', justifyContent: "space-between" }}>
-                                            <Text style={[styles.eventTitle, { color: getColorTextByUserId(item.user_id) }]}>{item.title}</Text>
-                                            {item.is_group && (<Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>{count}/{item.pocet_lidi}</Text>)}
-                                        </View>
-                                        <Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>
-                                            {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
-                                        </Text>
-                                        {item.is_group && item.pocet_lidi > count && userJoined.length != 1 && (
-                                            <Button
-                                                mode="contained"
-                                                onPress={() => onJoinEvent(item.id)}
-                                                buttonColor={buttonColor}
-                                                labelStyle={{ color: buttonTextColor }}
-                                                style={styles.createButton}
-                                            >
-                                                Přidat se
-                                            </Button>
-                                        )}
+                                    <TouchableOpacity
+                                        onPress={() => onPressEvent?.(item)}
+                                        style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}
+                                    >
+                                        <View style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}>
+                                            <View style={{ flexDirection: 'row', justifyContent: "space-between" }}>
+                                                <Text style={[styles.eventTitle, { color: getColorTextByUserId(item.user_id) }]}>{item.title}</Text>
+                                                {item.is_group && (<Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>{count}/{item.pocet_lidi}</Text>)}
+                                            </View>
+                                            <Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>
+                                                {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
+                                            </Text>
+                                            {item.is_group && item.pocet_lidi > count && userJoined.length != 1 && (
+                                                <Button
+                                                    mode="contained"
+                                                    onPress={() => onJoinEvent(item.id)}
+                                                    buttonColor={buttonColor}
+                                                    labelStyle={{ color: buttonTextColor }}
+                                                    style={styles.createButton}
+                                                >
+                                                    Přidat se
+                                                </Button>
+                                            )}
 
-                                    </View>
+                                        </View>
+                                    </TouchableOpacity>
                                 )
                             }}
 
