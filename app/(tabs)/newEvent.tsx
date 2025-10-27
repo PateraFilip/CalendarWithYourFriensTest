@@ -1,4 +1,4 @@
-import { createEvent } from '@/api/create_event';
+import { createEvent, createWeeklyEvent } from '@/api/create_event';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -6,9 +6,9 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { Button, Checkbox, Dialog, IconButton, TextInput as PaperTextInput, Portal, Switch, TextInput } from 'react-native-paper';
 import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react-native-paper-dates';
@@ -34,21 +34,22 @@ dayjs.locale('cs');
 registerTranslation('cs', cs);
 
 export default function NewEvent() {
+    const router = useRouter();
     const [name, setName] = useState('');
     const [type, setType] = useState(false);
     const [pravidelnost, setPravidelnost] = useState(false);
-    const [peopleCount, setPeopleCount] = useState(1);
+    const [peopleCount, setPeopleCount] = useState(2);
     const { user } = useAuth()
     const { pickedDate, signal } = useLocalSearchParams();
     const [repeatType, setRepeatType] = useState<'weekly' | 'monthly'>('weekly');
     const weekDays = [
-        { label: 'Po', key: 'monday' },
-        { label: 'Út', key: 'tuesday' },
-        { label: 'St', key: 'wednesday' },
-        { label: 'Čt', key: 'thursday' },
-        { label: 'Pá', key: 'friday' },
-        { label: 'So', key: 'saturday' },
-        { label: 'Ne', key: 'sunday' },
+        { label: 'Po', key: 'Po' },
+        { label: 'Út', key: 'Út' },
+        { label: 'St', key: 'St' },
+        { label: 'Čt', key: 'Čt' },
+        { label: 'Pá', key: 'Pá' },
+        { label: 'So', key: 'So' },
+        { label: 'Ne', key: 'Ne' },
     ];
 
     type CalendarDay = {
@@ -109,7 +110,7 @@ export default function NewEvent() {
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text');
 
     const increase = () => setPeopleCount(prev => prev + 1);
-    const decrease = () => setPeopleCount(prev => (prev > 1 ? prev - 1 : 1));
+    const decrease = () => setPeopleCount(prev => (prev > 2 ? prev - 1 : 2));
 
     const handleToggleDay = (dayKey: string) => {
         setSelectedDays(prev => ({
@@ -184,39 +185,232 @@ export default function NewEvent() {
     };
 
     const handleCreate = async () => {
-        if (!name.trim() || !dateRange.startDate || !timeRange.start || !user?.id) return;
 
-        const start = new Date(dateRange.startDate);
-        start.setHours(timeRange.start.getHours());
-        start.setMinutes(timeRange.start.getMinutes());
+        if (type) {
+            try {
+                if (!name.trim() || !dateRange.startDate || !timeRange.start || !user?.id) return;
+                const start = new Date(dateRange.startDate);
+                start.setHours(timeRange.start.getHours());
+                start.setMinutes(timeRange.start.getMinutes());
 
-        const end = dateRange.endDate && timeRange.end ? new Date(dateRange.endDate) : null;
-        if (end && timeRange.end) {
-            end.setHours(timeRange.end.getHours());
-            end.setMinutes(timeRange.end.getMinutes());
+                const end = dateRange.endDate && timeRange.end ? new Date(dateRange.endDate) : null;
+                if (end && timeRange.end) {
+                    end.setHours(timeRange.end.getHours());
+                    end.setMinutes(timeRange.end.getMinutes());
+                }
+
+                await createEvent({
+                    title: name,
+                    user_id: user.id,
+                    start,
+                    end,
+                    peopleCount,
+                    pravidelnost: false,
+                    is_group: type,
+                })
+
+                // reset všech stavů
+                setName('');
+                setPeopleCount(2);
+                setDateRange({});
+                setTimeRange({});
+                setSelectedDays({});
+                setSelectedDaysCalendar({});
+                setCalendarTimes({});
+                setShiftLengthText('');
+                setShiftLength(null);
+                setError('');
+                setPravidelnost(false);
+                setType(false);
+                setRepeatType('weekly');
+                router.replace('/(tabs)');
+
+
+            } catch (err) {
+                console.error('❌ Chyba při vytváření události:', err)
+            }
+        }
+        else if (!type && !pravidelnost) {
+            try {
+                if (!name.trim() || !dateRange.startDate || !timeRange.start || !user?.id) return;
+                const start = new Date(dateRange.startDate);
+                start.setHours(timeRange.start.getHours());
+                start.setMinutes(timeRange.start.getMinutes());
+
+                const end = dateRange.endDate && timeRange.end ? new Date(dateRange.endDate) : null;
+                if (end && timeRange.end) {
+                    end.setHours(timeRange.end.getHours());
+                    end.setMinutes(timeRange.end.getMinutes());
+                }
+
+                await createEvent({
+                    title: name,
+                    user_id: user.id,
+                    start,
+                    end,
+                    peopleCount: 1,
+                    pravidelnost: false,
+                    is_group: false,
+                })
+
+                // reset všech stavů
+                setName('');
+                setPeopleCount(2);
+                setDateRange({});
+                setTimeRange({});
+                setSelectedDays({});
+                setSelectedDaysCalendar({});
+                setCalendarTimes({});
+                setShiftLengthText('');
+                setShiftLength(null);
+                setError('');
+                setPravidelnost(false);
+                setType(false);
+                setRepeatType('weekly');
+                router.replace('/(tabs)');
+
+
+            } catch (err) {
+                console.error('❌ Chyba při vytváření události:', err)
+            }
+        }
+        else if (!type && pravidelnost && repeatType === "monthly") {
+            try {
+                if (!name.trim() || !user?.id) return;
+                for (const date of Object.keys(selectedDaysCalendar)) {
+                    const baseTime = calendarTimes[date];
+                    if (!baseTime || !shiftLength) continue;
+
+                    // Vytvoří kombinaci data z "date" a času z "baseTime"
+                    let dateWithTime = dayjs(date)
+                        .hour(dayjs(baseTime).hour())
+                        .minute(dayjs(baseTime).minute())
+                        .second(0)
+                        .millisecond(0);
+
+                    let start = dateWithTime.toDate();
+                    let endTime = dateWithTime.add(shiftLength, 'hour');
+
+                    // Pokud endTime přesahuje půlnoc, zvýšíme end date o 1
+                    let end = endTime.toDate();
+                    if (endTime.date() !== dateWithTime.date()) {
+                        // endTime už je další den, takže end zůstává správně
+                        end = endTime.toDate();
+                    }
+
+                    await createEvent({
+                        title: name,
+                        user_id: user.id,
+                        start,
+                        end,
+                        peopleCount: 1,
+                        pravidelnost: true,
+                        is_group: false,
+                    });
+                }
+
+
+
+                // reset form
+                // reset všech stavů
+                setName('');
+                setPeopleCount(2);
+                setDateRange({});
+                setTimeRange({});
+                setSelectedDays({});
+                setSelectedDaysCalendar({});
+                setCalendarTimes({});
+                setShiftLengthText('');
+                setShiftLength(null);
+                setError('');
+                setPravidelnost(false);
+                setType(false);
+                setRepeatType('weekly');
+                router.replace('/(tabs)');
+
+
+            } catch (err) {
+                console.error('❌ Chyba při vytváření události:', err)
+            }
+        }
+        else if (!type && pravidelnost && repeatType === "weekly") {
+            try {
+                if (!name.trim() || !user?.id) return;
+                for (const { key } of weekDays) {
+                    const day = selectedDays[key];
+                    if (!day?.checked || !day.time?.start || !day.time?.end) continue;
+
+                    await createWeeklyEvent({
+                        title: name,
+                        user_id: user.id,
+                        den: key,
+                        start: day.time.start,
+                        end: day.time.end,
+                    });
+                }
+
+                // reset form
+                // reset všech stavů
+                setName('');
+                setPeopleCount(2);
+                setDateRange({});
+                setTimeRange({});
+                setSelectedDays({});
+                setSelectedDaysCalendar({});
+                setCalendarTimes({});
+                setShiftLengthText('');
+                setShiftLength(null);
+                setError('');
+                setPravidelnost(false);
+                setType(false);
+                setRepeatType('weekly');
+                router.replace('/(tabs)');
+
+
+
+            } catch (err) {
+                console.error('❌ Chyba při vytváření týdenní události:', err);
+            }
         }
 
-        try {
-            await createEvent({
-                title: name,
-                user_id: user.id,
-                start,
-                end,
-                peopleCount,
-                pravidelnost: pravidelnost,
-                is_group: type,
-            })
-
-            // reset form
-            setName('')
-            setPeopleCount(1)
-            setDateRange({})
-            setTimeRange({})
-
-        } catch (err) {
-            console.error('❌ Chyba při vytváření události:', err)
-        }
     }
+
+    const isDisabled = (() => {
+        if (!name.trim()) return true;
+
+        if (!type && !pravidelnost) {
+            return !dateRange.startDate || !dateRange.endDate || !timeRange.start || !timeRange.end;
+        }
+
+        if (pravidelnost && !type && repeatType == "weekly") {
+            const isDisabled = Object.values(selectedDays).some(day =>
+                day?.checked && (!day.time?.start || !day.time?.end)
+            ) || Object.values(selectedDays).every(day => !day?.checked);
+            return isDisabled
+        }
+
+        if (pravidelnost && !type && repeatType == "monthly") {
+            const selectedDates = Object.keys(selectedDaysCalendar).filter(date => selectedDaysCalendar[date]);
+
+            // Disable, pokud není vybraný žádný den
+            if (selectedDates.length === 0) return true;
+
+            // Disable, pokud některý vybraný den nemá čas
+            if (selectedDates.some(date => !calendarTimes[date])) return true;
+
+            // Disable, pokud není zadána platná délka směny
+            if (!shiftLength || shiftLength < 1 || shiftLength > 24) return true;
+
+            return false;
+        }
+
+        if (type) {
+            return !dateRange.startDate || !dateRange.endDate || !timeRange.start || !timeRange.end;
+        }
+
+        return false;
+    })();
+
 
 
     const formatDate = (d?: Date) => (d ? dayjs(d).format('DD. MM. YYYY') : '');
@@ -296,23 +490,25 @@ export default function NewEvent() {
                     <>
                         {/* --- Date Range Picker --- */}
                         <ThemedView style={styles.field}>
-                            <PaperTextInput
-                                value={
-                                    dateRange.startDate
-                                        ? `${formatDate(dateRange.startDate)} → ${dateRange.endDate ? formatDate(dateRange.endDate) : ''}`
-                                        : 'Vyber datum'
-                                }
-                                mode="outlined"
-                                editable={false}
-                                onPressIn={() => setDateModalVisible(true)}
-                                right={
-                                    <TextInput.Icon
-                                        icon="calendar-outline"
-                                        onPress={() => setDateModalVisible(true)}
-                                    />
-                                }
-                                style={{ backgroundColor: 'transparent' }}
-                            />
+                            <Pressable onPress={() => setDateModalVisible(true)}>
+                                <PaperTextInput
+                                    value={
+                                        dateRange.startDate
+                                            ? `${formatDate(dateRange.startDate)} → ${dateRange.endDate ? formatDate(dateRange.endDate) : ''}`
+                                            : 'Vyber datum'
+                                    }
+                                    mode="outlined"
+                                    editable={false}
+                                    onPressIn={() => setDateModalVisible(true)}
+                                    right={
+                                        <TextInput.Icon
+                                            icon="calendar-outline"
+                                            onPress={() => setDateModalVisible(true)}
+                                        />
+                                    }
+                                    style={{ backgroundColor: 'transparent' }}
+                                />
+                            </Pressable>
 
                             <DatePickerModal
                                 locale="cs"
@@ -331,29 +527,34 @@ export default function NewEvent() {
 
                         {/* --- Time Range Picker --- */}
                         <ThemedView style={styles.field}>
-                            <PaperTextInput
-                                value={
-                                    timeRange.start
-                                        ? `${formatTime(timeRange.start)} → ${timeRange.end ? formatTime(timeRange.end) : ''}`
-                                        : 'Vyber čas'
-                                }
-                                mode="outlined"
-                                editable={false}
-                                onPressIn={() => {
-                                    setTimeStep('start');
-                                    setTimeModalVisible(true);
-                                }}
-                                right={
-                                    <TextInput.Icon
-                                        icon="clock-outline"
-                                        onPress={() => {
-                                            setTimeStep('start');
-                                            setTimeModalVisible(true);
-                                        }}
-                                    />
-                                }
-                                style={{ backgroundColor: 'transparent' }}
-                            />
+                            <Pressable onPress={() => {
+                                setTimeStep('start');
+                                setTimeModalVisible(true);
+                            }}>
+                                <PaperTextInput
+                                    value={
+                                        timeRange.start
+                                            ? `${formatTime(timeRange.start)} → ${timeRange.end ? formatTime(timeRange.end) : ''}`
+                                            : 'Vyber čas'
+                                    }
+                                    mode="outlined"
+                                    editable={false}
+                                    onPressIn={() => {
+                                        setTimeStep('start');
+                                        setTimeModalVisible(true);
+                                    }}
+                                    right={
+                                        <TextInput.Icon
+                                            icon="clock-outline"
+                                            onPress={() => {
+                                                setTimeStep('start');
+                                                setTimeModalVisible(true);
+                                            }}
+                                        />
+                                    }
+                                    style={{ backgroundColor: 'transparent' }}
+                                />
+                            </Pressable>
 
                             <TimePickerModal
                                 visible={timeModalVisible}
@@ -418,24 +619,28 @@ export default function NewEvent() {
                                 {/* pokud je den vybrán, zobraz čas */}
                                 {selectedDays[key]?.checked && (
                                     <>
-                                        <PaperTextInput
-                                            mode="outlined"
-                                            value={selectedDays[key]?.time?.start ? dayjs(selectedDays[key].time.start).format('HH:mm') : ''}
-                                            placeholder="Začátek"
-                                            editable={false}
-                                            onPressIn={() => openTimePickerForDay(key, 'start')}
-                                            right={<TextInput.Icon icon="clock-outline" onPress={() => openTimePickerForDay(key, 'start')} />}
-                                            style={{ backgroundColor: 'transparent', marginLeft: 20, marginRight: 20, marginTop: 4 }}
-                                        />
-                                        <PaperTextInput
-                                            mode="outlined"
-                                            value={selectedDays[key]?.time?.end ? dayjs(selectedDays[key].time.end).format('HH:mm') : ''}
-                                            placeholder="Konec"
-                                            editable={false}
-                                            onPressIn={() => openTimePickerForDay(key, 'end')}
-                                            right={<TextInput.Icon icon="clock-outline" onPress={() => openTimePickerForDay(key, 'end')} />}
-                                            style={{ backgroundColor: 'transparent', marginLeft: 20, marginRight: 20, marginTop: 4 }}
-                                        />
+                                        <Pressable onPress={() => openTimePickerForDay(key, 'start')}>
+                                            <PaperTextInput
+                                                mode="outlined"
+                                                value={selectedDays[key]?.time?.start ? dayjs(selectedDays[key].time.start).format('HH:mm') : ''}
+                                                placeholder="Začátek"
+                                                editable={false}
+                                                onPressIn={() => openTimePickerForDay(key, 'start')}
+                                                right={<TextInput.Icon icon="clock-outline" onPress={() => openTimePickerForDay(key, 'start')} />}
+                                                style={{ backgroundColor: 'transparent', marginLeft: 20, marginRight: 20, marginTop: 4 }}
+                                            />
+                                        </Pressable>
+                                        <Pressable onPress={() => openTimePickerForDay(key, 'end')}>
+                                            <PaperTextInput
+                                                mode="outlined"
+                                                value={selectedDays[key]?.time?.end ? dayjs(selectedDays[key].time.end).format('HH:mm') : ''}
+                                                placeholder="Konec"
+                                                editable={false}
+                                                onPressIn={() => openTimePickerForDay(key, 'end')}
+                                                right={<TextInput.Icon icon="clock-outline" onPress={() => openTimePickerForDay(key, 'end')} />}
+                                                style={{ backgroundColor: 'transparent', marginLeft: 20, marginRight: 20, marginTop: 4 }}
+                                            />
+                                        </Pressable>
                                     </>
                                 )}
                             </ThemedView>
@@ -549,22 +754,23 @@ export default function NewEvent() {
                             .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
                             .map(date => (
                                 <ThemedView key={date} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                                    <ThemedText style={{ flex: 1 }}>{dayjs(date).format('DD. MM. YYYY')}</ThemedText>
-
-                                    <PaperTextInput
-                                        value={calendarTimes[date] ? `${dayjs(calendarTimes[date]).format('HH:mm')} →  ${dayjs(calendarTimes[date]).add(shiftLength, 'hour').format('HH:mm')
-                                            }` : ''}
-                                        placeholder="Vyber čas"
-                                        editable={false}
-                                        onPressIn={() => openCalendarTimePicker(date)}
-                                        right={
-                                            <TextInput.Icon
-                                                icon="clock-outline"
-                                                onPress={() => openCalendarTimePicker(date)}
-                                            />
-                                        }
-                                        style={{ marginLeft: 8, flex: 1 }}
-                                    />
+                                    <ThemedText>{dayjs(date).format('DD. MM. YYYY')}</ThemedText>
+                                    <Pressable style={{ marginLeft: 8, flex: 1 }} onPress={() => openCalendarTimePicker(date)}>
+                                        <PaperTextInput
+                                            value={calendarTimes[date] ? `${dayjs(calendarTimes[date]).format('HH:mm')} →  ${dayjs(calendarTimes[date]).add(shiftLength, 'hour').format('HH:mm')
+                                                }` : ''}
+                                            placeholder="Vyber čas"
+                                            editable={false}
+                                            onPressIn={() => openCalendarTimePicker(date)}
+                                            right={
+                                                <TextInput.Icon
+                                                    icon="clock-outline"
+                                                    onPress={() => openCalendarTimePicker(date)}
+                                                />
+                                            }
+                                            style={{ marginLeft: 8, flex: 1 }}
+                                        />
+                                    </Pressable>
 
                                     {/* Křížek pro odstranění dne */}
                                     <IconButton
@@ -603,7 +809,7 @@ export default function NewEvent() {
                 <Button
                     mode="contained"
                     onPress={handleCreate}
-                    disabled={!name.trim() || !dateRange.startDate || !timeRange.start}
+                    disabled={isDisabled}
                     buttonColor={buttonColor}
                     labelStyle={{ color: buttonTextColor }}
                     style={styles.createButton}
@@ -613,7 +819,7 @@ export default function NewEvent() {
 
 
             </ScrollView>
-        </ThemedSafeView>
+        </ThemedSafeView >
     );
 }
 

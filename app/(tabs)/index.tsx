@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react'
 import { Dimensions, StyleSheet } from 'react-native'
 
 import { fetchEvents } from '@/api/get_events'
+import { fetchWeeklyEvents } from '@/api/get_weekly_events'
 import { CellModal } from '@/components/CellModal'
 import DayCalendar from '@/components/CustomDay/CustomDay'
 import MonthCalendar from '@/components/CustomMonth/CustomMonth'
@@ -17,12 +18,21 @@ const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
+interface WeeklyEvent {
+  title: string;
+  cas_od: Date;
+  cas_do: Date;
+  user_id: number;
+  den: string;
+}
+
 dayjs.locale('cs')
 
 export default function SharedCalendar() {
   const SCREEN_HEIGHT = Dimensions.get('window').height
   const router = useRouter()
   const [events, setEvents] = useState<Event[]>([])
+  const [weeklyEvents, setWeeklyEvents] = useState<WeeklyEvent[]>([])
 
   const loadEvents = async () => {
     try {
@@ -33,10 +43,20 @@ export default function SharedCalendar() {
     }
   }
 
+  const loadWeeklyEvents = async () => {
+    try {
+      const data = await fetchWeeklyEvents()
+      setWeeklyEvents(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
 
     loadEvents(); // načtení na start
+    loadWeeklyEvents()
 
     const channel = supabase.channel('realtime:public:events');
 
@@ -81,10 +101,12 @@ export default function SharedCalendar() {
 
 
   const selectCalendar = () => {
+    console.log(weeklyEvents)
     if (selectedIndex === 1) {
       return (
         <WeekCalendar
           events={events}
+          weeklyEvents={weeklyEvents}
           onPressCell={handleCellPress}
           onPressDay={handlePressDay}
           hourHeight={(SCREEN_HEIGHT - 170) / 7}
@@ -94,6 +116,7 @@ export default function SharedCalendar() {
       return (
         <DayCalendar
           events={events}
+          weeklyEvents={weeklyEvents}
           defaultDate={selectedDate ?? new Date()}
           onPressCell={handleCellPress}
           hourHeight={100}
@@ -103,6 +126,7 @@ export default function SharedCalendar() {
       return (
         <MonthCalendar
           events={events}
+          weeklyEvents={weeklyEvents}
           defaultDate={selectedDate ?? new Date()}
           onPressDay={handlePressDay}
         />
