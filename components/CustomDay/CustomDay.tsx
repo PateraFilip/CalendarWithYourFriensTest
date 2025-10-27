@@ -4,6 +4,7 @@ import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
 
 interface Event {
+  id: number;
   title: string;
   start: Date;
   end: Date;
@@ -14,6 +15,7 @@ interface Event {
 }
 
 interface WeeklyEvent {
+  id: number;
   title: string;
   cas_od: Date;
   cas_do: Date;
@@ -88,7 +90,7 @@ export default function DayCalendar({
       let end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
       if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
       else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
-      eventsOfDay.push({ title: w.title, start, end, user_id: w.user_id, pocet_lidi: 1, pravidelnost: true, is_group: false });
+      eventsOfDay.push({ id: w.id, title: w.title, start, end, user_id: w.user_id, pocet_lidi: 1, pravidelnost: true, is_group: false });
     });
 
     return eventsOfDay;
@@ -181,12 +183,12 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * duration,
-                              backgroundColor: getColorByUserId(e.user_id),
+                              backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
                               borderRadius: 6,
                               padding: 2,
                             }}
                           >
-                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: getColorTextByUserId(e.user_id) }}>
+                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: e.is_group ? "white" : getColorTextByUserId(e.user_id) }}>
                               {e.title}
                             </ThemedText>
                           </ThemedView>
@@ -203,12 +205,12 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * dayDuration,
-                              backgroundColor: getColorByUserId(e.user_id),
+                              backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
                               borderRadius: 6,
                               padding: 2,
                             }}
                           >
-                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: getColorTextByUserId(e.user_id) }}>
+                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: e.is_group ? "white" : getColorTextByUserId(e.user_id) }}>
                               {e.title}
                             </ThemedText>
                           </ThemedView>
@@ -224,12 +226,12 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * duration,
-                              backgroundColor: getColorByUserId(e.user_id),
+                              backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
                               borderRadius: 6,
                               padding: 2,
                             }}
                           >
-                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: getColorTextByUserId(e.user_id) }}>
+                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: e.is_group ? "white" : getColorTextByUserId(e.user_id) }}>
                               {e.title}
                             </ThemedText>
                           </ThemedView>

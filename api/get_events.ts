@@ -20,10 +20,22 @@ export const fetchEvents = async (): Promise<CalendarEvent[]> => {
 
     const data = await response.json()
 
-    const events: CalendarEvent[] = data.map((e: any) => {
-        // pokud cas_od nebo cas_do není, použij výchozí hodnoty
-        const startTime = e.cas_od ?? '00:00'
-        const endTime = e.cas_do ?? '23:59'
+    const events: Event[] = data.map((e: any) => {
+  // pokud cas_od nebo cas_do není, použij výchozí hodnoty
+  const startTime = e.cas_od ?? '00:00'
+  const endTime = e.cas_do ?? '23:59'
+
+  return {
+    id: e.id,
+    title: e.nazev,
+    user_id: e.zakladatel_id,
+    pocet_lidi: e.pocet_lidi ?? 0,
+    start: new Date(`${e.den_od}T${startTime}`), // den_od + cas_od
+    end: new Date(`${e.den_do ?? e.den_od}T${endTime}`), // den_do + cas_do
+    pravidelnost: !!e.pravidelnost,
+    is_group: !!e.is_group,
+  }
+})
 
         return {
             title: e.nazev,

@@ -5,6 +5,7 @@ const API_KEY =
 
 
 interface WeeklyEvent {
+    id: number;
   title: string;
   cas_od: Date;
   cas_do: Date;
@@ -30,6 +31,7 @@ export const fetchWeeklyEvents = async (): Promise<WeeklyEvent[]> => {
     const events: WeeklyEvent[] = data.map((e: any) => {
 
   return {
+    id: e.id,
     title: e.nazev,
     user_id: e.zakladatel_id,
     den: e.den,
@@ -38,6 +40,5 @@ export const fetchWeeklyEvents = async (): Promise<WeeklyEvent[]> => {
   }
 })
 
-console.log(events)
     return events
 }

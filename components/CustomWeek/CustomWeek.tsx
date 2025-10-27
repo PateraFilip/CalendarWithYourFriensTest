@@ -4,6 +4,7 @@ import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
 
 interface Event {
+  id: number;
   title: string;
   start: Date;
   end: Date;
@@ -14,6 +15,7 @@ interface Event {
 }
 
 interface WeeklyEvent {
+  id: number;
   title: string;
   cas_od: Date;
   cas_do: Date;
@@ -170,6 +172,7 @@ export default function WeekCalendar({
 
         if (end > dayStart && start < dayEnd) {
           eventsOfDay.push({
+            id: w.id,
             title: w.title,
             start,
             end,
@@ -235,14 +238,17 @@ export default function WeekCalendar({
         <ThemedView style={{ flexDirection: 'row' }}>
           {/* Levý sloupec s dny */}
           <ThemedView style={{ width: 60 }}>
-            {days.map((day, i) => (
-              <Pressable key={i} onPress={() => onPressDay?.(day)} style={[styles.dayHeader, { minHeight: hourHeight }]}>
-                <ThemedText style={{ fontWeight: 'bold' }}>
-                  {day.toLocaleDateString('cs-CZ', { weekday: 'short' }).replace(/^./, c => c.toUpperCase())}
-                </ThemedText>
-                <ThemedText>{day.getDate()}.{day.getMonth() + 1}</ThemedText>
-              </Pressable>
-            ))}
+            {days.map((day, i) => {
+              const { eventColumns, totalColumns } = dayEventColumns.get(day.toDateString())!;
+              return (
+                <Pressable key={i} onPress={() => onPressDay?.(day)} style={[styles.dayHeader, { minHeight: hourHeight, height: totalColumns * 20 }]}>
+                  <ThemedText style={{ fontWeight: 'bold' }}>
+                    {day.toLocaleDateString('cs-CZ', { weekday: 'short' }).replace(/^./, c => c.toUpperCase())}
+                  </ThemedText>
+                  <ThemedText>{day.getDate()}.{day.getMonth() + 1}</ThemedText>
+                </Pressable>
+              )
+            })}
           </ThemedView>
 
           {/* Tělo kalendáře */}
@@ -252,13 +258,13 @@ export default function WeekCalendar({
                 <ThemedView key={dIndex} style={{ flexDirection: 'row' }}>
                   {hours.map(hour => {
                     const cellEvents = mergeEventsForCell(day, hour);
-                    const { eventColumns } = dayEventColumns.get(day.toDateString())!;
+                    const { eventColumns, totalColumns } = dayEventColumns.get(day.toDateString())!;
 
                     return (
                       <Pressable
                         key={`${dIndex}-${hour}`}
                         onPress={() => onPressCell?.(new Date(day.setHours(hour)))}
-                        style={[styles.hourCell, { width: hourWidth, height: hourHeight, position: 'relative' }]}
+                        style={[styles.hourCell, { width: hourWidth, minHeight: hourHeight, height: totalColumns * 20, position: 'relative' }]}
                       >
                         {cellEvents.map((e, i) => {
                           const duration = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60);
@@ -275,7 +281,7 @@ export default function WeekCalendar({
                                   left: offset * hourWidth,
                                   height: 20,
                                   width: hourWidth * duration,
-                                  backgroundColor: getColorByUserId(e.user_id),
+                                  backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
                                   borderRadius: 4,
                                   padding: 2,
                                 }}
@@ -283,7 +289,7 @@ export default function WeekCalendar({
                                 <ThemedText style={{
                                   fontSize: 10,
                                   lineHeight: 18,
-                                  color: getColorTextByUserId(e.user_id)
+                                  color: e.is_group ? "white" : getColorTextByUserId(e.user_id)
                                 }}>
                                   {e.title}
                                 </ThemedText>
@@ -305,7 +311,7 @@ export default function WeekCalendar({
                                   left: 0,
                                   height: 20,
                                   width: hourWidth * dayDuration,
-                                  backgroundColor: getColorByUserId(e.user_id),
+                                  backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
                                   borderRadius: 4,
                                   padding: 2,
                                 }}
@@ -313,7 +319,7 @@ export default function WeekCalendar({
                                 <ThemedText style={{
                                   fontSize: 10,
                                   lineHeight: 18,
-                                  color: getColorTextByUserId(e.user_id)
+                                  color: e.is_group ? "white" : getColorTextByUserId(e.user_id)
                                 }}>
                                   {e.title}
                                 </ThemedText>
@@ -331,7 +337,7 @@ export default function WeekCalendar({
                                   left: 0,
                                   height: 20,
                                   width: hourWidth * duration,
-                                  backgroundColor: getColorByUserId(e.user_id),
+                                  backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
                                   borderRadius: 4,
                                   padding: 2,
                                 }}
@@ -339,7 +345,7 @@ export default function WeekCalendar({
                                 <ThemedText style={{
                                   fontSize: 10,
                                   lineHeight: 18,
-                                  color: getColorTextByUserId(e.user_id)
+                                  color: e.is_group ? "white" : getColorTextByUserId(e.user_id)
                                 }}>
                                   {e.title}
                                 </ThemedText>
