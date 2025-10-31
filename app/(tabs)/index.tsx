@@ -1,9 +1,4 @@
-import SegmentedControl from '@react-native-segmented-control/segmented-control'
-import dayjs from 'dayjs'
-import 'dayjs/locale/cs'
-import React, { useEffect, useState } from 'react'
-import { Dimensions, StyleSheet } from 'react-native'
-
+import { fetchEventsException } from '@/api/get_event_exceptions'
 import { fetchEvents } from '@/api/get_events'
 import { fetchWeeklyEvents } from '@/api/get_weekly_events'
 import { CellModal } from '@/components/CellModal'
@@ -11,8 +6,47 @@ import DayCalendar from '@/components/CustomDay/CustomDay'
 import MonthCalendar from '@/components/CustomMonth/CustomMonth'
 import WeekCalendar from '@/components/CustomWeek/CustomWeek'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
+import { useAuth } from '@/hooks/useAuth'
+import { useRealtimeNotifications } from '@/hooks/useNotificationHandler'
+import { getApp } from '@react-native-firebase/app'
+import { getMessaging, getToken } from '@react-native-firebase/messaging'
+import SegmentedControl from '@react-native-segmented-control/segmented-control'
 import { createClient } from '@supabase/supabase-js'
-import { useRouter } from 'expo-router'
+import dayjs from 'dayjs'
+import 'dayjs/locale/cs'
+import * as Notifications from 'expo-notifications'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import React, { useEffect, useRef, useState } from 'react'
+import { Dimensions, StyleSheet } from 'react-native'
+
+
+
+export async function registerAndSavePushToken(userId: number) {
+  try {
+    const messaging = getMessaging(getApp());
+    const token = await getToken(messaging);
+    console.log('FCM token:', token);
+
+    const { error } = await supabase
+      .from('user_devices')
+      .upsert(
+        { user_id: userId, fcm_token: token },
+        { onConflict: 'fcm_token' } // <– musí odpovídat UNIQUE constraintu v DB
+      );
+
+    if (error) {
+      console.error('Chyba při ukládání tokenu:', error);
+    } else {
+      console.log('Token uložen nebo již existoval ✅');
+    }
+
+    return token;
+  } catch (err) {
+    console.error('Neočekávaná chyba při registraci FCM tokenu:', err);
+    return null;
+  }
+}
+
 
 const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
@@ -38,14 +72,49 @@ interface Event {
   is_group: boolean;
 }
 
+interface EventException {
+  id: number;
+  start: Date;
+  end: Date;
+  event_id: number;
+  typ: string;
+  puvodni_start: Date;
+  puvodni_end: Date;
+}
+
 
 dayjs.locale('cs')
 
 export default function SharedCalendar() {
   const SCREEN_HEIGHT = Dimensions.get('window').height
   const router = useRouter()
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [events, setEvents] = useState<Event[]>([])
   const [weeklyEvents, setWeeklyEvents] = useState<WeeklyEvent[]>([])
+  const [eventException, setEventException] = useState<EventException[]>([])
+  const { user } = useAuth()
+  const hasInitialized = useRef(false)
+
+  async function requestUserPermission() {
+    const { status } = await Notifications.getPermissionsAsync()
+    if (status !== 'granted') {
+      const { status: newStatus } = await Notifications.requestPermissionsAsync()
+      if (newStatus !== 'granted') return null
+    }
+  }
+
+
+  useEffect(() => {
+    requestUserPermission()
+  }, [])
+
+  useEffect(() => {
+    const initNotifications = async () => {
+      if (!user?.id) return; // počkej, dokud user není dostupný
+      await registerAndSavePushToken(user.id);
+    };
+
+    initNotifications();
+  }, [user]);
 
   const loadEvents = async () => {
     try {
@@ -65,7 +134,18 @@ export default function SharedCalendar() {
     }
   }
 
+  const loadEventsException = async () => {
+    try {
+      const data = await fetchEventsException()
+      setEventException(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
     let mounted = true;
 
     loadEvents(); // načtení na start
@@ -78,7 +158,10 @@ export default function SharedCalendar() {
       table: 'events'
     }, (payload) => {
       console.log('Change in events:', payload);
-      if (mounted) loadEvents(); // načti nové eventy
+      if (mounted) {
+        useRealtimeNotifications(payload, user)
+        loadEvents(); // načti nové eventy
+      }
     });
 
     channel.subscribe();
@@ -113,9 +196,33 @@ export default function SharedCalendar() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    loadEventsException()
+
+    const channel = supabase.channel('realtime:public:event_exceptions');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'event_exceptions'
+    }, (payload) => {
+      console.log('Change in events:', payload);
+      if (mounted) loadEventsException(); // načti nové eventy
+    });
+
+    channel.subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
 
   // run once
-
+  const { calendar, day } = useLocalSearchParams();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [cellModalVisible, setCellModalVisible] = useState(false)
   const [eventModalVisible, setEventModalVisible] = useState(false)
@@ -123,6 +230,16 @@ export default function SharedCalendar() {
   const [selectedIndex, setSelectedIndex] = useState(1)
   const [newEventTitle, setNewEventTitle] = useState('')
   const [newEventPeopleCount, setNewEventPeopleCount] = useState(1)
+
+  useEffect(() => {
+    // pokud existuje calendar a day, nastav defaultní hodnoty
+    if (calendar) {
+      setSelectedIndex(Number(calendar));
+    }
+    if (day) {
+      setSelectedDate(new Date(day));
+    }
+  }, [calendar, day]);
 
   const handlePressDay = (date: Date) => {
     setSelectedDate(date)
@@ -142,6 +259,7 @@ export default function SharedCalendar() {
         <WeekCalendar
           events={events}
           weeklyEvents={weeklyEvents}
+          eventsException={eventException}
           onPressCell={handleCellPress}
           onPressDay={handlePressDay}
           hourHeight={(SCREEN_HEIGHT - 170) / 7}
@@ -152,6 +270,7 @@ export default function SharedCalendar() {
         <DayCalendar
           events={events}
           weeklyEvents={weeklyEvents}
+          eventsException={eventException}
           defaultDate={selectedDate ?? new Date()}
           onPressCell={handleCellPress}
           hourHeight={100}
@@ -162,6 +281,7 @@ export default function SharedCalendar() {
         <MonthCalendar
           events={events}
           weeklyEvents={weeklyEvents}
+          eventsException={eventException}
           defaultDate={selectedDate ?? new Date()}
           onPressDay={handlePressDay}
         />
@@ -199,6 +319,7 @@ export default function SharedCalendar() {
         date={selectedDate}
         events={events}
         weeklyEvents={weeklyEvents}
+        eventsException={eventException}
         onCreateEvent={() => {
           setNavigateAfterClose(true)
           setCellModalVisible(false)

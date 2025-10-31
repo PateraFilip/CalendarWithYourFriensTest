@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "142991941579",
+    "project_id": "calendar-notifications-4c44b",
+    "storage_bucket": "calendar-notifications-4c44b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:142991941579:android:2c936f42853c8a4ea5604e",
+        "android_client_info": {
+          "package_name": "com.macicek0.CalendarWithFriends"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDChsbgzCprt-_VZnx_-XzdpNjlSlE0Z8g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

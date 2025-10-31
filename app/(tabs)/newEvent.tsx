@@ -209,6 +209,11 @@ export default function NewEvent() {
                     is_group: type,
                 })
 
+                if (!user?.id) {
+                    console.error("Uživatel není přihlášen!");
+                    return;
+                }
+
                 // reset všech stavů
                 setName('');
                 setPeopleCount(2);
@@ -304,7 +309,7 @@ export default function NewEvent() {
                         start,
                         end,
                         peopleCount: 1,
-                        pravidelnost: true,
+                        pravidelnost: false,
                         is_group: false,
                     });
                 }

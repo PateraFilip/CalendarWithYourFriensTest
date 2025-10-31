@@ -23,9 +23,20 @@ interface WeeklyEvent {
     den: string;
 }
 
+interface EventException {
+    id: number;
+    start: Date;
+    end: Date;
+    event_id: number;
+    typ: string;
+    puvodni_start: Date;
+    puvodni_end: Date;
+}
+
 interface MonthCalendarProps {
     events: Event[];
     weeklyEvents: WeeklyEvent[];
+    eventsException: EventException[];
     onPressDay?: (date: Date) => void;
     defaultDate?: Date;
 }
@@ -44,7 +55,7 @@ const COLORS_TEXT = [
     '#000', '#FFF', '#000', '#FFF', '#FFF'
 ];
 
-export default function MonthCalendar({ events, weeklyEvents, onPressDay, defaultDate }: MonthCalendarProps) {
+export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, defaultDate }: MonthCalendarProps) {
     const [currentMonth, setCurrentMonth] = useState(defaultDate || new Date());
     const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -96,10 +107,35 @@ export default function MonthCalendar({ events, weeklyEvents, onPressDay, defaul
 
             let start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
             let end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
-
+            const exceptionDelete = eventsException.some(ex =>
+                ex.event_id === w.id &&
+                new Date(ex.puvodni_start).getTime() === start.getTime() &&
+                ex.typ == "DELETE"
+            );
             if (end < start) {
                 if (wDay === weekDay) end.setDate(end.getDate() + 1);
                 else if (wDay === weekDayPrev) start.setDate(start.getDate() - 1);
+            }
+
+            const exception = eventsException.find(ex =>
+                ex.event_id === w.id &&
+                new Date(ex.puvodni_start).getTime() === start.getTime()
+            );
+            if (exception) {
+                console.log(`⚙️ Výjimka nalezena pro event ${w.id}, upravuji časy`);
+                start.setTime(new Date(exception.start).getTime());
+                end.setTime(new Date(exception.end).getTime());
+                if (end < start) {
+                    if (wDay === weekDay) end.setDate(end.getDate() + 1);
+                    else if (wDay === weekDayPrev) start.setDate(start.getDate() - 1);
+                }
+            }
+            if (exceptionDelete) {
+                console.log(`⏭️ Event ${w.id} přeskočen kvůli výjimce`);
+                return; // nepushuj tento event
+            }
+            if (wDay === weekDayPrev && end > start) {
+                return
             }
 
             weeklyDayEvents.push({
@@ -112,6 +148,7 @@ export default function MonthCalendar({ events, weeklyEvents, onPressDay, defaul
                 pravidelnost: true,
                 is_group: false
             });
+            console.log(weeklyDayEvents)
         });
 
         // Odebrání duplicit z weeklyDayEvents
@@ -158,17 +195,19 @@ export default function MonthCalendar({ events, weeklyEvents, onPressDay, defaul
                             const dayEvents = getEventsForDay(day);
 
                             return (
-                                <ThemedView key={idx} style={styles.dayCell}>
-                                    <Pressable onPress={() => onPressDay?.(day)} style={{ padding: 2 }}>
-                                        <ThemedText style={{ fontWeight: '500' }}>{day.getDate()}</ThemedText>
-                                    </Pressable>
-
-                                    {dayEvents.map((e, i) => (
-                                        <Pressable key={i} style={[styles.eventBadge, { backgroundColor: e.is_group ? "red" : getColor(e.user_id) }]}>
-                                            <ThemedText style={{ fontSize: 10, color: e.is_group ? "white" : getTextColor(e.user_id), lineHeight: 16 }}>{e.title}</ThemedText>
+                                <Pressable onPress={() => onPressDay?.(day)} style={styles.dayCell}>
+                                    <ThemedView key={idx}>
+                                        <Pressable onPress={() => onPressDay?.(day)} style={{ padding: 2 }}>
+                                            <ThemedText style={{ fontWeight: '500' }}>{day.getDate()}</ThemedText>
                                         </Pressable>
-                                    ))}
-                                </ThemedView>
+
+                                        {dayEvents.map((e, i) => (
+                                            <Pressable onPress={() => onPressDay?.(day)} key={i} style={[styles.eventBadge, { backgroundColor: e.is_group ? "red" : getColor(e.user_id) }]}>
+                                                <ThemedText style={{ fontSize: 10, color: e.is_group ? "white" : getTextColor(e.user_id), lineHeight: 16 }}>{e.title}</ThemedText>
+                                            </Pressable>
+                                        ))}
+                                    </ThemedView>
+                                </Pressable>
                             );
                         })}
                     </ThemedView>

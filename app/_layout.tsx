@@ -1,3 +1,6 @@
+import { AuthProvider } from '@/contexts/AuthContext'
+import { useColorScheme } from '@/hooks/use-color-scheme'
+import { useNotificationHandler } from '@/hooks/useNotificationHandler'
 import {
     DarkTheme,
     DefaultTheme,
@@ -6,19 +9,13 @@ import {
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { Provider } from 'react-native-paper'
 import 'react-native-reanimated'
 
-import { AuthProvider } from '@/contexts/AuthContext'
-import { useColorScheme } from '@/hooks/use-color-scheme'
-import { Provider } from 'react-native-paper'
-
-export const unstable_settings = {
-    anchor: '(tabs)',
-}
 
 export default function RootLayout() {
     const colorScheme = useColorScheme()
-
+    useNotificationHandler()
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <Provider>

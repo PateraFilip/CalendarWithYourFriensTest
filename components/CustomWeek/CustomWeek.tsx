@@ -23,9 +23,20 @@ interface WeeklyEvent {
   den: string;
 }
 
+interface EventException {
+  id: number;
+  start: Date;
+  end: Date;
+  event_id: number;
+  typ: string;
+  puvodni_start: Date;
+  puvodni_end: Date;
+}
+
 interface WeekCalendarProps {
   events: Event[];
   weeklyEvents: WeeklyEvent[];
+  eventsException: EventException[];
   onPressCell?: (date: Date) => void;
   onPressDay?: (date: Date) => void;
   hourHeight?: number;
@@ -35,6 +46,7 @@ interface WeekCalendarProps {
 export default function WeekCalendar({
   events,
   weeklyEvents,
+  eventsException,
   onPressCell,
   onPressDay,
   hourHeight = 60,
@@ -169,6 +181,26 @@ export default function WeekCalendar({
         let end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
         if (end < start && normalizeDayName(w.den) === eventDay) end.setDate(end.getDate() + 1);
         else if (end < start && normalizeDayName(w.den) === eventDayPrev) start.setDate(start.getDate() - 1);
+        const exceptionDelete = eventsException.some(ex =>
+          ex.event_id === w.id &&
+          new Date(ex.puvodni_start).getTime() === start.getTime() &&
+          ex.typ == "DELETE"
+        );
+        const exception = eventsException.find(ex =>
+          ex.event_id === w.id &&
+          new Date(ex.puvodni_start).getTime() === start.getTime()
+        );
+        if (exception) {
+          console.log(`⚙️ Výjimka nalezena pro event ${w.id}, upravuji časy`);
+          start.setTime(new Date(exception.start).getTime());
+          end.setTime(new Date(exception.end).getTime());
+          if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
+          else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
+        }
+        if (exceptionDelete) {
+          console.log(`⏭️ Event ${w.id} přeskočen kvůli výjimce`);
+          return; // nepushuj tento event
+        }
 
         if (end > dayStart && start < dayEnd) {
           eventsOfDay.push({
@@ -181,6 +213,7 @@ export default function WeekCalendar({
             pravidelnost: true,
             is_group: false,
           });
+
         }
       });
 

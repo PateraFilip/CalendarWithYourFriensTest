@@ -23,8 +23,19 @@ interface WeeklyEvent {
   den: string;
 }
 
+interface EventException {
+  id: number;
+  start: Date;
+  end: Date;
+  event_id: number;
+  typ: string;
+  puvodni_start: Date;
+  puvodni_end: Date;
+}
+
 interface DayCalendarProps {
   events: Event[];
+  eventsException: EventException[];
   weeklyEvents: WeeklyEvent[];
   onPressCell?: (date: Date) => void;
   hourHeight?: number;
@@ -36,6 +47,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 export default function DayCalendar({
   events,
   weeklyEvents,
+  eventsException,
   onPressCell,
   hourHeight = 100,
   defaultDate,
@@ -86,10 +98,31 @@ export default function DayCalendar({
       const eventDayPrev = daysShort[(date.getDay() + 6) % 7]
 
       if ((w.den.trim().normalize() !== eventDay && w.den.trim().normalize() !== eventDayPrev) || (w.den.trim().normalize() === eventDayPrev && w.cas_do > w.cas_od)) return;
-      const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
+      let start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
       let end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
       if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
       else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
+      const exceptionDelete = eventsException.some(ex =>
+        ex.event_id === w.id &&
+        new Date(ex.puvodni_start).getTime() === start.getTime() &&
+        ex.typ == "DELETE"
+      );
+      const exception = eventsException.find(ex =>
+        ex.event_id === w.id &&
+        new Date(ex.puvodni_start).getTime() === start.getTime()
+      );
+      if (exception) {
+        console.log(`⚙️ Výjimka nalezena pro event ${w.id}, upravuji časy`);
+        start.setTime(new Date(exception.start).getTime());
+        end.setTime(new Date(exception.end).getTime());
+        if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
+        else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
+      }
+      if (exceptionDelete) {
+        console.log(`⏭️ Event ${w.id} přeskočen kvůli výjimce`);
+        return; // nepushuj tento event
+      }
+
       eventsOfDay.push({ id: w.id, title: w.title, start, end, user_id: w.user_id, pocet_lidi: 1, pravidelnost: true, is_group: false });
     });
 

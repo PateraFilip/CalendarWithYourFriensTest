@@ -1,13 +1,21 @@
-import { Tabs } from 'expo-router'
-import React from 'react'
-
 import { HapticTab } from '@/components/haptic-tab'
 import { IconSymbol } from '@/components/ui/icon-symbol'
 import { Colors } from '@/constants/theme'
 import { useColorScheme } from '@/hooks/use-color-scheme'
+import { useAuth } from '@/hooks/useAuth'
+import { Tabs, useRouter } from 'expo-router'
+import React, { useEffect } from 'react'
 
 export default function TabLayout() {
     const colorScheme = useColorScheme()
+    const { user } = useAuth()
+    const router = useRouter()
+
+    useEffect(() => {
+        if (!user) {
+            router.replace('/(login)')
+        }
+    }, [user]);
 
     return (
         <Tabs
