@@ -33,7 +33,11 @@ export default function RootLayout() {
                                 options={{ headerShown: false }}
                             />
                             <Stack.Screen
-                                name="modal"
+                                name="register"
+                                options={{ presentation: 'modal', title: 'Modal' }}
+                            />
+                            <Stack.Screen
+                                name="reset_password"
                                 options={{ presentation: 'modal', title: 'Modal' }}
                             />
                         </Stack>

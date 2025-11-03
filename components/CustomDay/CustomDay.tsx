@@ -1,3 +1,4 @@
+import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { ThemedText } from '../themed-text';
@@ -33,6 +34,14 @@ interface EventException {
   puvodni_end: Date;
 }
 
+interface Color {
+  id: number;
+  name: string;
+  background_color: string;
+  text_color: string;
+  user_id: number;
+}
+
 interface DayCalendarProps {
   events: Event[];
   eventsException: EventException[];
@@ -40,6 +49,7 @@ interface DayCalendarProps {
   onPressCell?: (date: Date) => void;
   hourHeight?: number;
   defaultDate?: Date;
+  colors: Color[];
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -51,31 +61,15 @@ export default function DayCalendar({
   onPressCell,
   hourHeight = 100,
   defaultDate,
+  colors
 }: DayCalendarProps) {
   const [date, setDate] = useState(defaultDate || new Date());
   const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
   const scrollRef = useRef<ScrollView>(null);
 
-  const COLORS = [
-    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
-  ];
-  const COLORS_TEXT = [
-    '#FFF', '#FFF', '#000', '#FFF', '#FFF', '#FFF', '#000', '#FFF', '#000', '#000',
-    '#FFF', '#000', '#FFF', '#000', '#FFF', '#000', '#FFF', '#000', '#FFF', '#FFF'
-  ];
-
-  const getColorByUserId = (id: string | number) => {
-    const n = typeof id === 'string' ? [...id].reduce((a, c) => a + c.charCodeAt(0), 0) : id;
-    return COLORS[n % COLORS.length];
-  };
-
-  const getColorTextByUserId = (id: string | number) => {
-    const n = typeof id === 'string' ? [...id].reduce((a, c) => a + c.charCodeAt(0), 0) : id;
-    return COLORS_TEXT[n % COLORS.length];
-  };
 
   useEffect(() => { if (defaultDate) setDate(defaultDate); }, [defaultDate]);
+  const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
 
   const handleCellPress = (hour: number) => {
     const d = new Date(date);
@@ -206,6 +200,9 @@ export default function DayCalendar({
 
                       const col = eventColumns.get(e) || 0;
                       const duration = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60);
+                      const colorObj = colors.find(c => c.user_id === e.user_id); // najde barvu pro daného uživatele
+                      const backgroundColor = e.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
+                      const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
                       if (e.start.getHours() === h && e.start.getDate() === date.getDate() && e.start.getMonth() === date.getMonth() && e.start.getFullYear() === date.getFullYear()) {
                         return (
                           <ThemedView
@@ -216,12 +213,14 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * duration,
-                              backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
+                              backgroundColor: backgroundColor,
                               borderRadius: 6,
                               padding: 2,
+                              borderWidth: 0.5,
+                              borderColor: e.is_group ? "yellow" : borderColor
                             }}
                           >
-                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: e.is_group ? "white" : getColorTextByUserId(e.user_id) }}>
+                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: textColor }}>
                               {e.title}
                             </ThemedText>
                           </ThemedView>
@@ -238,12 +237,14 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * dayDuration,
-                              backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
+                              backgroundColor: backgroundColor,
                               borderRadius: 6,
                               padding: 2,
+                              borderWidth: 0.5,
+                              borderColor: e.is_group ? "yellow" : borderColor
                             }}
                           >
-                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: e.is_group ? "white" : getColorTextByUserId(e.user_id) }}>
+                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: textColor }}>
                               {e.title}
                             </ThemedText>
                           </ThemedView>
@@ -259,12 +260,14 @@ export default function DayCalendar({
                               left: col * 60,
                               width: 60,
                               height: hourHeight * duration,
-                              backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
+                              backgroundColor: backgroundColor,
                               borderRadius: 6,
                               padding: 2,
+                              borderWidth: 0.5,
+                              borderColor: e.is_group ? "yellow" : borderColor
                             }}
                           >
-                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: e.is_group ? "white" : getColorTextByUserId(e.user_id) }}>
+                            <ThemedText style={{ fontSize: 11, fontWeight: '500', color: textColor }}>
                               {e.title}
                             </ThemedText>
                           </ThemedView>

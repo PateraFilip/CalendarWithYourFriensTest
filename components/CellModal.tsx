@@ -38,6 +38,13 @@ interface CellModalProps {
     onCreateEvent: () => void
     onDismiss: () => void
     onPressEvent?: (event: Event) => void;
+    colors: {
+        id: number;
+        name: string;
+        background_color: string;
+        text_color: string;
+        user_id: number;
+    }[]
 }
 
 interface UserEvent {
@@ -49,6 +56,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     date,
     events,
     weeklyEvents,
+    colors,
     onCreateEvent,
     onDismiss,
     onPressEvent }) => {
@@ -91,35 +99,6 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
         };
     }, []);
 
-    const COLORS = [
-        '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
-        '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-        '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
-        '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
-    ];
-
-    const COLORS_TEXT = [
-        '#FFFFFF', '#FFFFFF', '#000000', '#FFFFFF', '#FFFFFF',
-        '#FFFFFF', '#000000', '#FFFFFF', '#000000', '#000000',
-        '#FFFFFF', '#000000', '#FFFFFF', '#000000', '#FFFFFF',
-        '#000000', '#FFFFFF', '#000000', '#FFFFFF', '#FFFFFF',
-    ];
-
-    function getColorByUserId(userId: string | number) {
-        const idNum = typeof userId === 'string'
-            ? userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-            : userId;
-
-        return COLORS[idNum % COLORS.length];
-    }
-
-    function getColorTextByUserId(userId: string | number) {
-        const idNum = typeof userId === 'string'
-            ? userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-            : userId;
-
-        return COLORS_TEXT[idNum % COLORS.length];
-    }
 
     function onJoinEvent(event_id: number) {
         if (!user?.id) {
@@ -202,18 +181,21 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                 // 🧮 Spočítej, kolikrát se item.id vyskytuje v userEvents.event_id
                                 const count = userEvents.filter(u => u.event_id === item.id).length;
                                 const userJoined = userEvents.filter(u => u.event_id === item.id && u.user_id === user?.id)
+                                const colorObj = colors.find(c => c.user_id === item.user_id); // najde barvu pro daného uživatele
+                                const backgroundColor = item.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
+                                const textColor = item.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
 
                                 return (
                                     <TouchableOpacity
                                         onPress={() => onPressEvent?.(item)}
-                                        style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}
+                                        style={[styles.eventItem, { backgroundColor: backgroundColor, borderWidth: 1, borderColor: item.is_group ? "yellow" : buttonColor }]}
                                     >
-                                        <View style={[styles.eventItem, { backgroundColor: getColorByUserId(item.user_id) }]}>
+                                        <View style={[styles.eventItem, { backgroundColor: backgroundColor }]}>
                                             <View style={{ flexDirection: 'row', justifyContent: "space-between" }}>
-                                                <Text style={[styles.eventTitle, { color: getColorTextByUserId(item.user_id) }]}>{item.title}</Text>
-                                                {item.is_group && (<Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>{count}/{item.pocet_lidi}</Text>)}
+                                                <Text style={[styles.eventTitle, { color: textColor }]}>{item.title}</Text>
+                                                {item.is_group && (<Text style={[styles.eventTime, { color: textColor }]}>{count}/{item.pocet_lidi}</Text>)}
                                             </View>
-                                            <Text style={[styles.eventTime, { color: getColorTextByUserId(item.user_id) }]}>
+                                            <Text style={[styles.eventTime, { color: textColor }]}>
                                                 {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
                                             </Text>
                                             {item.is_group && item.pocet_lidi > count && userJoined.length != 1 && (

@@ -1,3 +1,4 @@
+import { fetchColors } from '@/api/get_colors'
 import { fetchEventsException } from '@/api/get_event_exceptions'
 import { fetchEvents } from '@/api/get_events'
 import { fetchWeeklyEvents } from '@/api/get_weekly_events'
@@ -82,12 +83,21 @@ interface EventException {
   puvodni_end: Date;
 }
 
+interface Color {
+  id: number;
+  name: string;
+  background_color: string;
+  text_color: string;
+  user_id: number;
+}
+
 
 dayjs.locale('cs')
 
 export default function SharedCalendar() {
   const SCREEN_HEIGHT = Dimensions.get('window').height
   const router = useRouter()
+  const [colors, setColors] = useState<Color[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [weeklyEvents, setWeeklyEvents] = useState<WeeklyEvent[]>([])
   const [eventException, setEventException] = useState<EventException[]>([])
@@ -125,6 +135,15 @@ export default function SharedCalendar() {
     }
   }
 
+  const loadColors = async () => {
+    try {
+      const data = await fetchColors()
+      setColors(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   const loadWeeklyEvents = async () => {
     try {
       const data = await fetchWeeklyEvents()
@@ -144,11 +163,36 @@ export default function SharedCalendar() {
   }
 
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
+    let mounted = true;
+
+    loadColors(); // načtení na start
+
+    const channel = supabase.channel('realtime:public:colors');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'colors'
+    }, (payload) => {
+      console.log('Change in colors:', payload);
+      if (mounted) {
+        loadColors(); // načti nové eventy
+      }
+    });
+
+    channel.subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
 
     loadEvents(); // načtení na start
+    console.log(events)
 
     const channel = supabase.channel('realtime:public:events');
 
@@ -263,6 +307,7 @@ export default function SharedCalendar() {
           onPressCell={handleCellPress}
           onPressDay={handlePressDay}
           hourHeight={(SCREEN_HEIGHT - 170) / 7}
+          colors={colors}
         />
       )
     } else if (selectedIndex === 0) {
@@ -274,6 +319,7 @@ export default function SharedCalendar() {
           defaultDate={selectedDate ?? new Date()}
           onPressCell={handleCellPress}
           hourHeight={100}
+          colors={colors}
         />
       )
     } else {
@@ -284,6 +330,7 @@ export default function SharedCalendar() {
           eventsException={eventException}
           defaultDate={selectedDate ?? new Date()}
           onPressDay={handlePressDay}
+          colors={colors}
         />
       )
     }
@@ -319,6 +366,7 @@ export default function SharedCalendar() {
         date={selectedDate}
         events={events}
         weeklyEvents={weeklyEvents}
+        colors={colors}
         eventsException={eventException}
         onCreateEvent={() => {
           setNavigateAfterClose(true)

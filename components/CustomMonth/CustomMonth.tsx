@@ -1,3 +1,4 @@
+import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useMemo, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { ThemedText } from '../themed-text';
@@ -33,42 +34,31 @@ interface EventException {
     puvodni_end: Date;
 }
 
+interface Color {
+    id: number;
+    name: string;
+    background_color: string;
+    text_color: string;
+    user_id: number;
+}
+
 interface MonthCalendarProps {
     events: Event[];
     weeklyEvents: WeeklyEvent[];
     eventsException: EventException[];
     onPressDay?: (date: Date) => void;
     defaultDate?: Date;
+    colors: Color[];
 }
 
-const COLORS = [
-    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
-    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
-    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
-];
 
-const COLORS_TEXT = [
-    '#FFF', '#FFF', '#000', '#FFF', '#FFF',
-    '#FFF', '#000', '#FFF', '#000', '#000',
-    '#FFF', '#000', '#FFF', '#000', '#FFF',
-    '#000', '#FFF', '#000', '#FFF', '#FFF'
-];
 
-export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, defaultDate }: MonthCalendarProps) {
+export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, defaultDate, colors }: MonthCalendarProps) {
     const [currentMonth, setCurrentMonth] = useState(defaultDate || new Date());
     const SCREEN_HEIGHT = Dimensions.get('window').height;
 
-    const getColor = (id: string | number) => {
-        const n = typeof id === 'string' ? [...id].reduce((a, c) => a + c.charCodeAt(0), 0) : id;
-        return COLORS[n % COLORS.length];
-    };
-    const getTextColor = (id: string | number) => {
-        const n = typeof id === 'string' ? [...id].reduce((a, c) => a + c.charCodeAt(0), 0) : id;
-        return COLORS_TEXT[n % COLORS.length];
-    };
-
     const firstDayOfMonth = useMemo(() => new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1), [currentMonth]);
+    const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
 
     const days = useMemo(() => {
         const startDay = (firstDayOfMonth.getDay() + 6) % 7; // pondělí = 0
@@ -189,23 +179,28 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
             {/* Kalendářní mřížka */}
             <ScrollView style={{ height: SCREEN_HEIGHT - 100 }}>
                 {Array.from({ length: days.length / 7 }).map((_, rowIdx) => (
-                    <ThemedView key={rowIdx} style={{ flexDirection: 'row', minHeight: (SCREEN_HEIGHT - 170) / Math.ceil(days.length / 7) }}>
+                    <ThemedView key={`row-${rowIdx}`} style={{ flexDirection: 'row', minHeight: (SCREEN_HEIGHT - 170) / Math.ceil(days.length / 7) }}>
                         {days.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, idx) => {
-                            if (!day) return <ThemedView key={idx} style={styles.dayCell} />;
+                            if (!day) return <ThemedView key={`empty-${rowIdx}-${idx}`} style={styles.dayCell} />;
                             const dayEvents = getEventsForDay(day);
 
                             return (
-                                <Pressable onPress={() => onPressDay?.(day)} style={styles.dayCell}>
+                                <Pressable key={`day-${day.toISOString()}`} onPress={() => onPressDay?.(day)} style={styles.dayCell}>
                                     <ThemedView key={idx}>
                                         <Pressable onPress={() => onPressDay?.(day)} style={{ padding: 2 }}>
                                             <ThemedText style={{ fontWeight: '500' }}>{day.getDate()}</ThemedText>
                                         </Pressable>
 
-                                        {dayEvents.map((e, i) => (
-                                            <Pressable onPress={() => onPressDay?.(day)} key={i} style={[styles.eventBadge, { backgroundColor: e.is_group ? "red" : getColor(e.user_id) }]}>
-                                                <ThemedText style={{ fontSize: 10, color: e.is_group ? "white" : getTextColor(e.user_id), lineHeight: 16 }}>{e.title}</ThemedText>
-                                            </Pressable>
-                                        ))}
+                                        {dayEvents.map((e, i) => {
+                                            const colorObj = colors.find(c => c.user_id === e.user_id); // najde barvu pro daného uživatele
+                                            const backgroundColor = e.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
+                                            const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
+                                            return (
+                                                <Pressable onPress={() => onPressDay?.(day)} key={`event-${e.id}-${day.toISOString()}`} style={[styles.eventBadge, { backgroundColor: backgroundColor, borderWidth: 0.5, borderColor: e.is_group ? "yellow" : borderColor }]}>
+                                                    <ThemedText style={{ fontSize: 10, color: textColor, lineHeight: 16 }}>{e.title}</ThemedText>
+                                                </Pressable>
+                                            )
+                                        })}
                                     </ThemedView>
                                 </Pressable>
                             );

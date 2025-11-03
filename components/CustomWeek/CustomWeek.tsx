@@ -1,3 +1,4 @@
+import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { ThemedText } from '../themed-text';
@@ -33,6 +34,14 @@ interface EventException {
   puvodni_end: Date;
 }
 
+interface Color {
+  id: number;
+  name: string;
+  background_color: string;
+  text_color: string;
+  user_id: number;
+}
+
 interface WeekCalendarProps {
   events: Event[];
   weeklyEvents: WeeklyEvent[];
@@ -41,6 +50,7 @@ interface WeekCalendarProps {
   onPressDay?: (date: Date) => void;
   hourHeight?: number;
   hourWidth?: number;
+  colors: Color[];
 }
 
 export default function WeekCalendar({
@@ -51,6 +61,7 @@ export default function WeekCalendar({
   onPressDay,
   hourHeight = 60,
   hourWidth = 80,
+  colors
 }: WeekCalendarProps) {
   // 🗓️ Start aktuálního týdne (pondělí)
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -62,31 +73,7 @@ export default function WeekCalendar({
     return monday;
   });
 
-  const COLORS = [
-    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
-    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
-    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
-  ];
-
-  const COLORS_TEXT = [
-    '#FFF', '#FFF', '#000', '#FFF', '#FFF', '#FFF', '#000', '#FFF', '#000', '#000',
-    '#FFF', '#000', '#FFF', '#000', '#FFF', '#000', '#FFF', '#000', '#FFF', '#FFF'
-  ];
-
-  const getColorByUserId = (id: string | number) => {
-    const n = typeof id === 'string'
-      ? [...id].reduce((acc, c) => acc + c.charCodeAt(0), 0)
-      : id;
-    return COLORS[n % COLORS.length];
-  };
-
-  const getColorTextByUserId = (id: string | number) => {
-    const n = typeof id === 'string'
-      ? [...id].reduce((acc, c) => acc + c.charCodeAt(0), 0)
-      : id;
-    return COLORS_TEXT[n % COLORS_TEXT.length];
-  };
+  const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
 
   const days = useMemo(() => getWeekDays(currentWeekStart), [currentWeekStart]);
   const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -303,6 +290,9 @@ export default function WeekCalendar({
                           const duration = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60);
                           const offset = e.start.getMinutes() / 60;
                           const col = eventColumns.get(e) || 0;
+                          const colorObj = colors.find(c => c.user_id === e.user_id); // najde barvu pro daného uživatele
+                          const backgroundColor = e.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
+                          const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
                           if (e.start.getHours() === hour && e.start.getDate() === day.getDate() && e.start.getMonth() === day.getMonth() && e.start.getFullYear() === day.getFullYear()) {
                             return (
                               <ThemedView
@@ -314,15 +304,17 @@ export default function WeekCalendar({
                                   left: offset * hourWidth,
                                   height: 20,
                                   width: hourWidth * duration,
-                                  backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
+                                  backgroundColor: backgroundColor,
                                   borderRadius: 4,
                                   padding: 2,
+                                  borderWidth: 0.5,
+                                  borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
                                 <ThemedText style={{
                                   fontSize: 10,
                                   lineHeight: 18,
-                                  color: e.is_group ? "white" : getColorTextByUserId(e.user_id)
+                                  color: textColor
                                 }}>
                                   {e.title}
                                 </ThemedText>
@@ -344,15 +336,17 @@ export default function WeekCalendar({
                                   left: 0,
                                   height: 20,
                                   width: hourWidth * dayDuration,
-                                  backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
+                                  backgroundColor: backgroundColor,
                                   borderRadius: 4,
                                   padding: 2,
+                                  borderWidth: 0.5,
+                                  borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
                                 <ThemedText style={{
                                   fontSize: 10,
                                   lineHeight: 18,
-                                  color: e.is_group ? "white" : getColorTextByUserId(e.user_id)
+                                  color: textColor
                                 }}>
                                   {e.title}
                                 </ThemedText>
@@ -370,15 +364,17 @@ export default function WeekCalendar({
                                   left: 0,
                                   height: 20,
                                   width: hourWidth * duration,
-                                  backgroundColor: e.is_group ? "red" : getColorByUserId(e.user_id),
+                                  backgroundColor: backgroundColor,
                                   borderRadius: 4,
                                   padding: 2,
+                                  borderWidth: 0.5,
+                                  borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
                                 <ThemedText style={{
                                   fontSize: 10,
                                   lineHeight: 18,
-                                  color: e.is_group ? "white" : getColorTextByUserId(e.user_id)
+                                  color: textColor
                                 }}>
                                   {e.title}
                                 </ThemedText>

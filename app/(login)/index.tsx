@@ -129,7 +129,7 @@ export default function Login() {
                 </Button>
                 <View style={{ width: '100%' }}>
                     <Link
-                        href="/modal"
+                        href="/reset_password"
                         style={{
                             color: buttonColor,
                             textAlign: 'left',
@@ -137,6 +137,18 @@ export default function Login() {
                         }}
                     >
                         Zapomenuté heslo
+                    </Link>
+                </View>
+                <View style={{ width: '100%' }}>
+                    <Link
+                        href="/register"
+                        style={{
+                            color: buttonColor,
+                            textAlign: 'left',
+                            fontWeight: 'bold',
+                        }}
+                    >
+                        Registrovat se
                     </Link>
                 </View>
             </ThemedView>
