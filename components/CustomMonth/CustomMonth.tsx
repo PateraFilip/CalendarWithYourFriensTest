@@ -1,8 +1,14 @@
+import { fetchUsers } from '@/api/get_users';
+import { fetchUserEvents } from '@/api/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import React, { useMemo, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
+
+
 
 interface Event {
     id: number;
@@ -51,11 +57,30 @@ interface MonthCalendarProps {
     colors: Color[];
 }
 
+interface User {
+    id: number;
+    username: string;
+    jmeno: string;
+    prijmeni: string;
+    email: string;
+    datum_narozeni: string
+}
 
+interface UserEvent {
+    event_id: number;
+    user_id: number;
+}
+
+const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, defaultDate, colors }: MonthCalendarProps) {
     const [currentMonth, setCurrentMonth] = useState(defaultDate || new Date());
     const SCREEN_HEIGHT = Dimensions.get('window').height;
+    const [users, setUsers] = useState<User[]>([]);
+    const [userEvents, setUserEvents] = useState<UserEvent[]>([])
+    const insets = useSafeAreaInsets();
 
     const firstDayOfMonth = useMemo(() => new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1), [currentMonth]);
     const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
@@ -71,6 +96,74 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
 
         return daysArray;
     }, [currentMonth, firstDayOfMonth]);
+
+    const loadUsers = async () => {
+        try {
+            const data = await fetchUsers()
+            setUsers(data)
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
+    const loadUserEvent = async () => {
+        try {
+            const data = await fetchUserEvents()
+            setUserEvents(data)
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
+    useEffect(() => {
+        let mounted = true;
+
+        loadUsers(); // načtení na start
+
+        const channel = supabase.channel('realtime:public:users');
+
+        channel.on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'users'
+        }, (payload) => {
+            console.log('Change in users:', payload);
+            if (mounted) {
+                loadUsers(); // načti nové eventy
+            }
+        });
+
+        channel.subscribe();
+
+        return () => {
+            mounted = false;
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
+    useEffect(() => {
+        let mounted = true;
+
+        loadUserEvent()
+
+        const channel = supabase.channel('realtime:public:user_events');
+
+        channel.on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'event_users'
+        }, (payload) => {
+            console.log('Change in events:', payload);
+            if (mounted) loadUserEvent(); // načti nové eventy
+        });
+
+        channel.subscribe();
+
+        return () => {
+            mounted = false;
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     const handlePrevMonth = () => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     const handleNextMonth = () => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
@@ -176,8 +269,7 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
                 ))}
             </ThemedView>
 
-            {/* Kalendářní mřížka */}
-            <ScrollView style={{ height: SCREEN_HEIGHT - 100 }}>
+            <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
                 {Array.from({ length: days.length / 7 }).map((_, rowIdx) => (
                     <ThemedView key={`row-${rowIdx}`} style={{ flexDirection: 'row', minHeight: (SCREEN_HEIGHT - 170) / Math.ceil(days.length / 7) }}>
                         {days.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, idx) => {
@@ -195,9 +287,11 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
                                             const colorObj = colors.find(c => c.user_id === e.user_id); // najde barvu pro daného uživatele
                                             const backgroundColor = e.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
                                             const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
+                                            const count = userEvents.filter(u => u.event_id === e.id).length;
                                             return (
                                                 <Pressable onPress={() => onPressDay?.(day)} key={`event-${e.id}-${day.toISOString()}`} style={[styles.eventBadge, { backgroundColor: backgroundColor, borderWidth: 0.5, borderColor: e.is_group ? "yellow" : borderColor }]}>
-                                                    <ThemedText style={{ fontSize: 10, color: textColor, lineHeight: 16 }}>{e.title}</ThemedText>
+                                                    {!e.is_group && (<ThemedText style={{ fontSize: 10, color: textColor, lineHeight: 16 }} numberOfLines={1} ellipsizeMode="tail">{e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}</ThemedText>)}
+                                                    {e.is_group && (<ThemedText style={{ fontSize: 10, color: textColor, lineHeight: 16 }} numberOfLines={1} ellipsizeMode="tail">{e.title} - {count}/{e.pocet_lidi}</ThemedText>)}
                                                 </Pressable>
                                             )
                                         })}

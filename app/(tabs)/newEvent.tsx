@@ -485,6 +485,14 @@ export default function NewEvent() {
                             { label: 'Směny na měsíc', value: 'monthly' },
                         ]}
                         placeholder={{}}
+                        style={{
+                            inputAndroid: {
+                                color: buttonColor
+                            },
+                            placeholder: {
+                                color: buttonColor, // barva placeholderu
+                            },
+                        }}
                     />
                 )}
 

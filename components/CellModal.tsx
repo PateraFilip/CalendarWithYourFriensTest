@@ -1,3 +1,4 @@
+import { cancelEvent } from '@/api/cancel_event'
 import { fetchUserEvents } from '@/api/getUserEvents'
 import { joinEvent } from '@/api/join_event'
 import { ThemedText } from '@/components/themed-text'
@@ -114,6 +115,20 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
         joinEvent(joinParams);
     }
 
+    function onCancelEvent(event_id: number) {
+        if (!user?.id) {
+            console.error("Uživatel není přihlášen!");
+            return;
+        }
+
+        const cancelParams = {
+            user_id: user.id,
+            event_id: event_id,
+        };
+
+        cancelEvent(cancelParams);
+    }
+
     if (!date) return null
     const hourEvents = [
         // Jednorázové eventy
@@ -207,6 +222,17 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                                     style={styles.createButton}
                                                 >
                                                     Přidat se
+                                                </Button>
+                                            )}
+                                            {item.is_group && userJoined.length == 1 && (
+                                                <Button
+                                                    mode="contained"
+                                                    onPress={() => onCancelEvent(item.id)}
+                                                    buttonColor={buttonColor}
+                                                    labelStyle={{ color: buttonTextColor }}
+                                                    style={styles.createButton}
+                                                >
+                                                    Zrušit účast
                                                 </Button>
                                             )}
 

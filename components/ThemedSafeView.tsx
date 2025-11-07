@@ -13,7 +13,7 @@ export function ThemedSafeView({
     style,
     lightColor,
     darkColor,
-    edges = ['top', 'bottom'],
+    edges = ['top'],
     ...otherProps
 }: ThemedSafeViewProps) {
     const backgroundColor = useThemeColor(

@@ -1,7 +1,8 @@
-import { authenticate } from '@/api/login'
-import { AuthContextType } from '@/types/authContext'
-import { User } from '@/types/user'
-import React, { createContext, ReactNode, useState } from 'react'
+import { authenticate } from '@/api/login';
+import { AuthContextType } from '@/types/authContext';
+import { User } from '@/types/user';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, ReactNode, useState } from 'react';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -13,6 +14,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setLoading(true)
         try {
             const loggedInUser = await authenticate(username, password)
+            await AsyncStorage.setItem('user', JSON.stringify(loggedInUser));
+            await AsyncStorage.setItem('credentials', JSON.stringify({ username, password }));
             setUser(loggedInUser)
         } finally {
             setLoading(false)

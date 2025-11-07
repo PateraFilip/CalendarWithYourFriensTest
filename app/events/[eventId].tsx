@@ -1,6 +1,8 @@
+import { cancelEvent } from '@/api/cancel_event'
 import { createException } from '@/api/create_exception'
 import { deleteEvent, deleteWeeklyEvent } from '@/api/delete_event'
 import { fetchUserEvents } from '@/api/getUserEvents'
+import { fetchUsers } from '@/api/get_users'
 import { joinEvent } from '@/api/join_event'
 import { updateEvent, updateWeeklyEvent } from '@/api/update_event'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
@@ -20,6 +22,15 @@ import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates'
 interface UserEvent {
     event_id: number;
     user_id: number;
+}
+
+interface User {
+    id: number;
+    username: string;
+    jmeno: string;
+    prijmeni: string;
+    email: string;
+    datum_narozeni: string
 }
 
 const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
@@ -54,6 +65,7 @@ export default function EventDetail() {
     const [timeModalVisible, setTimeModalVisible] = useState(false);
     const [timeStep, setTimeStep] = useState<'start' | 'end'>('start'); // krok výběru času
     const [peopleCount, setPeopleCount] = useState(eventObj?.pocet_lidi || 2);
+    const [users, setUsers] = useState<User[]>([]);
 
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
@@ -67,6 +79,41 @@ export default function EventDetail() {
             console.error(err)
         }
     }
+
+    const loadUsers = async () => {
+        try {
+            const data = await fetchUsers()
+            setUsers(data)
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
+    useEffect(() => {
+        let mounted = true;
+
+        loadUsers(); // načtení na start
+
+        const channel = supabase.channel('realtime:public:users');
+
+        channel.on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'users'
+        }, (payload) => {
+            console.log('Change in users:', payload);
+            if (mounted) {
+                loadUsers(); // načti nové eventy
+            }
+        });
+
+        channel.subscribe();
+
+        return () => {
+            mounted = false;
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -236,6 +283,20 @@ export default function EventDetail() {
         joinEvent(joinParams);
     }
 
+    function onCancelEvent(event_id: number) {
+        if (!user?.id) {
+            console.error("Uživatel není přihlášen!");
+            return;
+        }
+
+        const cancelParams = {
+            user_id: user.id,
+            event_id: event_id,
+        };
+
+        cancelEvent(cancelParams);
+    }
+
     const handleTimeConfirm = ({ hours, minutes }: { hours: number; minutes: number }) => {
         if (timeStep === 'start') {
             const start = new Date();
@@ -298,8 +359,8 @@ export default function EventDetail() {
                     </ThemedView>
 
                     <ThemedView style={styles.field}>
-                        <ThemedText style={styles.label}>Zakladatel ID</ThemedText>
-                        <ThemedText>{eventObj.user_id}</ThemedText>
+                        <ThemedText style={styles.label}>Zakladatel</ThemedText>
+                        <ThemedText>{users.find(u => u.id === eventObj.user_id)?.username ?? 'Neznámý uživatel'}</ThemedText>
                     </ThemedView>
 
                     <ThemedView style={styles.field}>
@@ -327,10 +388,10 @@ export default function EventDetail() {
 
                     <ThemedView style={styles.field}>
                         <ThemedText style={styles.label}>Přihlášení uživatelé</ThemedText>
-                        {eventObj.is_group && (<ThemedText>{userJoined.map(u => {
-                            return (u.user_id)
+                        {eventObj.is_group && (<ThemedText>{users.filter(u => u.id === eventObj.user_id)?.map(u => {
+                            return (u.username)
                         }).join(', ')}</ThemedText>)}
-                        {!eventObj.is_group && (<ThemedText>{eventObj.user_id}</ThemedText>)}
+                        {!eventObj.is_group && (<ThemedText>{users.find(u => u.id === eventObj.user_id)?.username}</ThemedText>)}
                     </ThemedView>
                     {eventObj.is_group && eventObj.pocet_lidi > count && isUserJoined.length != 1 && (
                         <View style={styles.buttons}>
@@ -344,6 +405,19 @@ export default function EventDetail() {
                                 Přidat se
                             </Button>
                         </View>)}
+                    {eventObj.is_group && isUserJoined.length == 1 && (
+                        <View style={styles.buttons}>
+                            <Button
+                                mode="contained"
+                                onPress={() => onCancelEvent(eventObj.id)}
+                                buttonColor={buttonColor}
+                                labelStyle={{ color: buttonTextColor }}
+                                style={styles.createButton}
+                            >
+                                Zrušit účast
+                            </Button>
+                        </View>
+                    )}
 
                     {eventObj.user_id === user?.id && (
                         <View style={styles.buttons}>

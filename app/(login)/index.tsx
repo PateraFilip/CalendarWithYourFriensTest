@@ -3,6 +3,8 @@ import { ThemedView } from '@/components/themed-view'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as LocalAuthentication from 'expo-local-authentication'
 import { Link, useRouter } from 'expo-router'
 import React, { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -31,6 +33,45 @@ export default function Login() {
         { light: '#fff', dark: '#000' },
         'text'
     )
+
+    const handleBiometricLogin = async () => {
+        try {
+            // 1️⃣ Ověření, že zařízení podporuje biometriku
+            const compatible = await LocalAuthentication.hasHardwareAsync();
+            const enrolled = await LocalAuthentication.isEnrolledAsync();
+
+            if (!compatible || !enrolled) {
+                alert('Biometrické ověření není dostupné na tomto zařízení.');
+                return;
+            }
+
+            // 2️⃣ Vyvolání nativního biometrického dialogu
+            const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Přihlášení pomocí otisku prstu',
+                fallbackLabel: 'Zadej heslo',
+            });
+
+            if (!result.success) {
+                alert('Ověření otiskem prstu se nezdařilo.');
+                return;
+            }
+
+            // 3️⃣ Po úspěšném ověření načti uložené údaje a přihlaš
+            const stored = await AsyncStorage.getItem('credentials');
+            if (!stored) {
+                alert('Nejsou uloženy přihlašovací údaje. Přihlaš se nejprve ručně.');
+                return;
+            }
+
+            const { username, password } = JSON.parse(stored);
+            await login(username, password);
+            router.replace('/(tabs)');
+        } catch (err) {
+            console.error(err);
+            alert('Chyba při biometrickém přihlášení.');
+        }
+    };
+
 
     const handleLogin = async () => {
         const newErrors = {
@@ -127,6 +168,16 @@ export default function Login() {
                 >
                     Přihlásit se
                 </Button>
+                <Button
+                    mode="outlined"
+                    style={[styles.button, { marginTop: 8 }]}
+                    labelStyle={{ color: buttonColor }}
+                    onPress={handleBiometricLogin}
+                    icon="fingerprint"
+                >
+                    Přihlásit se otiskem prstu
+                </Button>
+
                 <View style={{ width: '100%' }}>
                     <Link
                         href="/reset_password"

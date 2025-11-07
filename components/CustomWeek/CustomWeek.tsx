@@ -1,8 +1,11 @@
+import { fetchUsers } from '@/api/get_users';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import React, { useMemo, useRef, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
+import { fetchUserEvents } from '@/api/getUserEvents'
 
 interface Event {
   id: number;
@@ -53,6 +56,24 @@ interface WeekCalendarProps {
   colors: Color[];
 }
 
+interface User {
+  id: number;
+  username: string;
+  jmeno: string;
+  prijmeni: string;
+  email: string;
+  datum_narozeni: string
+}
+
+interface UserEvent {
+  event_id: number;
+  user_id: number;
+}
+
+const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
 export default function WeekCalendar({
   events,
   weeklyEvents,
@@ -72,6 +93,9 @@ export default function WeekCalendar({
     monday.setHours(0, 0, 0, 0);
     return monday;
   });
+
+  const [users, setUsers] = useState<User[]>([]);
+  const [userEvents, setUserEvents] = useState<UserEvent[]>([])
 
   const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
 
@@ -104,6 +128,74 @@ export default function WeekCalendar({
       (start < currentWeekStart && end >= currentWeekStart)
     );
   });
+
+  const loadUsers = async () => {
+    try {
+      const data = await fetchUsers()
+      setUsers(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const loadUserEvent = async () => {
+    try {
+      const data = await fetchUserEvents()
+      setUserEvents(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadUsers(); // načtení na start
+
+    const channel = supabase.channel('realtime:public:users');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'users'
+    }, (payload) => {
+      console.log('Change in users:', payload);
+      if (mounted) {
+        loadUsers(); // načti nové eventy
+      }
+    });
+
+    channel.subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadUserEvent()
+
+    const channel = supabase.channel('realtime:public:user_events');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'event_users'
+    }, (payload) => {
+      console.log('Change in events:', payload);
+      if (mounted) loadUserEvent(); // načti nové eventy
+    });
+
+    channel.subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   function getWeekDays(start: Date): Date[] {
     return Array.from({ length: 7 }, (_, i) => {
@@ -287,6 +379,7 @@ export default function WeekCalendar({
                         style={[styles.hourCell, { width: hourWidth, minHeight: hourHeight, height: totalColumns * 20, position: 'relative' }]}
                       >
                         {cellEvents.map((e, i) => {
+                          const count = userEvents.filter(u => u.event_id === e.id).length;
                           const duration = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60);
                           const offset = e.start.getMinutes() / 60;
                           const col = eventColumns.get(e) || 0;
@@ -311,13 +404,22 @@ export default function WeekCalendar({
                                   borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
-                                <ThemedText style={{
-                                  fontSize: 10,
-                                  lineHeight: 18,
-                                  color: textColor
-                                }}>
-                                  {e.title}
-                                </ThemedText>
+                                {!e.is_group && (
+                                  <ThemedText style={{
+                                    fontSize: 10,
+                                    lineHeight: 18,
+                                    color: textColor
+                                  }} numberOfLines={1} ellipsizeMode="tail">
+                                    {e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}
+                                  </ThemedText>)}
+                                {e.is_group && (
+                                  <ThemedText style={{
+                                    fontSize: 10,
+                                    lineHeight: 18,
+                                    color: textColor
+                                  }} numberOfLines={1} ellipsizeMode="tail">
+                                    {e.title} - {count}/{e.pocet_lidi}
+                                  </ThemedText>)}
                               </ThemedView>
                             );
                           }
@@ -343,13 +445,22 @@ export default function WeekCalendar({
                                   borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
-                                <ThemedText style={{
-                                  fontSize: 10,
-                                  lineHeight: 18,
-                                  color: textColor
-                                }}>
-                                  {e.title}
-                                </ThemedText>
+                                {!e.is_group && (
+                                  <ThemedText style={{
+                                    fontSize: 10,
+                                    lineHeight: 18,
+                                    color: textColor
+                                  }} numberOfLines={1} ellipsizeMode="tail">
+                                    {e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}
+                                  </ThemedText>)}
+                                {e.is_group && (
+                                  <ThemedText style={{
+                                    fontSize: 10,
+                                    lineHeight: 18,
+                                    color: textColor
+                                  }} numberOfLines={1} ellipsizeMode="tail">
+                                    {e.title} - {count}/{e.pocet_lidi}
+                                  </ThemedText>)}
                               </ThemedView>
                             );
                           }
@@ -371,13 +482,22 @@ export default function WeekCalendar({
                                   borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
-                                <ThemedText style={{
-                                  fontSize: 10,
-                                  lineHeight: 18,
-                                  color: textColor
-                                }}>
-                                  {e.title}
-                                </ThemedText>
+                                {!e.is_group && (
+                                  <ThemedText style={{
+                                    fontSize: 10,
+                                    lineHeight: 18,
+                                    color: textColor
+                                  }} numberOfLines={1} ellipsizeMode="tail">
+                                    {e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}
+                                  </ThemedText>)}
+                                {e.is_group && (
+                                  <ThemedText style={{
+                                    fontSize: 10,
+                                    lineHeight: 18,
+                                    color: textColor
+                                  }} numberOfLines={1} ellipsizeMode="tail">
+                                    {e.title} - {count}/{e.pocet_lidi}
+                                  </ThemedText>)}
                               </ThemedView>
                             );
                           }

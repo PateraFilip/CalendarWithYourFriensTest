@@ -1,57 +1,57 @@
 {
-    "expo": {
-        "name": "CalendarWithFriends",
-        "slug": "CalendarWithFriends",
-        "version": "1.0.0",
-        "orientation": "portrait",
-        "icon": "./assets/images/icon.png",
-        "scheme": "calendarwithfriends",
-        "userInterfaceStyle": "automatic",
-        "newArchEnabled": true,
-        "ios": {
-            "supportsTablet": true,
-            "bundleIdentifier": "com.macicek0.CalendarWithFriends",
-            "infoPlist": {
-                "ITSAppUsesNonExemptEncryption": false
-            }
-        },
-        "android": {
-            "googleServicesFile": "./google-services.json",
-            "adaptiveIcon": {
-                "foregroundImage": "./assets/images/splash-icon.png"
-            },
-            "edgeToEdgeEnabled": true,
-            "predictiveBackGestureEnabled": false,
-            "package": "com.macicek0.CalendarWithFriends"
-        },
-        "web": {
-            "output": "static",
-            "favicon": "./assets/images/splash-icon.png"
-        },
-        "plugins": [
-            "expo-router",
-            [
-                "expo-splash-screen",
-                {
-                    "backgroundColor": "#232323",
-                    "image": "./assets/images/splash-icon.png",
-                    "dark": {
-                        "image": "./assets/images/splash-icon.png",
-                        "backgroundColor": "#000000"
-                    },
-                    "imageWidth": 200
-                }
-            ]
-        ],
-        "experiments": {
-            "typedRoutes": true,
-            "reactCompiler": true
-        },
-        "extra": {
-            "router": {},
-            "eas": {
-                "projectId": "f18cf861-7869-4b19-aca2-2bb1ce2696ca"
-            }
+  "expo": {
+    "name": "CalendarWithFriends",
+    "slug": "CalendarWithFriends",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "calendarwithfriends",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.macicek0.CalendarWithFriends",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/splash-icon.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.macicek0.CalendarWithFriends"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/splash-icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#232323",
+          "image": "./assets/images/splash-icon.png",
+          "dark": {
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#000000"
+          },
+          "imageWidth": 200
         }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "64287a6a-f138-48c2-9ca9-fb310ba6ba79"
+      }
     }
+  }
 }

@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
+import { createClient } from '@supabase/supabase-js';
 import dayjs from 'dayjs';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -23,6 +24,10 @@ interface Color {
   text_color: string;
   user_id: number | null;
 }
+
+const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 export default function ModalScreen() {
   const [email, setEmail] = useState('')
@@ -54,13 +59,40 @@ export default function ModalScreen() {
   const [selectedColor, setSelectedColor] = useState<Color | null>(null);
 
 
+  const loadColors = async () => {
+    try {
+      const data = await fetchColors()
+      setColors(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   useEffect(() => {
-    fetchColors()
-      .then(setColors)
-      .catch(console.error);
+    let mounted = true;
+
+    loadColors(); // načtení na start
+
+    const channel = supabase.channel('realtime:public:colors');
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'colors'
+    }, (payload) => {
+      console.log('Change in colors:', payload);
+      if (mounted) {
+        loadColors(); // načti nové eventy
+      }
+    });
+
+    channel.subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
   }, []);
-
-
 
 
 
