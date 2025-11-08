@@ -388,9 +388,16 @@ export default function EventDetail() {
 
                     <ThemedView style={styles.field}>
                         <ThemedText style={styles.label}>Přihlášení uživatelé</ThemedText>
-                        {eventObj.is_group && (<ThemedText>{users.filter(u => u.id === eventObj.user_id)?.map(u => {
-                            return (u.username)
-                        }).join(', ')}</ThemedText>)}
+                        {eventObj.is_group && (<ThemedText>
+                            {users
+                                .filter(u =>
+                                    userEvents.some(
+                                        ue => ue.user_id === u.id && ue.event_id === eventObj.id
+                                    )
+                                )
+                                .map(u => u.username)
+                                .join(', ')}
+                        </ThemedText>)}
                         {!eventObj.is_group && (<ThemedText>{users.find(u => u.id === eventObj.user_id)?.username}</ThemedText>)}
                     </ThemedView>
                     {eventObj.is_group && eventObj.pocet_lidi > count && isUserJoined.length != 1 && (
