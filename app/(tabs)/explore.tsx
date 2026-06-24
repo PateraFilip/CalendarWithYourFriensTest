@@ -1,6 +1,6 @@
-import { fetchColors } from '@/api/get_colors';
-import { fetchUsers } from '@/api/get_users';
-import { updateColor } from '@/api/update_color';
+import { fetchUsers } from '@/api/users/get_users';
+import { fetchMyFriendships, Friendship, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend } from '@/api/friends/friendships';
+import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -8,24 +8,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { createClient } from '@supabase/supabase-js';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Button, TextInput } from 'react-native-paper';
-import RNPickerSelect from 'react-native-picker-select';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import ColorPicker from '../../components/ColorPicker';
-
-
-interface Color {
-    id: number;
-    name: string;
-    background_color: string;
-    text_color: string;
-    user_id: number | null;
-}
+import React, { useEffect, useState, useCallback } from 'react';
+import { FlatList, StyleSheet, View, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 
 interface User {
-    id: number;
+    id: string; // changed to string according to users table
     username: string;
     jmeno: string;
     prijmeni: string;
@@ -33,236 +21,260 @@ interface User {
     datum_narozeni: string
 }
 
-const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-export default function TabTwoScreen() {
+export default function PeopleScreen() {
     const { user } = useAuth()
-    const [colors, setColors] = useState<Color[]>([]);
     const [users, setUsers] = useState<User[]>([]);
-    const [selectedUser, setSelectedUser] = useState<User>();
-    const usersItems = users
-        .map(u => ({
-            value: u.id,
-            label: u.username,
-        }))
-        .sort((a, b) => (a.value === user?.id ? -1 : b.value === user?.id ? 1 : 0));
-
-    const colorObj = colors.find(c => c.user_id === user?.id) ?? null; // najde barvu pro daného uživatele
-    const [selectedColor, setSelectedColor] = useState<Color | null>(colorObj);
-    const [errors, setErrors] = useState<{ color: boolean }>(
-        {
-            color: false
-        }
-    )
-
-    const loadColors = async () => {
-        try {
-            const data = await fetchColors()
-            setColors(data)
-        } catch (err) {
-            console.error(err)
-        }
-    }
-
-    const loadUsers = async () => {
-        try {
-            const data = await fetchUsers()
-            setUsers(data)
-        } catch (err) {
-            console.error(err)
-        }
-    }
+    const [friendships, setFriendships] = useState<Friendship[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
-    const buttonTextColor = useThemeColor(
-        { light: '#fff', dark: '#000' },
-        'text'
-    )
     const labelColor = useThemeColor(
         { light: '#f8f8f8ff', dark: '#1C1C1E' },
         'text'
     )
+    const surfaceColor = useThemeColor({ light: '#fff', dark: '#2A2A2A' }, 'surface');
+    const borderColor = useThemeColor({ light: '#E5E5E5', dark: '#444' }, 'text');
+    const subTextColor = useThemeColor({ light: '#666', dark: '#CCC' }, 'text');
 
-    useEffect(() => {
-        let mounted = true;
-
-        loadColors(); // načtení na start
-
-        const channel = supabase.channel('realtime:public:colors');
-
-        channel.on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'colors'
-        }, (payload) => {
-            console.log('Change in colors:', payload);
-            if (mounted) {
-                loadColors(); // načti nové eventy
-            }
-        });
-
-        channel.subscribe();
-
-        return () => {
-            mounted = false;
-            supabase.removeChannel(channel);
-        };
-    }, []);
-
-    useEffect(() => {
-        let mounted = true;
-
-        loadUsers(); // načtení na start
-
-        const channel = supabase.channel('realtime:public:users');
-
-        channel.on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'users'
-        }, (payload) => {
-            console.log('Change in users:', payload);
-            if (mounted) {
-                loadUsers(); // načti nové eventy
-            }
-        });
-
-        channel.subscribe();
-
-        return () => {
-            mounted = false;
-            supabase.removeChannel(channel);
-        };
-    }, []);
-
-    useEffect(() => {
-        setSelectedColor(colorObj);
-    }, [colorObj]);
-
-    const handleChangeColor = async () => {
-        const newErrors = {
-            color: selectedColor === null,
+    const loadData = useCallback(async () => {
+        if (!user) return;
+        try {
+            const usersData = await fetchUsers() as any;
+            const friendshipsData = await fetchMyFriendships(user.id);
+            setUsers(usersData);
+            setFriendships(friendshipsData);
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
         }
+    }, [user?.id]);
 
-        setErrors(newErrors);
-        if (!newErrors.color && selectedColor && user) {
-            try {
-                updateColor(selectedColor.id, user.id)
-            } catch (err) {
-                console.error(err)
-                alert('Chyba připojení')
-            }
-        }
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadData();
+        setRefreshing(false);
     }
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    useEffect(() => {
+        const channel = supabase.channel('explore-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+                loadData();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, (payload) => {
+                if (payload.eventType === 'DELETE') {
+                    setFriendships(prev => prev.filter(f => f.id !== payload.old.id));
+                } else if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+                    const newRecord = payload.new as Friendship;
+                    setFriendships(prev => {
+                        const exists = prev.some(f => f.id === newRecord.id);
+                        if (exists) {
+                            return prev.map(f => f.id === newRecord.id ? newRecord : f);
+                        } else {
+                            return [...prev, newRecord];
+                        }
+                    });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [loadData]);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadData();
+        }, [loadData])
+    );
+
+    const handleSendRequest = async (friendId: string) => {
+        if (!user) return;
+        try {
+            setFriendships(prev => [...prev, { id: 'temp', user_id: user.id, friend_id: friendId, status: 'pending', created_at: '' }]);
+            await sendFriendRequest(user.id, friendId);
+        } catch (e) {
+            console.error(e);
+            alert("Nepodařilo se odeslat žádost.");
+            loadData(); // Vrátíme to zpět na reálná data pouze při chybě
+        }
+    };
+
+    const handleAccept = async (friendshipId: string) => {
+        try {
+            setFriendships(prev => prev.map(f => f.id === friendshipId ? { ...f, status: 'accepted' } : f));
+            await acceptFriendRequest(friendshipId);
+        } catch (e) {
+            console.error(e);
+            loadData();
+        }
+    };
+
+    const handleReject = async (friendshipId: string) => {
+        try {
+            setFriendships(prev => prev.filter(f => f.id !== friendshipId));
+            await rejectFriendRequest(friendshipId);
+        } catch (e) {
+            console.error(e);
+            loadData();
+        }
+    };
+
+    const handleRemove = async (friendshipId: string) => {
+        try {
+            setFriendships(prev => prev.filter(f => f.id !== friendshipId));
+            await removeFriend(friendshipId);
+        } catch (e) {
+            console.error(e);
+            loadData();
+        }
+    };
 
     const formatDate = (d?: Date) => (d ? dayjs(d).format('DD. MM. YYYY') : '');
 
-    return (
-        <ThemedView style={styles.container}>
-            <ThemedView style={styles.field}>
-                <ThemedView style={[styles.input, { borderWidth: 1, borderRadius: 10, borderColor: buttonColor }]}>
-                    <ThemedText style={{ position: 'absolute', top: -12, left: 10, fontSize: 14, backgroundColor: labelColor, paddingHorizontal: 5 }}>
-                        Vyber uživatele
-                    </ThemedText>
-                    <RNPickerSelect
-                        onValueChange={(value) => {
-                            setSelectedUser(users.find(u => u.id === value) ?? undefined)
-                            setSelectedColor(colors.find(c => c.user_id === value) ?? null)
-                        }}
-                        value={selectedUser?.id}
-                        items={usersItems}
-                        placeholder={{}}
-                        style={{
-                            inputAndroid: {
-                                color: buttonColor
-                            },
-                            placeholder: {
-                                color: buttonColor, // barva placeholderu
-                            },
-                        }}
-                    />
-                </ThemedView>
-                <ThemedText>Přezdívka: {selectedUser?.username}</ThemedText>
-                <ThemedText>Jméno: {selectedUser?.jmeno}</ThemedText>
-                <ThemedText>Příjmení: {selectedUser?.prijmeni}</ThemedText>
-                <ThemedText>Email: {selectedUser?.email}</ThemedText>
-                <ThemedText>Datum narození: {' '}
-                    {selectedUser?.datum_narozeni
-                        ? formatDate(new Date(selectedUser.datum_narozeni))
-                        : ''}</ThemedText>
-                {selectedUser?.id == user?.id && (<ThemedView style={styles.input}>
-                    <ColorPicker
-                        colors={colors}
-                        selectedColor={selectedColor}
-                        setSelectedColor={setSelectedColor}
-                        error={errors.color}
-                        setError={(val) => setErrors((e) => ({ ...e, color: val }))}
-                    />
-                </ThemedView>
-                )}
-                {selectedUser?.id != user?.id && (<ThemedView style={styles.input}>
-                    <TextInput
-                        mode="outlined"
-                        label="Barva"
-                        editable={false}
-                        value={selectedColor ? selectedColor.name : undefined}
-                        style={{ backgroundColor: 'transparent' }}
-                        right={selectedColor ? (
-                            <TextInput.Icon
-                                icon={() => (
-                                    <View
-                                        style={{
-                                            width: 16,
-                                            height: 16,
-                                            borderRadius: 8,
-                                            backgroundColor: selectedColor.background_color,
-                                            marginRight: 8,
-                                            borderWidth: 1,
-                                            borderColor: '#ccc',
-                                        }}
-                                    />
-                                )}
-                            />
-                        ) : undefined}
-                        left={
-                            <TextInput.Icon
-                                icon={() => (
-                                    <MaterialCommunityIcons
-                                        name="palette"
-                                        size={20}
-                                        color={buttonColor}
-                                    />
-                                )}
-                            />
-                        }
-                    />
-                </ThemedView>)}
+    const renderItem = ({ item }: { item: User & { friendship?: Friendship } }) => {
+        if (!user) return null;
+        
+        const isMe = item.id.toString() === user.id.toString();
+        const friendship = item.friendship;
 
-                {colorObj?.id != selectedColor?.id && selectedUser?.id == user?.id && (<Button
-                    mode="contained"
-                    style={styles.button}
-                    labelStyle={{ color: buttonTextColor }}
-                    buttonColor={buttonColor}
-                    onPress={handleChangeColor} // volání FastAPI
-                >
-                    Potvdit změnu barvy
-                </Button>)}
+        const isAccepted = friendship?.status === 'accepted';
+        const isPending = friendship?.status === 'pending';
+        const iSentRequest = isPending && friendship?.user_id.toString() === user.id.toString();
+        const theySentRequest = isPending && friendship?.friend_id.toString() === user.id.toString();
+
+        return (
+            <ThemedView style={[styles.card, { backgroundColor: surfaceColor, borderColor, borderWidth: 1 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <ThemedText style={{ fontSize: 18, fontWeight: 'bold' }}>
+                        {item.username} {isMe && '(To jsi ty)'}
+                    </ThemedText>
+
+                    {!isMe && (
+                        <View>
+                            {isAccepted && (
+                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                    <View style={styles.badge}>
+                                        <ThemedText style={{ fontSize: 12, fontWeight: 'bold', color: '#fff' }}>Přátelé</ThemedText>
+                                    </View>
+                                    <TouchableOpacity onPress={() => handleRemove(friendship!.id)} style={[styles.btn, { backgroundColor: '#F44336' }]}>
+                                        <ThemedText style={styles.btnText}>Odebrat</ThemedText>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            {iSentRequest && (
+                                <ThemedText style={{ fontSize: 12, color: '#888' }}>Žádost odeslána</ThemedText>
+                            )}
+                            {theySentRequest && (
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <TouchableOpacity onPress={() => handleAccept(friendship!.id)} style={[styles.btn, { backgroundColor: '#4CAF50' }]}>
+                                        <ThemedText style={styles.btnText}>Přijmout</ThemedText>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleReject(friendship!.id)} style={[styles.btn, { backgroundColor: '#F44336' }]}>
+                                        <ThemedText style={styles.btnText}>Odmítnout</ThemedText>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            {!friendship && (
+                                <TouchableOpacity onPress={() => handleSendRequest(item.id)} style={[styles.btn, { backgroundColor: '#FF00AA' }]}>
+                                    <ThemedText style={styles.btnText}>+ Přidat</ThemedText>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
+                </View>
+
+                {(isAccepted || isMe) && (
+                    <View style={[styles.details, { borderColor }]}>
+                        <ThemedText style={[styles.detailText, { color: subTextColor }]}>Jméno: {item.jmeno} {item.prijmeni}</ThemedText>
+                        <ThemedText style={[styles.detailText, { color: subTextColor }]}>E-mail: {item.email}</ThemedText>
+                        {item.datum_narozeni && (
+                            <ThemedText style={[styles.detailText, { color: subTextColor }]}>Narození: {formatDate(new Date(item.datum_narozeni))}</ThemedText>
+                        )}
+                    </View>
+                )}
             </ThemedView>
-        </ThemedView >
+        );
+    };
+
+    return (
+        <ThemedSafeView style={styles.container}>
+            <View style={styles.header}>
+                <ThemedText type="title">Lidé</ThemedText>
+            </View>
+
+            {loading ? (
+                <ActivityIndicator style={{ marginTop: 50 }} />
+            ) : (
+                <FlatList
+                    data={users.map(u => ({
+                        ...u,
+                        friendship: friendships.find(f => 
+                            (f.user_id.toString() === user?.id?.toString() && f.friend_id.toString() === u.id.toString()) || 
+                            (f.friend_id.toString() === user?.id?.toString() && f.user_id.toString() === u.id.toString())
+                        )
+                    })).sort((a,b) => a.username.localeCompare(b.username))}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={renderItem}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                    contentContainerStyle={styles.scrollContent}
+                />
+            )}
+        </ThemedSafeView>
     )
 }
 
 const styles = StyleSheet.create({
-    input: {
-        width: '100%',
-        backgroundColor: 'transparent'
+    container: {
+        flex: 1,
     },
-    button: {
-        borderRadius: 6,
-        width: '100%',
+    header: {
+        padding: 16,
+        paddingBottom: 8,
     },
-    container: { flex: 1, padding: 16, justifyContent: "center" },
-    field: { marginBottom: 12 },
-})
+    scrollContent: {
+        padding: 16,
+        paddingBottom: 100,
+    },
+    card: {
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+    },
+    badge: {
+        backgroundColor: '#4CAF50',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    btn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    btnText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#FFF',
+    },
+    details: {
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+    },
+    detailText: {
+        fontSize: 14,
+        marginBottom: 4,
+    }
+});

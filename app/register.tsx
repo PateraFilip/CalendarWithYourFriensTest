@@ -1,11 +1,10 @@
-import { fetchColors } from '@/api/get_colors';
-import { register } from '@/api/register';
+import { fetchColors } from '@/api/users/get_colors';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -22,12 +21,8 @@ interface Color {
   name: string;
   background_color: string;
   text_color: string;
-  user_id: number | null;
+  user_id: string | null; // Changed to string for UUID
 }
-
-const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 export default function ModalScreen() {
   const [email, setEmail] = useState('')
@@ -64,7 +59,7 @@ export default function ModalScreen() {
       const data = await fetchColors()
       setColors(data)
     } catch (err) {
-      console.error(err)
+      console.error('Error loading colors:', err)
     }
   }
 
@@ -127,17 +122,79 @@ export default function ModalScreen() {
     setErrors(newErrors);
     if (!newErrors.email && !newErrors.password && !newErrors.passwordControl && !newErrors.firstName && !newErrors.lastname && !newErrors.birthDate && !newErrors.username && !newErrors.color && selectedColor) {
       try {
-        await register(username, password, email, firstName, lastname, birthDate, selectedColor?.id)
-        await login(email, password)
+        // Check if color is available
+        const { data: colorData, error: colorError } = await supabase
+          .from('colors')
+          .select('user_id')
+          .eq('id', selectedColor.id)
+          .single();
+
+        if (colorError || !colorData) {
+          alert('Chyba při kontrole barvy');
+          return;
+        }
+
+        if (colorData.user_id) {
+          alert('Tato barva je již obsazená');
+          return;
+        }
+
+        // Sign up with Supabase Auth directly
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: undefined,
+            data: {
+              username,
+              firstname: firstName,
+              lastname,
+              birthDate,
+              colorId: selectedColor.id,
+            },
+          },
+        });
+
+        if (error) {
+          // If email confirmation fails, continue anyway
+          if (error.message?.includes('email') || error.message?.includes('confirmation')) {
+            console.warn('Email confirmation failed, continuing registration');
+          } else {
+            throw error;
+          }
+        }
+
+        // Assign color to user
+        if (data.user) {
+          const { error: updateColorError } = await supabase
+            .from('colors')
+            .update({ user_id: data.user.id })
+            .eq('id', selectedColor.id);
+
+          if (updateColorError) {
+            alert('Nepodařilo se přiřadit barvu');
+            return;
+          }
+        }
+
+        // Sign in after successful registration
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          alert('Registrace proběhla, ale přihlášení selhalo. Zkus se přihlásit manuálně.');
+          router.replace('/(login)');
+          return;
+        }
 
         router.replace('/(tabs)')
-      } catch (err) {
-        console.error(err)
-        alert('Chyba připojení')
+      } catch (err: any) {
+        alert(err.message || 'Registrace selhala!');
       }
     }
   }
-
 
   if (loading) return <Loading />
   return (
@@ -255,6 +312,7 @@ export default function ModalScreen() {
               </Pressable>
 
               <DatePickerModal
+                  startWeekOnMonday={true}
                 locale="cs"
                 mode="single"
                 visible={dateModalVisible}

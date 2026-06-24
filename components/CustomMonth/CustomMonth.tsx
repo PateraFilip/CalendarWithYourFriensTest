@@ -1,9 +1,11 @@
-import { fetchUsers } from '@/api/get_users';
-import { fetchUserEvents } from '@/api/getUserEvents';
+import { fetchUsers } from '@/api/users/get_users';
+import { fetchUserEvents } from '@/api/events/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { dedupeCalendarEvents, eventInstanceKey, eventsOverlappingDay, mergeDuplicateEvents } from '@/lib/calendarEvents';
 import { createClient } from '@supabase/supabase-js';
+import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
@@ -19,6 +21,8 @@ interface Event {
     pocet_lidi: number;
     pravidelnost: boolean;
     is_group: boolean;
+    original_start?: Date;
+    original_end?: Date;
 }
 
 interface WeeklyEvent {
@@ -53,8 +57,10 @@ interface MonthCalendarProps {
     weeklyEvents: WeeklyEvent[];
     eventsException: EventException[];
     onPressDay?: (date: Date) => void;
+    onPressEvent?: (event: Event) => void;
     defaultDate?: Date;
     colors: Color[];
+    onVisibleDateChange?: (date: Date | ((prev: Date) => Date)) => void;
 }
 
 interface User {
@@ -69,14 +75,15 @@ interface User {
 interface UserEvent {
     event_id: number;
     user_id: number;
+    instance_date?: string;
 }
 
-const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, defaultDate, colors }: MonthCalendarProps) {
-    const [currentMonth, setCurrentMonth] = useState(defaultDate || new Date());
+export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, onPressEvent, defaultDate, colors, onVisibleDateChange }: MonthCalendarProps) {
+    const currentMonth = defaultDate || new Date();
     const SCREEN_HEIGHT = Dimensions.get('window').height;
     const [users, setUsers] = useState<User[]>([]);
     const [userEvents, setUserEvents] = useState<UserEvent[]>([])
@@ -165,90 +172,49 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
         };
     }, []);
 
-    const handlePrevMonth = () => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-    const handleNextMonth = () => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    const handlePrevMonth = () => {
+        console.log('--- PREV MONTH CLICKED ---');
+        onVisibleDateChange?.((prev) => {
+            const newDate = new Date(prev.getFullYear(), prev.getMonth() - 1, 1);
+            console.log(`[CustomMonth] prev=${prev.toISOString()} -> new=${newDate.toISOString()}`);
+            return newDate;
+        });
+    };
+    const handleNextMonth = () => {
+        console.log('--- NEXT MONTH CLICKED ---');
+        onVisibleDateChange?.((prev) => {
+            const newDate = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
+            console.log(`[CustomMonth] prev=${prev.toISOString()} -> new=${newDate.toISOString()}`);
+            return newDate;
+        });
+    };
+
+    const eventsByDay = useMemo(() => {
+        const map = new Map<string, Event[]>();
+        
+        events.forEach(e => {
+            let startD = new Date(e.start);
+            startD.setHours(0,0,0,0);
+            const endD = new Date(e.end);
+            endD.setHours(23,59,59,999);
+
+            while (startD <= endD) {
+                // Přičteme timezone offset, aby toISOString vrátil lokální den
+                const localDate = new Date(startD.getTime() - startD.getTimezoneOffset() * 60000);
+                const dateStr = localDate.toISOString().split('T')[0];
+                if (!map.has(dateStr)) map.set(dateStr, []);
+                map.get(dateStr)!.push(e);
+                startD.setDate(startD.getDate() + 1);
+            }
+        });
+        
+        return map;
+    }, [events]);
 
     const getEventsForDay = (day: Date) => {
-        const dayStart = new Date(day);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(day);
-        dayEnd.setHours(23, 59, 59, 999);
-
-        // Jednorázové eventy
-        const dayEvents = events.filter(e => new Date(e.start) <= dayEnd && new Date(e.end) >= dayStart);
-
-        // Týdenní eventy
-        const daysShort = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-        const weekDay = daysShort[day.getDay()];
-        const weekDayPrev = daysShort[(day.getDay() + 6) % 7];
-
-        let weeklyDayEvents: Event[] = [];
-
-        weeklyEvents.forEach(w => {
-            const wDay = w.den.trim().normalize();
-            if (wDay !== weekDay && wDay !== weekDayPrev) return;
-
-            let start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
-            let end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
-            const exceptionDelete = eventsException.some(ex =>
-                ex.event_id === w.id &&
-                new Date(ex.puvodni_start).getTime() === start.getTime() &&
-                ex.typ == "DELETE"
-            );
-            if (end < start) {
-                if (wDay === weekDay) end.setDate(end.getDate() + 1);
-                else if (wDay === weekDayPrev) start.setDate(start.getDate() - 1);
-            }
-
-            const exception = eventsException.find(ex =>
-                ex.event_id === w.id &&
-                new Date(ex.puvodni_start).getTime() === start.getTime()
-            );
-            if (exception) {
-                console.log(`⚙️ Výjimka nalezena pro event ${w.id}, upravuji časy`);
-                start.setTime(new Date(exception.start).getTime());
-                end.setTime(new Date(exception.end).getTime());
-                if (end < start) {
-                    if (wDay === weekDay) end.setDate(end.getDate() + 1);
-                    else if (wDay === weekDayPrev) start.setDate(start.getDate() - 1);
-                }
-            }
-            if (exceptionDelete) {
-                console.log(`⏭️ Event ${w.id} přeskočen kvůli výjimce`);
-                return; // nepushuj tento event
-            }
-            if (wDay === weekDayPrev && end > start) {
-                return
-            }
-
-            weeklyDayEvents.push({
-                id: w.id,
-                title: w.title,
-                start,
-                end,
-                user_id: w.user_id,
-                pocet_lidi: 1,
-                pravidelnost: true,
-                is_group: false
-            });
-            console.log(weeklyDayEvents)
-        });
-
-        // Odebrání duplicit z weeklyDayEvents
-        const uniqueWeeklyDayEvents = Array.from(
-            new Map(
-                weeklyDayEvents.map(e => [`${e.title}_${e.user_id}`, e])
-            ).values()
-        );
-
-        const uniqueDayEvents = Array.from(
-            new Map(
-                dayEvents.map(e => [`${e.title}_${e.user_id}`, e])
-            ).values()
-        );
-
-
-        return [...uniqueDayEvents, ...uniqueWeeklyDayEvents];
+        const localDate = new Date(day.getTime() - day.getTimezoneOffset() * 60000);
+        const dateStr = localDate.toISOString().split('T')[0];
+        return eventsByDay.get(dateStr) || [];
     };
 
 
@@ -287,11 +253,71 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
                                             const colorObj = colors.find(c => c.user_id === e.user_id); // najde barvu pro daného uživatele
                                             const backgroundColor = e.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
                                             const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
-                                            const count = userEvents.filter(u => u.event_id === e.id).length;
+                                            // Pro pravidelné události filtrujeme podle instance_date
+                                            const itemInstanceDate = dayjs(e.start).format('YYYY-MM-DD');
+                                            // Check for CLEARED marker for this specific instance
+                                            const clearedMarker = userEvents.find(u => u.event_id === e.id && u.instance_date === `CLEARED-${itemInstanceDate}`);
+                                            const instanceSpecificEvents = userEvents.filter(u => u.event_id === e.id && u.instance_date === itemInstanceDate);
+                                            let relevantUserEvents: any[];
+                                            if (e.pravidelnost) {
+                                                if (clearedMarker) {
+                                                    relevantUserEvents = [];
+                                                } else if (instanceSpecificEvents.length > 0) {
+                                                    relevantUserEvents = instanceSpecificEvents;
+                                                } else {
+                                                    relevantUserEvents = userEvents.filter(u => u.event_id === e.id && !u.instance_date);
+                                                }
+                                            } else {
+                                                relevantUserEvents = userEvents.filter(u => u.event_id === e.id && !u.instance_date);
+                                            }
+                                            const count = relevantUserEvents.length;
                                             return (
-                                                <Pressable onPress={() => onPressDay?.(day)} key={`event-${e.id}-${day.toISOString()}`} style={[styles.eventBadge, { backgroundColor: backgroundColor, borderWidth: 0.5, borderColor: e.is_group ? "yellow" : borderColor }]}>
-                                                    {!e.is_group && (<ThemedText style={{ fontSize: 10, color: textColor, lineHeight: 16 }} numberOfLines={1} ellipsizeMode="tail">{e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}</ThemedText>)}
-                                                    {e.is_group && (<ThemedText style={{ fontSize: 10, color: textColor, lineHeight: 16 }} numberOfLines={1} ellipsizeMode="tail">{e.title} - {count}/{e.pocet_lidi}</ThemedText>)}
+                                                <Pressable onPress={() => onPressEvent?.(e)} key={eventInstanceKey(e)} style={[styles.eventBadge, { backgroundColor: backgroundColor, borderWidth: 0.5, borderColor: e.is_group ? "yellow" : borderColor }]}>
+                                                    <ThemedText style={{ fontSize: 10, fontWeight: '600', color: textColor, lineHeight: 12 }} numberOfLines={1}>
+                                                        {e.title}
+                                                    </ThemedText>
+                                                    <ThemedText style={{ fontSize: 9, color: textColor, opacity: 0.8, lineHeight: 11 }} numberOfLines={1}>
+                                                        {dayjs(e.start).format('HH:mm')} - {dayjs(e.end).format('HH:mm')}
+                                                    </ThemedText>
+                                                    {e.is_group && (
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                                            <ThemedText style={{ fontSize: 8, color: textColor, marginRight: 2, lineHeight: 10 }} numberOfLines={1}>
+                                                                {count}/{e.pocet_lidi}
+                                                            </ThemedText>
+                                                            <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10, flex: 1 }} numberOfLines={1}>
+                                                              {relevantUserEvents.map((ue, idx) => {
+                                                                const participant = users.find(u => u.id === ue.user_id);
+                                                                const name = participant ? participant.username : `User ${ue.user_id}`;
+                                                                const userColorObj = colors.find(c => String(c.user_id) === String(ue.user_id));
+                                                                const userColor = userColorObj?.background_color || '#ccc';
+                                                                return (
+                                                                  <ThemedText key={`${ue.event_id}-${ue.user_id}-${idx}`} style={{ fontSize: 8, color: textColor, lineHeight: 10 }}>
+                                                                    <ThemedText style={{ color: userColor, fontSize: 8, lineHeight: 10 }}>● </ThemedText>
+                                                                    {name}{idx < relevantUserEvents.length - 1 ? ', ' : ''}
+                                                                  </ThemedText>
+                                                                );
+                                                              })}
+                                                            </ThemedText>
+                                                        </View>
+                                                    )}
+                                                    {!e.is_group && (
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                                            <View
+                                                                style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 2,
+                                                                    backgroundColor: backgroundColor,
+                                                                    marginRight: 1,
+                                                                    borderColor: textColor,
+                                                                    borderWidth: 0.5,
+                                                                }}
+                                                            />
+                                                            <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10 }} numberOfLines={1}>
+                                                                {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý'}
+                                                            </ThemedText>
+                                                        </View>
+                                                    )}
                                                 </Pressable>
                                             )
                                         })}
@@ -314,5 +340,5 @@ const styles = StyleSheet.create({
     weekDays: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#ccc' },
     weekDayCell: { flex: 1, padding: 6, alignItems: 'center', borderRightWidth: 0.5, borderColor: '#ccc' },
     dayCell: { width: `${100 / 7}%`, borderWidth: 0.5, borderColor: '#ccc', flex: 1 },
-    eventBadge: { borderRadius: 6, paddingHorizontal: 2, height: 18, marginVertical: 1, justifyContent: 'center' }
+    eventBadge: { borderRadius: 6, paddingHorizontal: 2, height: 40, marginVertical: 0, justifyContent: 'center' }
 });

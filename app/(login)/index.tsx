@@ -3,11 +3,11 @@ import { ThemedView } from '@/components/themed-view'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { loadStorage } from '@/lib/storage'
 import * as LocalAuthentication from 'expo-local-authentication'
 import { Link, useRouter } from 'expo-router'
 import React, { useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Switch, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
@@ -16,6 +16,7 @@ import Loading from '../loading'
 export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [rememberMe, setRememberMe] = useState(false)
     const [errors, setErrors] = useState<{ email: boolean; password: boolean }>(
         {
             email: false,
@@ -57,7 +58,7 @@ export default function Login() {
             }
 
             // 3️⃣ Po úspěšném ověření načti uložené údaje a přihlaš
-            const stored = await AsyncStorage.getItem('credentials');
+            const stored = await loadStorage('credentials');
             if (!stored) {
                 alert('Nejsou uloženy přihlašovací údaje. Přihlaš se nejprve ručně.');
                 return;
@@ -82,7 +83,7 @@ export default function Login() {
         setErrors(newErrors)
         if (!newErrors.email && !newErrors.password) {
             try {
-                await login(email, password)
+                await login(email, password, rememberMe)
 
                 router.replace('/(tabs)')
             } catch (err) {
@@ -158,6 +159,15 @@ export default function Login() {
                         />
                     }
                 />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                    <Switch
+                        value={rememberMe}
+                        onValueChange={() => setRememberMe(!rememberMe)}
+                        trackColor={{ false: '#767577', true: buttonColor }}
+                    />
+                    <ThemedText style={{ marginLeft: 8 }}>Zůstat přihlášen</ThemedText>
+                </View>
 
                 <Button
                     mode="contained"

@@ -1,16 +1,18 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { TextInput, useTheme } from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ThemedText } from './themed-text';
+import { ThemedView } from './themed-view';
 
 interface Color {
     id: number;
     name: string;
     background_color: string;
     text_color: string;
-    user_id: number | null; // null = volná
+    user_id: string | null;
+    username?: string | null;
 }
 
 interface ColorPickerProps {
@@ -36,7 +38,7 @@ export default function ColorPicker({ colors, selectedColor, setSelectedColor, e
 
     return (
         <View>
-            <Pressable onPress={() => setModalVisible(true)}>
+            <TouchableOpacity onPress={() => setModalVisible(true)}>
                 <TextInput
                     mode="outlined"
                     label="Barva"
@@ -78,7 +80,7 @@ export default function ColorPicker({ colors, selectedColor, setSelectedColor, e
                         />
                     }
                 />
-            </Pressable>
+            </TouchableOpacity>
 
             <Modal
                 visible={modalVisible}
@@ -86,18 +88,22 @@ export default function ColorPicker({ colors, selectedColor, setSelectedColor, e
                 animationType="slide"
                 onRequestClose={() => setModalVisible(false)}
             >
-                <Pressable
-                    style={styles.modalOverlay}
-                    onPressOut={() => setModalVisible(false)}
-                >
-                    <View style={styles.modalContent}>
-                        <FlatList
-                            data={colors}
-                            keyExtractor={(item) => item.id.toString()}
-                            renderItem={({ item }) => {
+                <View style={styles.modalOverlay}>
+                    <ThemedView type="surface" style={styles.modalContent}>
+                        <View style={styles.header}>
+                            <ThemedText style={styles.headerText}>Vyber barvu</ThemedText>
+                            <TouchableOpacity onPress={() => setModalVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={24} color={buttonColor} />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView>
+                            {[...colors]
+                                .sort((a, b) => (a.user_id ? 1 : 0) - (b.user_id ? 1 : 0))
+                                .map((item) => {
                                 const disabled = !!item.user_id;
                                 return (
                                     <TouchableOpacity
+                                        key={item.id.toString()}
                                         style={[styles.item, disabled && styles.disabledItem]}
                                         onPress={() => handleSelect(item)}
                                         disabled={disabled}
@@ -114,14 +120,14 @@ export default function ColorPicker({ colors, selectedColor, setSelectedColor, e
                                             }}
                                         />
                                         <ThemedText style={{ color: disabled ? '#999' : '#000' }}>
-                                            {item.name} {disabled && `(už má ${item.user_id})`}
+                                            {item.name} {disabled && `(už má ${item.username || item.user_id})`}
                                         </ThemedText>
                                     </TouchableOpacity>
                                 );
-                            }}
-                        />
-                    </View>
-                </Pressable>
+                            })}
+                        </ScrollView>
+                    </ThemedView>
+                </View>
             </Modal>
         </View>
     );
@@ -135,15 +141,28 @@ const styles = StyleSheet.create({
         paddingHorizontal: 32,
     },
     modalContent: {
-        backgroundColor: '#fff',
         borderRadius: 12,
         padding: 16,
         maxHeight: '70%',
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    headerText: {
+        fontSize: 18,
+        fontWeight: 'bold',
     },
     item: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 12,
+        paddingHorizontal: 8,
     },
     disabledItem: {
         opacity: 0.6,

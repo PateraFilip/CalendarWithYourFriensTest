@@ -1,18 +1,20 @@
-import { cancelEvent } from '@/api/cancel_event'
-import { fetchUserEvents } from '@/api/getUserEvents'
-import { joinEvent } from '@/api/join_event'
+import { cancelEvent } from '@/api/events/cancel_event'
+import { fetchUserEvents, UserEvent } from '@/api/events/getUserEvents'
+import { joinEvent } from '@/api/events/join_event'
 import { ThemedText } from '@/components/themed-text'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
+import { dedupeCalendarEvents, eventInstanceKey } from '@/lib/calendarEvents'
 import { createClient } from '@supabase/supabase-js'
 import dayjs from 'dayjs'
 import React, { useEffect, useState } from 'react'
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Button, Modal, Portal } from 'react-native-paper'
 import { ThemedView } from './themed-view'
+import { router } from 'expo-router'
 
-const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 interface CellModalProps {
@@ -27,6 +29,8 @@ interface CellModalProps {
         pocet_lidi: number;
         pravidelnost: boolean;
         is_group: boolean;
+        original_start?: Date;
+        original_end?: Date;
     }[]
     weeklyEvents: {
         id: number;
@@ -46,11 +50,14 @@ interface CellModalProps {
         text_color: string;
         user_id: number;
     }[]
-}
-
-interface UserEvent {
-    event_id: number;
-    user_id: number;
+    users: {
+        id: number;
+        username: string;
+        jmeno: string;
+        prijmeni: string;
+        email: string;
+        datum_narozeni: string
+    }[]
 }
 
 export const CellModal: React.FC<CellModalProps> = ({ visible,
@@ -58,6 +65,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     events,
     weeklyEvents,
     colors,
+    users,
     onCreateEvent,
     onDismiss,
     onPressEvent }) => {
@@ -101,7 +109,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     }, []);
 
 
-    function onJoinEvent(event_id: number) {
+    function onJoinEvent(event_id: number, isRecurring: boolean, eventDate: Date) {
         if (!user?.id) {
             console.error("Uživatel není přihlášen!");
             return;
@@ -110,12 +118,13 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
         const joinParams = {
             user_id: user.id,
             event_id: event_id,
+            instance_date: isRecurring ? dayjs(eventDate).format('YYYY-MM-DD') : undefined,
         };
 
         joinEvent(joinParams);
     }
 
-    function onCancelEvent(event_id: number) {
+    function onCancelEvent(event_id: number, isRecurring: boolean, eventDate: Date) {
         if (!user?.id) {
             console.error("Uživatel není přihlášen!");
             return;
@@ -124,21 +133,20 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
         const cancelParams = {
             user_id: user.id,
             event_id: event_id,
+            instance_date: isRecurring ? dayjs(eventDate).format('YYYY-MM-DD') : undefined,
         };
 
         cancelEvent(cancelParams);
     }
 
     if (!date) return null
-    const hourEvents = [
-        // Jednorázové eventy
+    const hourEvents = dedupeCalendarEvents([
         ...events.filter(e =>
             e.start.getTime() < date.getTime() + 60 * 60 * 1000 &&
             e.end.getTime() > date.getTime()
         ),
 
-        // Týdenní eventy
-        ...weeklyEvents
+        ...(weeklyEvents.length > 0 ? weeklyEvents
             .filter(w => {
                 const daysShort = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
                 const eventDay = daysShort[date.getDay()];
@@ -174,8 +182,8 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                     pravidelnost: true,
                     is_group: false,
                 };
-            })
-    ];
+            }) : []),
+    ]);
 
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -190,12 +198,29 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                     {hourEvents.length > 0 ? (
                         <FlatList
                             data={hourEvents}
-                            keyExtractor={(_, i) => i.toString()}
+                            keyExtractor={(item) => eventInstanceKey(item)}
                             style={{ maxHeight: 500 }}
                             renderItem={({ item }) => {
                                 // 🧮 Spočítej, kolikrát se item.id vyskytuje v userEvents.event_id
-                                const count = userEvents.filter(u => u.event_id === item.id).length;
-                                const userJoined = userEvents.filter(u => u.event_id === item.id && u.user_id === user?.id)
+                                // Pro pravidelné události filtrujeme podle instance_date
+                                const itemInstanceDate = dayjs(item.start).format('YYYY-MM-DD');
+                                // Check for CLEARED marker for this specific instance
+                                const clearedMarker = userEvents.find(u => u.event_id === item.id && u.instance_date === `CLEARED-${itemInstanceDate}`);
+                                const instanceSpecificEvents = userEvents.filter(u => u.event_id === item.id && u.instance_date === itemInstanceDate);
+                                let relevantUserEvents: any[];
+                                if (item.pravidelnost) {
+                                    if (clearedMarker) {
+                                        relevantUserEvents = [];
+                                    } else if (instanceSpecificEvents.length > 0) {
+                                        relevantUserEvents = instanceSpecificEvents;
+                                    } else {
+                                        relevantUserEvents = userEvents.filter(u => u.event_id === item.id && !u.instance_date);
+                                    }
+                                } else {
+                                    relevantUserEvents = userEvents.filter(u => u.event_id === item.id && !u.instance_date);
+                                }
+                                const count = relevantUserEvents.length;
+                                const userJoined = relevantUserEvents.filter(u => u.user_id === user?.id)
                                 const colorObj = colors.find(c => c.user_id === item.user_id); // najde barvu pro daného uživatele
                                 const backgroundColor = item.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
                                 const textColor = item.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
@@ -208,15 +233,25 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                         <View style={[styles.eventItem, { backgroundColor: backgroundColor }]}>
                                             <View style={{ flexDirection: 'row', justifyContent: "space-between" }}>
                                                 <Text style={[styles.eventTitle, { color: textColor }]}>{item.title}</Text>
-                                                {item.is_group && (<Text style={[styles.eventTime, { color: textColor }]}>{count}/{item.pocet_lidi}</Text>)}
+                                                {item.is_group && (
+                                                    <Text style={[styles.eventTime, { color: textColor }]}>
+                                                        {count}/{item.pocet_lidi}
+                                                    </Text>
+                                                )}
                                             </View>
                                             <Text style={[styles.eventTime, { color: textColor }]}>
-                                                {dayjs(item.start).format('D. MMMM YYYY  HH:mm')} - {dayjs(item.end).format('D. MMMM YYYY  HH:mm')}
+                                                {(() => {
+                                                    const startDate = (item as any).original_start || item.start;
+                                                    const endDate = (item as any).original_end || item.end;
+                                                    return dayjs(startDate).format('D. MMMM YYYY') === dayjs(endDate).format('D. MMMM YYYY')
+                                                        ? `${dayjs(startDate).format('D. MMMM YYYY  HH:mm')} - ${dayjs(endDate).format('HH:mm')}`
+                                                        : `${dayjs(startDate).format('D. MMMM YYYY  HH:mm')} - ${dayjs(endDate).format('D. MMMM YYYY  HH:mm')}`;
+                                                })()}
                                             </Text>
                                             {item.is_group && item.pocet_lidi > count && userJoined.length != 1 && (
                                                 <Button
                                                     mode="contained"
-                                                    onPress={() => onJoinEvent(item.id)}
+                                                    onPress={() => onJoinEvent(item.id, item.pravidelnost, item.start)}
                                                     buttonColor={buttonColor}
                                                     labelStyle={{ color: buttonTextColor }}
                                                     style={styles.createButton}
@@ -227,13 +262,42 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                             {item.is_group && userJoined.length == 1 && (
                                                 <Button
                                                     mode="contained"
-                                                    onPress={() => onCancelEvent(item.id)}
+                                                    onPress={() => onCancelEvent(item.id, item.pravidelnost, item.start)}
                                                     buttonColor={buttonColor}
                                                     labelStyle={{ color: buttonTextColor }}
                                                     style={styles.createButton}
                                                 >
                                                     Zrušit účast
                                                 </Button>
+                                            )}
+                                            {/* CHAT TLAČÍTKA */}
+                                            {!item.is_group && userJoined.length > 0 && (
+                                                <View style={styles.chatButtonsRow}>
+                                                    <Button
+                                                        mode="outlined"
+                                                        onPress={() => router.push({
+                                                            pathname: `/events/[id]/chat`,
+                                                            params: { id: item.id, event_title: item.title }
+                                                        })}
+                                                        style={[styles.chatButton, { flex: 1, marginRight: 4, borderColor: buttonColor }]}
+                                                        labelStyle={{ color: textColor, fontSize: 11 }}
+                                                    >
+                                                        Obecný Chat
+                                                    </Button>
+                                                    {item.pravidelnost && (
+                                                        <Button
+                                                            mode="outlined"
+                                                            onPress={() => router.push({
+                                                                pathname: `/events/[id]/chat`,
+                                                                params: { id: item.id, instance_date: dayjs(item.start).format('YYYY-MM-DD'), event_title: item.title }
+                                                            })}
+                                                            style={[styles.chatButton, { flex: 1, marginLeft: 4, borderColor: buttonColor }]}
+                                                            labelStyle={{ color: textColor, fontSize: 11 }}
+                                                        >
+                                                            Chat k datu
+                                                        </Button>
+                                                    )}
+                                                </View>
                                             )}
 
                                         </View>
@@ -287,6 +351,14 @@ const styles = StyleSheet.create({
         fontSize: 13,
     },
     createButton: {
+        borderRadius: 6,
+    },
+    chatButtonsRow: {
+        flexDirection: 'row',
+        marginTop: 8,
+        justifyContent: 'space-between',
+    },
+    chatButton: {
         borderRadius: 6,
     },
 })

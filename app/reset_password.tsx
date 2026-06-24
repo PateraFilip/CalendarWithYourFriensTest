@@ -1,27 +1,28 @@
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { supabase } from '@/lib/supabaseClient';
 import { Stack } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet } from 'react-native';
 import { Button, TextInput, useTheme } from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const API_KEY =
-  'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+type Step = 'email' | 'code' | 'password';
 
 export default function ModalScreen() {
   const theme = useTheme()
+  const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordControl, setNewPasswordControl] = useState('')
-  const [errors, setErrors] = useState<{ email: boolean; newPassword: boolean, newPasswordControl: boolean, code: boolean }>(
+  const [errors, setErrors] = useState<{ email: boolean; code: boolean; newPassword: boolean, newPasswordControl: boolean }>(
     {
       email: false,
+      code: false,
       newPassword: false,
       newPasswordControl: false,
-      code: false
     }
   )
 
@@ -31,28 +32,54 @@ export default function ModalScreen() {
     'text'
   )
 
-  const handleForgot = async () => {
+  const handleSendCode = async () => {
     console.log(email)
-    const res = await fetch('https://tzbpcbmxwbsixrtorijk.functions.supabase.co/forgot-password', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: API_KEY,
-      },
-      body: JSON.stringify({ email }),
-    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
 
-    const data = await res.json();
-    if (data.success) Alert.alert('Hotovo', 'Zkontroluj e-mail');
-    else Alert.alert('Chyba', data.error || 'Nepodařilo se odeslat');
+    if (error) {
+      Alert.alert('Chyba', error.message || 'Nepodařilo se odeslat');
+    } else {
+      Alert.alert('Hotovo', 'Zkontroluj e-mail pro 8-místný kód');
+      setStep('code');
+    }
   };
 
-  const handleReset = async () => {
+  const handleVerifyCode = async () => {
     const newErrors = {
-      email: email.trim() === '',
+      email: false,
+      code: code.trim() === '' || code.length !== 8,
+      newPassword: false,
+      newPasswordControl: false,
+    }
+    setErrors(newErrors);
+
+    if (!newErrors.code) {
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: email,
+          token: code,
+          type: 'recovery',
+        });
+
+        if (error) {
+          Alert.alert('Chyba', error.message || 'Neplatný kód');
+        } else {
+          console.log('Kód ověřen, uživatel dočasně přihlášen');
+          setStep('password');
+        }
+      } catch (err) {
+        console.error(err)
+        Alert.alert('Chyba', 'Chyba při ověřování kódu');
+      }
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const newErrors = {
+      email: false,
+      code: false,
       newPassword: newPassword.trim() === '',
       newPasswordControl: newPasswordControl.trim() === '',
-      code: code.trim() === '',
     }
     if (!newErrors.newPassword && !newErrors.newPasswordControl && newPassword !== newPasswordControl) {
       newErrors.newPassword = true;
@@ -60,25 +87,29 @@ export default function ModalScreen() {
       alert('Hesla se neshodují');
     }
     setErrors(newErrors);
-    if (!newErrors.email && !newErrors.newPassword && !newErrors.newPasswordControl && !newErrors.code) {
+
+    if (!newErrors.newPassword && !newErrors.newPasswordControl) {
       try {
-        const res = await fetch('https://tzbpcbmxwbsixrtorijk.functions.supabase.co/reset-password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: API_KEY,
-          },
-          body: JSON.stringify({ email, code, newPassword }),
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword,
         });
-        const data = await res.json();
-        if (data.success) Alert.alert('Hotovo', 'Heslo bylo změněno');
-        else Alert.alert('Chyba', data.error || 'Neplatný kód');
+
+        if (error) {
+          Alert.alert('Chyba', error.message || 'Chyba při změně hesla');
+        } else {
+          Alert.alert('Hotovo', 'Heslo bylo úspěšně změněno');
+          setStep('email');
+          setEmail('');
+          setCode('');
+          setNewPassword('');
+          setNewPasswordControl('');
+        }
       } catch (err) {
         console.error(err)
-        alert('Chyba připojení')
+        Alert.alert('Chyba', 'Chyba připojení');
       }
-    };
-  }
+    }
+  };
 
 
   return (<>
@@ -99,141 +130,183 @@ export default function ModalScreen() {
         }}
       >
         <ThemedView style={styles.box}>
-          <TextInput
-            label="E-mail"
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text)
-              if (errors.email)
-                setErrors((e) => ({ ...e, email: false }))
-            }}
-            mode="outlined"
-            activeOutlineColor={buttonColor}
-            style={styles.input}
-            error={errors.email}
-            left={
-              <TextInput.Icon
-                icon={() => (
-                  <MaterialCommunityIcons
-                    name="at"
-                    size={20}
-                    color={
-                      errors.email
-                        ? theme.colors.error
-                        : buttonColor
-                    }
+          {/* Step 1: Email input */}
+          {step === 'email' && (
+            <>
+              <TextInput
+                label="E-mail"
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text)
+                  if (errors.email)
+                    setErrors((e) => ({ ...e, email: false }))
+                }}
+                mode="outlined"
+                activeOutlineColor={buttonColor}
+                style={styles.input}
+                error={errors.email}
+                left={
+                  <TextInput.Icon
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name="at"
+                        size={20}
+                        color={
+                          errors.email
+                            ? theme.colors.error
+                            : buttonColor
+                        }
+                      />
+                    )}
                   />
-                )}
+                }
               />
-            }
-          />
-          <Button
-            mode="contained"
-            style={styles.button}
-            labelStyle={{ color: buttonTextColor }}
-            buttonColor={buttonColor}
-            onPress={handleForgot} // volání FastAPI
-          >
-            Poslat kod pro resetování hesla
-          </Button>
+              <Button
+                mode="contained"
+                style={styles.button}
+                labelStyle={{ color: buttonTextColor }}
+                buttonColor={buttonColor}
+                onPress={handleSendCode}
+              >
+                Poslat 8-místný kód
+              </Button>
+            </>
+          )}
 
-          <TextInput
-            label="Resetovací kód"
-            value={code}
-            onChangeText={(text) => {
-              setCode(text)
-              if (errors.code)
-                setErrors((e) => ({ ...e, code: false }))
-            }}
-            mode="outlined"
-            activeOutlineColor={buttonColor}
-            style={styles.input}
-            error={errors.code}
-            left={
-              <TextInput.Icon
-                icon={() => (
-                  <MaterialCommunityIcons
-                    name="calculator"
-                    size={20}
-                    color={
-                      errors.code
-                        ? theme.colors.error
-                        : buttonColor
-                    }
+          {/* Step 2: Code input */}
+          {step === 'code' && (
+            <>
+              <TextInput
+                label="8-místný kód z e-mailu"
+                value={code}
+                onChangeText={(text) => {
+                  setCode(text)
+                  if (errors.code)
+                    setErrors((e) => ({ ...e, code: false }))
+                }}
+                mode="outlined"
+                activeOutlineColor={buttonColor}
+                style={styles.input}
+                error={errors.code}
+                keyboardType="number-pad"
+                maxLength={8}
+                left={
+                  <TextInput.Icon
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name="calculator"
+                        size={20}
+                        color={
+                          errors.code
+                            ? theme.colors.error
+                            : buttonColor
+                        }
+                      />
+                    )}
                   />
-                )}
+                }
               />
-            }
-          />
+              <Button
+                mode="contained"
+                style={styles.button}
+                labelStyle={{ color: buttonTextColor }}
+                buttonColor={buttonColor}
+                onPress={handleVerifyCode}
+              >
+                Ověřit kód
+              </Button>
+              <Button
+                mode="text"
+                style={styles.button}
+                labelStyle={{ color: buttonColor }}
+                onPress={() => setStep('email')}
+              >
+                Zpět
+              </Button>
+            </>
+          )}
 
-          <TextInput
-            label="Nové heslo"
-            value={newPassword}
-            onChangeText={(text) => {
-              setNewPassword(text)
-              if (errors.newPassword)
-                setErrors((e) => ({ ...e, newPassword: false }))
-            }}
-            mode="outlined"
-            activeOutlineColor={buttonColor}
-            secureTextEntry
-            style={styles.input}
-            error={errors.newPassword}
-            left={
-              <TextInput.Icon
-                icon={() => (
-                  <MaterialCommunityIcons
-                    name="lock-outline"
-                    size={20}
-                    color={
-                      errors.newPassword
-                        ? theme.colors.error
-                        : buttonColor
-                    }
+          {/* Step 3: New password */}
+          {step === 'password' && (
+            <>
+              <TextInput
+                label="Nové heslo"
+                value={newPassword}
+                onChangeText={(text) => {
+                  setNewPassword(text)
+                  if (errors.newPassword)
+                    setErrors((e) => ({ ...e, newPassword: false }))
+                }}
+                mode="outlined"
+                activeOutlineColor={buttonColor}
+                secureTextEntry
+                style={styles.input}
+                error={errors.newPassword}
+                left={
+                  <TextInput.Icon
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name="lock-outline"
+                        size={20}
+                        color={
+                          errors.newPassword
+                            ? theme.colors.error
+                            : buttonColor
+                        }
+                      />
+                    )}
                   />
-                )}
+                }
               />
-            }
-          />
 
-          <TextInput
-            label="Nové heslo znovu"
-            value={newPasswordControl}
-            onChangeText={(text) => {
-              setNewPasswordControl(text)
-              if (errors.newPasswordControl)
-                setErrors((e) => ({ ...e, newPasswordControl: false }))
-            }}
-            mode="outlined"
-            activeOutlineColor={buttonColor}
-            secureTextEntry
-            style={styles.input}
-            error={errors.newPasswordControl}
-            left={
-              <TextInput.Icon
-                icon={() => (
-                  <MaterialCommunityIcons
-                    name="lock-outline"
-                    size={20}
-                    color={
-                      errors.newPasswordControl
-                        ? theme.colors.error
-                        : buttonColor
-                    }
+              <TextInput
+                label="Nové heslo znovu"
+                value={newPasswordControl}
+                onChangeText={(text) => {
+                  setNewPasswordControl(text)
+                  if (errors.newPasswordControl)
+                    setErrors((e) => ({ ...e, newPasswordControl: false }))
+                }}
+                mode="outlined"
+                activeOutlineColor={buttonColor}
+                secureTextEntry
+                style={styles.input}
+                error={errors.newPasswordControl}
+                left={
+                  <TextInput.Icon
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name="lock-outline"
+                        size={20}
+                        color={
+                          errors.newPasswordControl
+                            ? theme.colors.error
+                            : buttonColor
+                        }
+                      />
+                    )}
                   />
-                )}
+                }
               />
-            }
-          />
-          <Button
-            mode="contained"
-            style={styles.button}
-            labelStyle={{ color: buttonTextColor }}
-            buttonColor={buttonColor}
-            onPress={handleReset} // volání FastAPI
-          >
-            Změnit heslo
-          </Button>
+              <Button
+                mode="contained"
+                style={styles.button}
+                labelStyle={{ color: buttonTextColor }}
+                buttonColor={buttonColor}
+                onPress={handleResetPassword}
+              >
+                Změnit heslo
+              </Button>
+              <Button
+                mode="text"
+                style={styles.button}
+                labelStyle={{ color: buttonColor }}
+                onPress={() => setStep('email')}
+              >
+                Zrušit
+              </Button>
+            </>
+          )}
         </ThemedView>
       </ScrollView>
     </ThemedSafeView>

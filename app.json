@@ -22,7 +22,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.macicek0.CalendarWithFriends"
+      "package": "com.macicek0.CalendarWithFriends",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBdUtL4G39R1cnyOaqKoFE9m85VoRI3W2I"
+        }
+      }
     },
     "web": {
       "output": "static",

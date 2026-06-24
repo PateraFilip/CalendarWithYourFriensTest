@@ -1,11 +1,13 @@
-import { fetchUsers } from '@/api/get_users';
+import { fetchUsers } from '@/api/users/get_users';
+import { fetchUserEvents, UserEvent } from '@/api/events/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { eventsOverlappingDay } from '@/lib/calendarEvents';
 import { createClient } from '@supabase/supabase-js';
+import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
-import { fetchUserEvents } from '@/api/getUserEvents'
 
 interface Event {
   id: number;
@@ -16,6 +18,8 @@ interface Event {
   pocet_lidi: number;
   pravidelnost: boolean;
   is_group: boolean;
+  original_start?: Date;
+  original_end?: Date;
 }
 
 interface WeeklyEvent {
@@ -50,10 +54,12 @@ interface WeekCalendarProps {
   weeklyEvents: WeeklyEvent[];
   eventsException: EventException[];
   onPressCell?: (date: Date) => void;
-  onPressDay?: (date: Date) => void;
+  onPressEvent?: (event: Event) => void;
   hourHeight?: number;
   hourWidth?: number;
+  defaultDate?: Date;
   colors: Color[];
+  onVisibleDateChange?: (date: Date | ((prev: Date) => Date)) => void;
 }
 
 interface User {
@@ -65,13 +71,8 @@ interface User {
   datum_narozeni: string
 }
 
-interface UserEvent {
-  event_id: number;
-  user_id: number;
-}
-
-const SUPABASE_URL = 'https://tzbpcbmxwbsixrtorijk.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6YnBjYm14d2JzaXhydG9yaWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTIwMjEsImV4cCI6MjA3NTc2ODAyMX0.QTlHAHIPIJJ8FHDQowpZQIOckhHnAykn2CLbfJ2YbOw'
+const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 export default function WeekCalendar({
@@ -80,22 +81,31 @@ export default function WeekCalendar({
   eventsException,
   onPressCell,
   onPressDay,
+  onPressEvent,
   hourHeight = 60,
   hourWidth = 80,
-  colors
+  defaultDate,
+  colors,
+  onVisibleDateChange
 }: WeekCalendarProps) {
   // 🗓️ Start aktuálního týdne (pondělí)
-  const [currentWeekStart, setCurrentWeekStart] = useState(() => {
-    const today = new Date();
+  const currentWeekStart = useMemo(() => {
+    const today = defaultDate || new Date();
     const day = today.getDay();
     const monday = new Date(today);
     monday.setDate(today.getDate() - ((day + 6) % 7));
     monday.setHours(0, 0, 0, 0);
     return monday;
-  });
+  }, [defaultDate]);
 
   const [users, setUsers] = useState<User[]>([]);
   const [userEvents, setUserEvents] = useState<UserEvent[]>([])
+  const [ticker, setTicker] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTicker(t => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
 
@@ -104,7 +114,26 @@ export default function WeekCalendar({
 
   const calendarRef = useRef<ScrollView>(null);
   const hourScrollRef = useRef<ScrollView>(null);
+  const verticalScrollRef = useRef<ScrollView>(null);
   const isSyncingScroll = useRef(false);
+
+  useEffect(() => {
+    const now = new Date();
+    const currentDayIndex = days.findIndex(day => day.toDateString() === now.toDateString());
+    const currentHour = now.getHours();
+
+    // Vertikální scroll na aktuální den
+    if (currentDayIndex !== -1 && verticalScrollRef.current) {
+      const scrollPosition = currentDayIndex * 60;
+      verticalScrollRef.current.scrollTo({ y: scrollPosition, animated: true });
+    }
+
+    // Horizontální scroll na aktuální hodinu
+    if (calendarRef.current) {
+      const scrollPosition = currentHour * hourWidth;
+      calendarRef.current.scrollTo({ x: scrollPosition, animated: true });
+    }
+  }, [days, hourWidth]);
 
   const handleScroll = (e: any) => {
     if (isSyncingScroll.current) return;
@@ -113,21 +142,25 @@ export default function WeekCalendar({
   };
 
   const changeWeek = (offset: number) => {
-    const newDate = new Date(currentWeekStart);
-    newDate.setDate(currentWeekStart.getDate() + offset * 7);
-    setCurrentWeekStart(newDate);
+    console.log('--- CHANGE WEEK CLICKED --- offset:', offset);
+    onVisibleDateChange?.((prev: Date) => {
+      const today = prev || new Date();
+      const day = today.getDay();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - ((day + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      const newDate = new Date(monday);
+      newDate.setDate(monday.getDate() + offset * 7);
+      console.log(`[CustomWeek] changeWeek prev=${prev?.toISOString()} -> newDate=${newDate.toISOString()}`);
+      return newDate;
+    });
   };
 
   // 🔹 Události aktuálního týdne
-  const weekEvents = events.filter(e => {
-    const start = new Date(e.start);
-    const end = new Date(e.end);
-    const weekEnd = new Date(currentWeekStart.getTime() + 7 * 86400000);
-    return (
-      (start >= currentWeekStart && start < weekEnd) ||
-      (start < currentWeekStart && end >= currentWeekStart)
-    );
-  });
+  const weekEvents = useMemo(() => {
+    const endOfWeek = new Date(currentWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return events.filter(e => e.end > currentWeekStart && e.start < endOfWeek);
+  }, [events, currentWeekStart]);
 
   const loadUsers = async () => {
     try {
@@ -232,10 +265,23 @@ export default function WeekCalendar({
     return day.trim().normalize();
   }
 
+  // Clamp event times to day boundaries for display
+  function clampTimeToDay(eventTime: Date, day: Date, isStart: boolean): Date {
+    const dayStart = new Date(day);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(day);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    if (isStart) {
+      return eventTime < dayStart ? dayStart : eventTime;
+    } else {
+      return eventTime > dayEnd ? dayEnd : eventTime;
+    }
+  }
+
   // 🔹 Spočítat sloupce pro každý den (pro všechny hodiny najednou)
   const dayEventColumns = useMemo(() => {
     const map = new Map<string, { eventColumns: Map<Event, number>; totalColumns: number }>();
-    const daysShort = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
 
     days.forEach(day => {
       const dayStart = new Date(day);
@@ -245,62 +291,28 @@ export default function WeekCalendar({
 
       const eventsOfDay: Event[] = [];
 
-      // 🔹 Jednorázové eventy
-      weekEvents.forEach(e => {
-        if (e.start < dayEnd && e.end > dayStart) eventsOfDay.push(e);
-      });
+      // 1. Získáme VŠECHNY události (nové API už je umí rozbalit)
+      eventsOverlappingDay(weekEvents, day).forEach(e => eventsOfDay.push(e));
 
-      // 🔹 Týdenní eventy
-      weeklyEvents.forEach(w => {
-        const eventDay = daysShort[day.getDay()];
-        const eventDayPrev = daysShort[(day.getDay() + 6) % 7]
-        if ((normalizeDayName(w.den) !== eventDay && normalizeDayName(w.den) !== eventDayPrev) || (normalizeDayName(w.den) === eventDayPrev && w.cas_do > w.cas_od)) return;
+      // ⚠️ STARÁ LOGIKA weeklyEvents.forEach BYLA KOMPLETNĚ SMAZÁNA ⚠️
+      // Právě ta vytvářela falešné "duchy" na druhý den.
 
-        const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
-        let end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
-        if (end < start && normalizeDayName(w.den) === eventDay) end.setDate(end.getDate() + 1);
-        else if (end < start && normalizeDayName(w.den) === eventDayPrev) start.setDate(start.getDate() - 1);
-        const exceptionDelete = eventsException.some(ex =>
-          ex.event_id === w.id &&
-          new Date(ex.puvodni_start).getTime() === start.getTime() &&
-          ex.typ == "DELETE"
-        );
-        const exception = eventsException.find(ex =>
-          ex.event_id === w.id &&
-          new Date(ex.puvodni_start).getTime() === start.getTime()
-        );
-        if (exception) {
-          console.log(`⚙️ Výjimka nalezena pro event ${w.id}, upravuji časy`);
-          start.setTime(new Date(exception.start).getTime());
-          end.setTime(new Date(exception.end).getTime());
-          if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
-          else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
+      // 2. Deduplikace (pokud by API omylem poslalo událost víckrát)
+      const uniqueEvents = [];
+      const seen = new Set();
+      for (const e of eventsOfDay) {
+        const key = `${e.id}-${e.start.getTime()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueEvents.push(e);
         }
-        if (exceptionDelete) {
-          console.log(`⏭️ Event ${w.id} přeskočen kvůli výjimce`);
-          return; // nepushuj tento event
-        }
+      }
 
-        if (end > dayStart && start < dayEnd) {
-          eventsOfDay.push({
-            id: w.id,
-            title: w.title,
-            start,
-            end,
-            user_id: w.user_id,
-            pocet_lidi: 1,
-            pravidelnost: true,
-            is_group: false,
-          });
-
-        }
-      });
-
-      map.set(day.toDateString(), assignEventColumns(eventsOfDay));
+      map.set(day.toDateString(), assignEventColumns(uniqueEvents));
     });
 
     return map;
-  }, [days, weekEvents, weeklyEvents]);
+  }, [days, weekEvents]);
 
   // 🔹 Vrátí eventy pro konkrétní buňku
   function mergeEventsForCell(day: Date, hour: number): Event[] {
@@ -353,7 +365,7 @@ export default function WeekCalendar({
             {days.map((day, i) => {
               const { eventColumns, totalColumns } = dayEventColumns.get(day.toDateString())!;
               return (
-                <Pressable key={i} onPress={() => onPressDay?.(day)} style={[styles.dayHeader, { minHeight: hourHeight, height: totalColumns * 20 }]}>
+                <Pressable key={i} onPress={() => onPressDay?.(day)} style={[styles.dayHeader, { minHeight: hourHeight, height: (totalColumns * 37) + 12 }]}>
                   <ThemedText style={{ fontWeight: 'bold' }}>
                     {day.toLocaleDateString('cs-CZ', { weekday: 'short' }).replace(/^./, c => c.toUpperCase())}
                   </ThemedText>
@@ -376,10 +388,33 @@ export default function WeekCalendar({
                       <Pressable
                         key={`${dIndex}-${hour}`}
                         onPress={() => onPressCell?.(new Date(day.setHours(hour)))}
-                        style={[styles.hourCell, { width: hourWidth, minHeight: hourHeight, height: totalColumns * 20, position: 'relative' }]}
+                        style={[styles.hourCell, { width: hourWidth, minHeight: hourHeight, height: (totalColumns * 37) + 12, position: 'relative' }]}
                       >
                         {cellEvents.map((e, i) => {
-                          const count = userEvents.filter(u => u.event_id === e.id).length;
+                          // Pro pravidelné události filtrujeme podle instance_date
+                          const itemInstanceDate = dayjs(e.start).format('YYYY-MM-DD');
+                          // First check if there's a marker entry indicating explicitly cleared for this specific instance
+                          const clearedMarker = userEvents.find(u => u.event_id === e.id && u.instance_date === `CLEARED-${itemInstanceDate}`);
+                          // Check if there are instance-specific participants
+                          const instanceSpecificEvents = userEvents.filter(u => u.event_id === e.id && u.instance_date === itemInstanceDate);
+                          let relevantUserEvents: any[];
+                          if (e.pravidelnost) {
+                            // For recurring events: use instance-specific if available, otherwise fall back to all-instance
+                            if (clearedMarker) {
+                              // Explicitly cleared - no participants
+                              relevantUserEvents = [];
+                            } else if (instanceSpecificEvents.length > 0) {
+                              // Use instance-specific participants
+                              relevantUserEvents = instanceSpecificEvents;
+                            } else {
+                              // Fall back to all-instance participants
+                              relevantUserEvents = userEvents.filter(u => u.event_id === e.id && !u.instance_date);
+                            }
+                          } else {
+                            // For non-recurring events, only use all-instance participants
+                            relevantUserEvents = userEvents.filter(u => u.event_id === e.id && !u.instance_date);
+                          }
+                          const count = relevantUserEvents.length;
                           const duration = (e.end.getTime() - e.start.getTime()) / (1000 * 60 * 60);
                           const offset = e.start.getMinutes() / 60;
                           const col = eventColumns.get(e) || 0;
@@ -388,14 +423,14 @@ export default function WeekCalendar({
                           const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
                           if (e.start.getHours() === hour && e.start.getDate() === day.getDate() && e.start.getMonth() === day.getMonth() && e.start.getFullYear() === day.getFullYear()) {
                             return (
-                              <ThemedView
+                              <Pressable
                                 key={i}
-                                pointerEvents="none"
+                                onPress={() => onPressEvent?.(e)}
                                 style={{
                                   position: 'absolute',
-                                  top: col * 20,
+                                  top: col * 37,
                                   left: offset * hourWidth,
-                                  height: 20,
+                                  height: 37,
                                   width: hourWidth * duration,
                                   backgroundColor: backgroundColor,
                                   borderRadius: 4,
@@ -404,23 +439,52 @@ export default function WeekCalendar({
                                   borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
-                                {!e.is_group && (
-                                  <ThemedText style={{
-                                    fontSize: 10,
-                                    lineHeight: 18,
-                                    color: textColor
-                                  }} numberOfLines={1} ellipsizeMode="tail">
-                                    {e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}
-                                  </ThemedText>)}
+                                <ThemedText style={{ fontSize: 10, fontWeight: '600', color: textColor, lineHeight: 12 }} numberOfLines={1}>
+                                  {e.title}
+                                </ThemedText>
+                                <ThemedText style={{ fontSize: 9, color: textColor, opacity: 0.8, lineHeight: 11 }} numberOfLines={1}>
+                                  {dayjs(clampTimeToDay(e.start, day, true)).format('HH:mm')} - {dayjs(clampTimeToDay(e.end, day, false)).format('HH:mm')}
+                                </ThemedText>
                                 {e.is_group && (
-                                  <ThemedText style={{
-                                    fontSize: 10,
-                                    lineHeight: 18,
-                                    color: textColor
-                                  }} numberOfLines={1} ellipsizeMode="tail">
-                                    {e.title} - {count}/{e.pocet_lidi}
-                                  </ThemedText>)}
-                              </ThemedView>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                    <ThemedText style={{ fontSize: 8, color: textColor, marginRight: 2, lineHeight: 10 }} numberOfLines={1}>
+                                      {count}/{e.pocet_lidi}
+                                    </ThemedText>
+                                    <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10, flex: 1 }} numberOfLines={1}>
+                                      {relevantUserEvents.map((ue, idx) => {
+                                        const participant = users.find(u => u.id === ue.user_id);
+                                        const name = participant ? participant.username : `User ${ue.user_id}`;
+                                        const userColorObj = colors.find(c => String(c.user_id) === String(ue.user_id));
+                                        const userColor = userColorObj?.background_color || '#ccc';
+                                        return (
+                                          <ThemedText key={`${ue.event_id}-${ue.user_id}-${idx}`} style={{ fontSize: 8, color: textColor, lineHeight: 10 }}>
+                                            <ThemedText style={{ color: userColor, fontSize: 8, lineHeight: 10 }}>● </ThemedText>
+                                            {name}{idx < relevantUserEvents.length - 1 ? ', ' : ''}
+                                          </ThemedText>
+                                        );
+                                      })}
+                                    </ThemedText>
+                                  </View>
+                                )}
+                                {!e.is_group && (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                    <View
+                                      style={{
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: 2,
+                                        backgroundColor: backgroundColor,
+                                        marginRight: 1,
+                                        borderColor: textColor,
+                                        borderWidth: 0.5
+                                      }}
+                                    />
+                                    <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10 }} numberOfLines={1}>
+                                      {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý'}
+                                    </ThemedText>
+                                  </View>
+                                )}
+                              </Pressable>
                             );
                           }
                           else if (hour === 0 && e.end.getDate() === day.getDate() && e.end.getMonth() === day.getMonth() && e.end.getFullYear() === day.getFullYear()) {
@@ -429,14 +493,14 @@ export default function WeekCalendar({
                             const eventEnd = e.end > dayEnd ? dayEnd : e.end;
                             const dayDuration = (eventEnd.getTime() - eventStart.getTime()) / (1000 * 60 * 60);
                             return (
-                              <ThemedView
+                              <Pressable
                                 key={i}
-                                pointerEvents="none"
+                                onPress={() => onPressEvent?.(e)}
                                 style={{
                                   position: 'absolute',
-                                  top: col * 20,
+                                  top: col * 37,
                                   left: 0,
-                                  height: 20,
+                                  height: 37,
                                   width: hourWidth * dayDuration,
                                   backgroundColor: backgroundColor,
                                   borderRadius: 4,
@@ -445,35 +509,64 @@ export default function WeekCalendar({
                                   borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
-                                {!e.is_group && (
-                                  <ThemedText style={{
-                                    fontSize: 10,
-                                    lineHeight: 18,
-                                    color: textColor
-                                  }} numberOfLines={1} ellipsizeMode="tail">
-                                    {e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}
-                                  </ThemedText>)}
+                                <ThemedText style={{ fontSize: 10, fontWeight: '600', color: textColor, lineHeight: 12 }} numberOfLines={1}>
+                                  {e.title}
+                                </ThemedText>
+                                <ThemedText style={{ fontSize: 9, color: textColor, opacity: 0.8, lineHeight: 11 }} numberOfLines={1}>
+                                  {dayjs(clampTimeToDay(e.start, day, true)).format('HH:mm')} - {dayjs(clampTimeToDay(e.end, day, false)).format('HH:mm')}
+                                </ThemedText>
                                 {e.is_group && (
-                                  <ThemedText style={{
-                                    fontSize: 10,
-                                    lineHeight: 18,
-                                    color: textColor
-                                  }} numberOfLines={1} ellipsizeMode="tail">
-                                    {e.title} - {count}/{e.pocet_lidi}
-                                  </ThemedText>)}
-                              </ThemedView>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                    <ThemedText style={{ fontSize: 8, color: textColor, marginRight: 2, lineHeight: 10 }} numberOfLines={1}>
+                                      {count}/{e.pocet_lidi}
+                                    </ThemedText>
+                                    <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10, flex: 1 }} numberOfLines={1}>
+                                      {relevantUserEvents.map((ue, idx) => {
+                                        const participant = users.find(u => u.id === ue.user_id);
+                                        const name = participant ? participant.username : `User ${ue.user_id}`;
+                                        const userColorObj = colors.find(c => String(c.user_id) === String(ue.user_id));
+                                        const userColor = userColorObj?.background_color || '#ccc';
+                                        return (
+                                          <ThemedText key={`${ue.event_id}-${ue.user_id}-${idx}`} style={{ fontSize: 8, color: textColor, lineHeight: 10 }}>
+                                            <ThemedText style={{ color: userColor, fontSize: 8, lineHeight: 10 }}>● </ThemedText>
+                                            {name}{idx < relevantUserEvents.length - 1 ? ', ' : ''}
+                                          </ThemedText>
+                                        );
+                                      })}
+                                    </ThemedText>
+                                  </View>
+                                )}
+                                {!e.is_group && (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                    <View
+                                      style={{
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: 2,
+                                        backgroundColor: backgroundColor,
+                                        marginRight: 1,
+                                        borderColor: textColor,
+                                        borderWidth: 0.5
+                                      }}
+                                    />
+                                    <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10 }} numberOfLines={1}>
+                                      {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý'}
+                                    </ThemedText>
+                                  </View>
+                                )}
+                              </Pressable>
                             );
                           }
                           else if (hour === 0) {
                             return (
-                              <ThemedView
+                              <Pressable
                                 key={i}
-                                pointerEvents="none"
+                                onPress={() => onPressEvent?.(e)}
                                 style={{
                                   position: 'absolute',
-                                  top: col * 20,
+                                  top: col * 37,
                                   left: 0,
-                                  height: 20,
+                                  height: 37,
                                   width: hourWidth * duration,
                                   backgroundColor: backgroundColor,
                                   borderRadius: 4,
@@ -482,23 +575,52 @@ export default function WeekCalendar({
                                   borderColor: e.is_group ? "yellow" : borderColor
                                 }}
                               >
-                                {!e.is_group && (
-                                  <ThemedText style={{
-                                    fontSize: 10,
-                                    lineHeight: 18,
-                                    color: textColor
-                                  }} numberOfLines={1} ellipsizeMode="tail">
-                                    {e.title} - {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý uživatel'}
-                                  </ThemedText>)}
+                                <ThemedText style={{ fontSize: 10, fontWeight: '600', color: textColor, lineHeight: 12 }} numberOfLines={1}>
+                                  {e.title}
+                                </ThemedText>
+                                <ThemedText style={{ fontSize: 9, color: textColor, opacity: 0.8, lineHeight: 11 }} numberOfLines={1}>
+                                  {dayjs(clampTimeToDay(e.start, day, true)).format('HH:mm')} - {dayjs(clampTimeToDay(e.end, day, false)).format('HH:mm')}
+                                </ThemedText>
                                 {e.is_group && (
-                                  <ThemedText style={{
-                                    fontSize: 10,
-                                    lineHeight: 18,
-                                    color: textColor
-                                  }} numberOfLines={1} ellipsizeMode="tail">
-                                    {e.title} - {count}/{e.pocet_lidi}
-                                  </ThemedText>)}
-                              </ThemedView>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                    <ThemedText style={{ fontSize: 8, color: textColor, marginRight: 2, lineHeight: 10 }} numberOfLines={1}>
+                                      {count}/{e.pocet_lidi}
+                                    </ThemedText>
+                                    <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10, flex: 1 }} numberOfLines={1}>
+                                      {relevantUserEvents.map((ue, idx) => {
+                                        const participant = users.find(u => u.id === ue.user_id);
+                                        const name = participant ? participant.username : `User ${ue.user_id}`;
+                                        const userColorObj = colors.find(c => String(c.user_id) === String(ue.user_id));
+                                        const userColor = userColorObj?.background_color || '#ccc';
+                                        return (
+                                          <ThemedText key={`${ue.event_id}-${ue.user_id}-${idx}`} style={{ fontSize: 8, color: textColor, lineHeight: 10 }}>
+                                            <ThemedText style={{ color: userColor, fontSize: 8, lineHeight: 10 }}>● </ThemedText>
+                                            {name}{idx < relevantUserEvents.length - 1 ? ', ' : ''}
+                                          </ThemedText>
+                                        );
+                                      })}
+                                    </ThemedText>
+                                  </View>
+                                )}
+                                {!e.is_group && (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
+                                    <View
+                                      style={{
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: 2,
+                                        backgroundColor: backgroundColor,
+                                        marginRight: 1,
+                                        borderColor: textColor,
+                                        borderWidth: 0.5
+                                      }}
+                                    />
+                                    <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10 }} numberOfLines={1}>
+                                      {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý'}
+                                    </ThemedText>
+                                  </View>
+                                )}
+                              </Pressable>
                             );
                           }
                         })}
@@ -521,5 +643,5 @@ const styles = StyleSheet.create({
   navText: { fontWeight: '500' },
   weekTitle: { fontSize: 16, fontWeight: 'bold' },
   dayHeader: { width: 60, justifyContent: 'center', alignItems: 'center', borderColor: '#ccc', borderBottomWidth: 0.5, borderRightWidth: 0.5 },
-  hourCell: { justifyContent: 'center', alignItems: 'center', borderColor: '#ccc', borderWidth: 0.5 },
+  hourCell: { justifyContent: 'center', alignItems: 'center', borderLeftColor: '#ccc', borderLeftWidth: 0.5, borderBottomWidth: 2, borderBottomColor: '#ccc', borderTopWidth: 0.5, borderTopColor: '#ccc' },
 });

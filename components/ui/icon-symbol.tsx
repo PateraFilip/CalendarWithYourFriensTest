@@ -21,6 +21,12 @@ const MAPPING = {
   'calendar.fill': 'calendar-month',
   'person.fill': 'person',
   'plus.circle.fill': 'event',
+  'list.bullet.rectangle.fill': 'format-list-numbered',
+  'timeline.fill': 'timeline',
+  'message.fill': 'chat',
+  'person.2.fill': 'people',
+  'gearshape.fill': 'settings',
+  'filter.fill': 'filter-alt',
 } as const satisfies Record<string, string>;
 
 
