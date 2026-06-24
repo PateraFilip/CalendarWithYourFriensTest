@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "buildCommand": "npx expo export",
+  "outputDirectory": "dist",
+  "framework": null
+}
