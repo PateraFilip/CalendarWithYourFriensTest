@@ -1,5 +1,5 @@
-import { fetchUsers } from '@/api/users/get_users';
-import { fetchMyFriendships, Friendship, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend } from '@/api/friends/friendships';
+import { fetchUsers } from '@/services/users/get_users';
+import { fetchMyFriendships, Friendship, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend } from '@/services/friends/friendships';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';

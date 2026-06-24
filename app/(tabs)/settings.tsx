@@ -1,6 +1,6 @@
-import { fetchColors } from '@/api/users/get_colors';
-import { updateColor } from '@/api/users/update_color';
-import { updateUser } from '@/api/users/update_user';
+import { fetchColors } from '@/services/users/get_colors';
+import { updateColor } from '@/services/users/update_color';
+import { updateUser } from '@/services/users/update_user';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';

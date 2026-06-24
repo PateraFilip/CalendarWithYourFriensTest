@@ -1,7 +1,7 @@
-import { createEvent, createMultiDateEvent, createPatternEvent } from '@/api/events/create_event';
-import { fetchUsers } from '@/api/users/get_users';
-import { joinEvent } from '@/api/events/join_event';
-import { sendSystemMessage } from '@/api/system/send_system_message';
+import { createEvent, createMultiDateEvent, createPatternEvent } from '@/services/events/create_event';
+import { fetchUsers } from '@/services/users/get_users';
+import { joinEvent } from '@/services/events/join_event';
+import { sendSystemMessage } from '@/services/system/send_system_message';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';

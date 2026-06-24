@@ -1,7 +1,7 @@
-import { fetchColors } from '@/api/users/get_colors';
-import { fetchEventsException } from '@/api/events/get_event_exceptions';
-import { fetchEvents } from '@/api/events/get_events';
-import { fetchUserEvents } from '@/api/events/getUserEvents';
+import { fetchColors } from '@/services/users/get_colors';
+import { fetchEventsException } from '@/services/events/get_event_exceptions';
+import { fetchEvents } from '@/services/events/get_events';
+import { fetchUserEvents } from '@/services/events/getUserEvents';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
@@ -14,7 +14,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, FlatList } from 'react-native';
 import { ActivityIndicator, Chip } from 'react-native-paper';
-import { fetchMyFriendships } from '@/api/friends/friendships';
+import { fetchMyFriendships } from '@/services/friends/friendships';
 
 dayjs.locale('cs');
 

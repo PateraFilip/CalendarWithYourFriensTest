@@ -1,9 +1,9 @@
 // sharedCalendar.tsx
 
-import { fetchColors } from '@/api/users/get_colors'
-import { fetchEventsException } from '@/api/events/get_event_exceptions'
-import { fetchEvents } from '@/api/events/get_events'
-import { fetchUsers } from '@/api/users/get_users'
+import { fetchColors } from '@/services/users/get_colors'
+import { fetchEventsException } from '@/services/events/get_event_exceptions'
+import { fetchEvents } from '@/services/events/get_events'
+import { fetchUsers } from '@/services/users/get_users'
 import { CellModal } from '@/components/CellModal'
 import DayCalendar from '@/components/CustomDay/CustomDay'
 import MonthCalendar from '@/components/CustomMonth/CustomMonth'

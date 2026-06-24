@@ -1,19 +1,19 @@
-import { createPatternEvent } from '@/api/events/create_event'
+import { createPatternEvent } from '@/services/events/create_event'
 
-import { createException } from '@/api/events/create_exception'
+import { createException } from '@/services/events/create_exception'
 
-import { deleteEvent } from '@/api/events/delete_event'
+import { deleteEvent } from '@/services/events/delete_event'
 
-import { fetchUserEvents, UserEvent } from '@/api/events/getUserEvents'
+import { fetchUserEvents, UserEvent } from '@/services/events/getUserEvents'
 
-import { fetchColors } from '@/api/users/get_colors'
-import { fetchUsers } from '@/api/users/get_users'
+import { fetchColors } from '@/services/users/get_colors'
+import { fetchUsers } from '@/services/users/get_users'
 
-import { cancelEvent } from '@/api/events/cancel_event'
-import { joinEvent } from '@/api/events/join_event'
-import { sendSystemMessage } from '@/api/system/send_system_message'
+import { cancelEvent } from '@/services/events/cancel_event'
+import { joinEvent } from '@/services/events/join_event'
+import { sendSystemMessage } from '@/services/system/send_system_message'
 
-import { updateEvent, updateWeeklyEvent } from '@/api/events/update_event'
+import { updateEvent, updateWeeklyEvent } from '@/services/events/update_event'
 
 import { ThemedSafeView } from '@/components/ThemedSafeView'
 

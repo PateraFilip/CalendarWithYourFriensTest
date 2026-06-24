@@ -6,7 +6,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useState, useCallback } from 'react';
 import { FlatList, TouchableOpacity, RefreshControl, View } from 'react-native';
-import { fetchMyLeagues, League } from '@/api/leagues/leagues';
+import { fetchMyLeagues, League } from '@/services/leagues/leagues';
 import { ActivityIndicator } from 'react-native-paper';
 
 export default function TabulkyScreen() {

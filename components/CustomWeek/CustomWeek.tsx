@@ -1,5 +1,5 @@
-import { fetchUsers } from '@/api/users/get_users';
-import { fetchUserEvents, UserEvent } from '@/api/events/getUserEvents';
+import { fetchUsers } from '@/services/users/get_users';
+import { fetchUserEvents, UserEvent } from '@/services/events/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { eventsOverlappingDay } from '@/lib/calendarEvents';
 import { createClient } from '@supabase/supabase-js';

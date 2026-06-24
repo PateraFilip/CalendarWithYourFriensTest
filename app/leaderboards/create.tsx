@@ -4,7 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/hooks/useAuth';
 import { router } from 'expo-router';
-import { createLeague } from '@/api/leagues/leagues';
+import { createLeague } from '@/services/leagues/leagues';
 import { TextInput, Button, Checkbox } from 'react-native-paper';
 
 export default function CreateLeaderboardScreen() {

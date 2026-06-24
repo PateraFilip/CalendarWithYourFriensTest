@@ -6,12 +6,12 @@ import { supabase } from '@/lib/supabaseClient';
 import { router, useFocusEffect } from 'expo-router';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import dayjs from 'dayjs';
-import { fetchEvents } from '@/api/events/get_events';
-import { fetchEventsException } from '@/api/events/get_event_exceptions';
-import { fetchUserEvents } from '@/api/events/getUserEvents';
-import { fetchMyFriendships } from '@/api/friends/friendships';
+import { fetchEvents } from '@/services/events/get_events';
+import { fetchEventsException } from '@/services/events/get_event_exceptions';
+import { fetchUserEvents } from '@/services/events/getUserEvents';
+import { fetchMyFriendships } from '@/services/friends/friendships';
 import { getMyUpcomingEvents } from '@/lib/myEventsHelpers';
-import { fetchColors } from '@/api/users/get_colors';
+import { fetchColors } from '@/services/users/get_colors';
 import { useUnreadMessages } from '@/contexts/UnreadMessagesContext';
 
 interface EventChatsListProps {

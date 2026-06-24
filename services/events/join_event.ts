@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import { sendSystemMessage } from '@/api/system/send_system_message';
+import { sendSystemMessage } from '@/services/system/send_system_message';
 
 interface JoinEvent {
   user_id: string

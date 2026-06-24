@@ -5,9 +5,9 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalSearchParams, router } from 'expo-router';
-import { fetchLeagueDetails, fetchLeagueLeaderboard, League, LeaguePlayer } from '@/api/leagues/leagues';
-import { fetchUsers } from '@/api/users/get_users';
-import { submitMatch, SubmitMatchData } from '@/api/leagues/submit_match';
+import { fetchLeagueDetails, fetchLeagueLeaderboard, League, LeaguePlayer } from '@/services/leagues/leagues';
+import { fetchUsers } from '@/services/users/get_users';
+import { submitMatch, SubmitMatchData } from '@/services/leagues/submit_match';
 import { Button, ActivityIndicator, TextInput, Checkbox } from 'react-native-paper';
 
 export default function AddMatchScreen() {

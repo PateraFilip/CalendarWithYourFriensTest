@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import { sendSystemMessage } from '@/api/system/send_system_message';
+import { sendSystemMessage } from '@/services/system/send_system_message';
 
 interface CreateEventInput {
   title: string

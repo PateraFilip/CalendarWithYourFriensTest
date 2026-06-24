@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchEvents } from '@/api/events/get_events';
-import { fetchEventsException } from '@/api/events/get_event_exceptions';
+import { fetchEvents } from '@/services/events/get_events';
+import { fetchEventsException } from '@/services/events/get_event_exceptions';
 import { useRealtimeNotifications } from '@/hooks/useNotificationHandler';
 
 interface Event { id: number; title: string; start: Date; end: Date; user_id: number; pocet_lidi: number; pravidelnost: boolean; is_group: boolean; original_start?: Date; original_end?: Date; }

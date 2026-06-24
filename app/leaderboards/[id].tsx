@@ -5,12 +5,12 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
-import { fetchLeagueDetails, fetchLeagueLeaderboard, fetchLeagueMatches, League, LeaguePlayer } from '@/api/leagues/leagues';
+import { fetchLeagueDetails, fetchLeagueLeaderboard, fetchLeagueMatches, League, LeaguePlayer } from '@/services/leagues/leagues';
 import { Button, ActivityIndicator, FAB } from 'react-native-paper';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../api/system/supabaseClient';
+import { supabase } from '../../services/system/supabaseClient';
 
 export default function LeaderboardDetailScreen() {
     const { id } = useLocalSearchParams();

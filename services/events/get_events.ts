@@ -1,7 +1,7 @@
 import { dedupeCalendarEvents } from '@/lib/calendarEvents';
 import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
-import { fetchMyFriendships } from '@/api/friends/friendships';
+import { fetchMyFriendships } from '@/services/friends/friendships';
 
 const DAY_SHORT = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
 
