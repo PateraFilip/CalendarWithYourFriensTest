@@ -10,6 +10,7 @@ export interface SubmitMatchData {
     score: number;
     is_winner: boolean;
     is_draw: boolean;
+    position?: number;
   }[];
 }
 
