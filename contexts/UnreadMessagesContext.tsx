@@ -73,8 +73,9 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
 
             const { data: eventMessages, error: eventsError } = await supabase
                 .from('event_messages')
-                .select('series_id, instance_date, created_at')
+                .select('series_id, instance_date, created_at, is_system_message')
                 .in('series_id', Array.from(allowedSeries))
+                .or('is_system_message.is.null,is_system_message.eq.false')
                 .order('created_at', { ascending: false })
                 .limit(400);
 

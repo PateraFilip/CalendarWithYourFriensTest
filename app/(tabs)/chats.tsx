@@ -11,7 +11,7 @@ import { useUnreadMessages } from '@/contexts/UnreadMessagesContext';
 
 export default function ChatsScreen() {
     const { user } = useAuth();
-    const { unreadGlobalCount, unreadEventRooms, refreshUnread } = useUnreadMessages();
+    const { unreadGlobalCount, unreadEventRooms } = useUnreadMessages();
     const [activeTab, setActiveTab] = useState<'notifications' | 'events'>('notifications');
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
 
@@ -26,7 +26,6 @@ export default function ChatsScreen() {
                     value={activeTab}
                     onValueChange={(value) => {
                         setActiveTab(value as 'notifications' | 'events');
-                        if (value === 'notifications') refreshUnread();
                     }}
                     buttons={[
                         {

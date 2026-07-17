@@ -1,7 +1,6 @@
 import { createEvent, createMultiDateEvent, createPatternEvent } from '@/services/events/create_event';
 import { fetchUsers } from '@/services/users/get_users';
 import { joinEvent } from '@/services/events/join_event';
-import { sendSystemMessage } from '@/services/system/send_system_message';
 import { getDefaultInviteIds } from '@/services/events/invites';
 import { fetchMyFriendships } from '@/services/friends/friendships';
 import { ThemedText } from '@/components/themed-text';
@@ -166,20 +165,9 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
 
     const assignParticipants = async (eventId: number) => {
         if (!eventId || !user?.id) return;
-        await joinEvent({ user_id: String(user.id), event_id: eventId, instance_date: undefined, skipSystemMessage: true });
+        await joinEvent({ user_id: String(user.id), event_id: eventId, instance_date: undefined, skipNotify: true });
         for (const participantId of selectedParticipants) {
-            await joinEvent({ user_id: String(participantId), event_id: eventId, instance_date: undefined, skipSystemMessage: true });
-        }
-
-        if (selectedParticipants.length > 0) {
-            const getNames = (ids: SelectableUserId[]) =>
-                ids.map(id => friendUsers.find(u => String(u.id) === String(id))?.username || 'Neznámý').join(', ');
-            await sendSystemMessage({
-                type: 'event',
-                message: `přidal(a) účastníky: ${getNames(selectedParticipants)}`,
-                user_id: user.id,
-                series_id: eventId
-            }).catch(console.error);
+            await joinEvent({ user_id: String(participantId), event_id: eventId, instance_date: undefined, skipNotify: true });
         }
     };
 

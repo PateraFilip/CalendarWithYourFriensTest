@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { markNotificationRead } from '@/services/notifications/notifications';
+import { markNotificationRead, markAllNotificationsRead } from '@/services/notifications/notifications';
 import { useAppData } from '@/contexts/AppDataContext';
 import { useUnreadMessages } from '@/contexts/UnreadMessagesContext';
 
@@ -19,7 +19,6 @@ function extractEventId(message: string): number | null {
 }
 
 export default function NotificationsInbox({ currentUserId }: NotificationsInboxProps) {
-  void currentUserId;
   const router = useRouter();
   const { refreshUnread } = useUnreadMessages();
   const {
@@ -39,8 +38,16 @@ export default function NotificationsInbox({ currentUserId }: NotificationsInbox
   useFocusEffect(
     useCallback(() => {
       ensureLoaded();
-      refreshUnread();
-    }, [ensureLoaded, refreshUnread])
+      // Stačí zobrazit seznam — všechna nepřečtená označ jako přečtená
+      void (async () => {
+        await markAllNotificationsRead(currentUserId);
+        const now = new Date().toISOString();
+        setNotifications((prev) =>
+          prev.map((n) => (n.read_at ? n : { ...n, read_at: now }))
+        );
+        refreshUnread();
+      })();
+    }, [ensureLoaded, refreshUnread, currentUserId, setNotifications])
   );
 
   const openNotification = async (item: (typeof notifications)[0]) => {

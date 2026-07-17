@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
-import { supabase } from '@/lib/supabaseClient';
+import { saveFcmTokenToSupabase } from '@/lib/saveFcmToken';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDChsbgzCprt-_VZnx_-XzdpNjlSlE0Z8g',
@@ -139,20 +139,14 @@ export async function registerAndSavePushToken(
 
     console.log('FCM token (WEB):', token);
 
-    const { error } = await withTimeout(
-      (async () =>
-        supabase.from('user_devices').upsert(
-          { user_id: userId, fcm_token: token },
-          { onConflict: 'fcm_token' }
-        ))(),
+    const saved = await withTimeout(
+      saveFcmTokenToSupabase(token),
       10000,
-      'user_devices upsert'
+      'user_devices save'
     );
 
-    if (error) {
-      console.error('Chyba při ukládání tokenu:', error);
-    } else {
-      console.log('Token uložen (WEB) ✅');
+    if (!saved) {
+      console.error('Chyba při ukládání tokenu (WEB)');
     }
 
     return token;

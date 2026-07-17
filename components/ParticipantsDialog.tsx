@@ -87,15 +87,17 @@ export const ParticipantsDialog = React.memo(({
                 </Dialog.ScrollArea>
                 <Dialog.Actions>
                     {onConfirm ? (
-                        <>
-                            <Button onPress={onDismiss} disabled={confirmLoading}>Zrušit</Button>
-                            <Button onPress={onConfirm} loading={confirmLoading} disabled={confirmLoading}>
-                                {confirmLabel}
-                            </Button>
-                        </>
-                    ) : (
-                        <Button onPress={onDismiss}>Hotovo</Button>
-                    )}
+                        <Button onPress={onDismiss} disabled={confirmLoading}>
+                            Zrušit
+                        </Button>
+                    ) : null}
+                    <Button
+                        onPress={onConfirm ?? onDismiss}
+                        loading={!!onConfirm && confirmLoading}
+                        disabled={!!onConfirm && confirmLoading}
+                    >
+                        {onConfirm ? confirmLabel : 'Hotovo'}
+                    </Button>
                 </Dialog.Actions>
             </Dialog>
         </Portal>

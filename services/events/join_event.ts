@@ -1,17 +1,20 @@
 import { supabase } from '@/lib/supabaseClient';
-import { sendSystemMessage } from '@/services/system/send_system_message';
+import { notifyEventParticipants } from '@/services/notifications/eventNotify';
+import { fetchChatParticipantIds } from '@/services/events/addFriendsToChat';
 
 interface JoinEvent {
   user_id: string
   event_id: number
   instance_date?: string
+  /** @deprecated oznámení jdou do inboxu, ne do chatu */
   skipSystemMessage?: boolean
+  skipNotify?: boolean
 }
 
 export const joinEvent = async (event: JoinEvent) => {
   const { data: series } = await supabase
     .from('event_series')
-    .select('zakladatel_id, is_group')
+    .select('zakladatel_id, is_group, nazev')
     .eq('id', event.event_id)
     .single();
 
@@ -42,13 +45,26 @@ export const joinEvent = async (event: JoinEvent) => {
     throw new Error(error.message || 'Failed to join event');
   }
 
-  if (!event.skipSystemMessage) {
-    sendSystemMessage({
-      type: 'event',
-      message: 'se přihlásil(a) k události.',
-      user_id: event.user_id,
-      series_id: event.event_id,
-      instance_date: event.instance_date
+  if (!event.skipNotify && !event.skipSystemMessage) {
+    const title = series?.nazev || 'událost';
+    const dStr = event.instance_date || '';
+    const existing = await fetchChatParticipantIds(
+      event.event_id,
+      event.instance_date || null
+    );
+    const recipients = Array.from(
+      new Set([
+        ...existing,
+        String(series?.zakladatel_id || ''),
+      ].filter(Boolean))
+    );
+
+    notifyEventParticipants({
+      participantIds: recipients,
+      actorId: event.user_id,
+      message: `se přihlásil(a) k události "${title}". [EVENT:${event.event_id}:${dStr}:${title}]`,
+      seriesId: event.event_id,
+      instanceDate: event.instance_date || null,
     }).catch(console.error);
   }
 

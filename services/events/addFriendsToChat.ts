@@ -1,7 +1,6 @@
+import { createNotificationsForRecipients } from '@/services/notifications/notifications';
 import { supabase } from '@/lib/supabaseClient';
 import { addEventInvites } from '@/services/events/invites';
-import { createNotificationsForRecipients } from '@/services/notifications/notifications';
-import { sendSystemMessage } from '@/services/system/send_system_message';
 
 export async function fetchChatParticipantIds(
   seriesId: number,
@@ -89,14 +88,6 @@ export async function addFriendsToEventChat({
     message: `tě přidal(a) do chatu události "${title}". [EVENT:${seriesId}:${dStr}:${title}]`,
     seriesId,
     instanceDate: instanceDate || null,
-  }).catch(console.error);
-
-  sendSystemMessage({
-    type: 'event',
-    message: `přidal(a) do chatu nové účastníky.`,
-    user_id: actorId,
-    series_id: seriesId,
-    instance_date: instanceDate || null,
   }).catch(console.error);
 
   return { added: toAdd };

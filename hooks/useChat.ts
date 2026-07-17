@@ -50,6 +50,7 @@ export const useChat = ({
         .from('event_messages')
         .select(`*, users (username, jmeno, prijmeni)`)
         .eq('series_id', series_id)
+        .or('is_system_message.is.null,is_system_message.eq.false')
         .order('created_at', { ascending: true })
         .limit(100);
 
@@ -90,6 +91,7 @@ export const useChat = ({
           }
 
           if (!shouldAdd) return;
+          if (newMsg.is_system_message) return;
 
           const fetchNewMessage = async () => {
             const { data } = await supabase

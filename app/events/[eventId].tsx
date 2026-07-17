@@ -11,7 +11,6 @@ import { fetchUsers } from '@/services/users/get_users'
 
 import { cancelEvent } from '@/services/events/cancel_event'
 import { joinEvent } from '@/services/events/join_event'
-import { sendSystemMessage } from '@/services/system/send_system_message'
 import {
     fetchEventInviteIds,
     getDefaultInviteIds,
@@ -1409,10 +1408,6 @@ export default function EventDetail() {
             !eventObj.pravidelnost || !editAllInstances
                 ? dayjs(origDates.s).format('YYYY-MM-DD')
                 : ''
-        const instanceStr =
-            eventObj.pravidelnost && !editAllInstances
-                ? dayjs(origDates.s).format('YYYY-MM-DD')
-                : undefined
 
         if (payload.title !== undefined && payload.title !== eventObj.title)
             changes.push(`změnil(a) název na "${payload.title}"`)
@@ -1537,20 +1532,28 @@ export default function EventDetail() {
             }
         }
 
+        // Oznámení jdou jen do inboxu (user_notifications), ne do chatu
+        const titleOrPlaceChanged =
+            (payload.title !== undefined && payload.title !== eventObj.title) ||
+            (payload.poloha !== undefined && payload.poloha !== eventObj.poloha)
         if (
-            changes.length > 0 &&
+            titleOrPlaceChanged &&
+            finalIsGroup &&
             user?.id &&
-            (finalIsGroup || eventObj.is_group)
+            changes.length > 0
         ) {
-            changes.forEach((ch) => {
-                sendSystemMessage({
-                    type: 'event',
-                    message: ch,
-                    user_id: user.id,
-                    series_id: eventObj.id,
-                    instance_date: instanceStr,
+            const leftover = changes.filter(
+                (ch) => ch.includes('název') || ch.includes('polohu')
+            )
+            if (leftover.length > 0) {
+                notifyEventParticipants({
+                    participantIds: participantRecipients,
+                    actorId: user.id,
+                    message: `${leftover.join('; ')}. [EVENT:${eventObj.id}:${dStr}:${t}]`,
+                    seriesId: eventObj.id,
+                    instanceDate: dStr || null,
                 }).catch(console.error)
-            })
+            }
         }
 
         if (

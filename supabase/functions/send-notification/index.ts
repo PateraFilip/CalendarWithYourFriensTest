@@ -108,8 +108,13 @@ serve(async (req) => {
       }
     }
 
-    // 2. Event zprávy
+    // 2. Event zprávy (jen běžný chat — systémové hlášky jdou přes user_notifications)
     if (table === 'event_messages' && payload.type === 'INSERT') {
+      if (record.is_system_message) {
+        return new Response(JSON.stringify({ success: true, skipped: 'system_message' }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
       const chat_id = record.instance_date ? `instance_${record.series_id}_${record.instance_date}` : `series_${record.series_id}`;
       const { data: participants } = await supabaseClient.from('event_users').select('user_id').eq('series_id', record.series_id)
       
@@ -122,10 +127,8 @@ serve(async (req) => {
         
         if (user?.notify_chat_messages !== false && !muted) {
            const cleanMsg = record.message ? record.message.replace(/\[EVENT:[^\]]+\]/g, '').trim() : '';
-           const body = record.is_system_message 
-              ? `${sender?.username || 'Uživatel'} ${cleanMsg}`
-              : `${sender?.username || 'Uživatel'}: ${cleanMsg}`;
-           const title = record.is_system_message ? "Systémová zpráva v události" : "Nová zpráva v události";
+           const body = `${sender?.username || 'Uživatel'}: ${cleanMsg}`;
+           const title = "Nová zpráva v události";
            await notifyUser(p.user_id, title, body, { type: 'event_chat', series_id: record.series_id, instance_date: record.instance_date });
         }
       }
