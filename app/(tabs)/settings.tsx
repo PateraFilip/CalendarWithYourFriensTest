@@ -19,6 +19,7 @@ import { StyleSheet, Appearance, TouchableOpacity, View, TextInput, Platform, Li
 import { Button, Switch } from 'react-native-paper';
 import ColorPicker from '../../components/ColorPicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ExternalLink } from '@/components/ExternalLink';
 
 interface Color {
     id: number;
@@ -383,31 +384,9 @@ export default function SettingsScreen() {
                                     <ThemedText style={styles.iosHintStep}>
                                         4. Tady klepni na „Povolit oznámení prohlížeče“
                                     </ThemedText>
-                                    <Button
-                                        mode="text"
-                                        compact
-                                        onPress={() => {
-                                            const url =
-                                                'https://www.youtube.com/watch?v=D4ZzDQRGmRk';
-                                            if (
-                                                Platform.OS === 'web' &&
-                                                typeof window !== 'undefined'
-                                            ) {
-                                                window.open(url, '_blank', 'noopener,noreferrer');
-                                            } else {
-                                                void Linking.openURL(url);
-                                            }
-                                        }}
-                                        textColor="#FF00AA"
-                                        icon="youtube"
-                                        style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                                        labelStyle={{
-                                            textDecorationLine: 'underline',
-                                            fontWeight: '700',
-                                        }}
-                                    >
-                                        Video návod (YouTube)
-                                    </Button>
+                                    <ExternalLink href="https://www.youtube.com/watch?v=D4ZzDQRGmRk">
+                                        Video návod (YouTube) ↗
+                                    </ExternalLink>
                                 </ThemedView>
                             </ThemedView>
                         )}
