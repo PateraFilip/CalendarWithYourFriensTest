@@ -23,9 +23,14 @@ if (typeof window !== 'undefined' && 'navigator' in window) {
 
 export async function registerAndSavePushToken(userId: string) {
     try {
-        if (!messaging) return null;
+        if (!messaging || typeof window === 'undefined') return null;
+        if (typeof Notification === 'undefined') return null;
 
-        const permission = await Notification.requestPermission();
+        // requestPermission musí běžet z user gesture (klik) — jinak prohlížeč dialog často potlačí
+        const permission =
+            Notification.permission === 'granted'
+                ? 'granted'
+                : await Notification.requestPermission();
         if (permission !== 'granted') {
             console.log('Web push permission denied.');
             return null;
@@ -37,7 +42,18 @@ export async function registerAndSavePushToken(userId: string) {
             return null;
         }
 
-        const token = await getToken(messaging, { vapidKey });
+        let swRegistration: ServiceWorkerRegistration | undefined;
+        if ('serviceWorker' in navigator) {
+            swRegistration = await navigator.serviceWorker.register(
+                '/firebase-messaging-sw.js'
+            );
+            await navigator.serviceWorker.ready;
+        }
+
+        const token = await getToken(messaging, {
+            vapidKey,
+            ...(swRegistration ? { serviceWorkerRegistration: swRegistration } : {}),
+        });
         console.log('FCM token (WEB):', token);
 
         const { error } = await supabase

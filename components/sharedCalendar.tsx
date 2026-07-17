@@ -26,7 +26,7 @@ import dayjs from 'dayjs'
 import 'dayjs/locale/cs'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import React, { useEffect, useMemo, useState } from 'react'
-import { Dimensions, StyleSheet, Text, TouchableOpacity } from 'react-native'
+import { Dimensions, Platform, StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { SegmentedButtons } from 'react-native-paper'
 
 interface WeeklyEvent { id: number; title: string; cas_od: Date; cas_do: Date; user_id: number; den: string; }
@@ -99,10 +99,19 @@ export default function SharedCalendar() {
 
 
     useEffect(() => {
-        requestUserPermission()
+        // Na webu permission jen po kliknutí (WebNotificationPrompt).
+        // Tady jen zaregistrujeme token, pokud už je povolení udělené.
         const initNotifications = async () => {
             const userId = user?.auth_user_id || user?.id;
-            if (userId) await registerAndSavePushToken(String(userId));
+            if (!userId) return;
+            if (Platform.OS === 'web') {
+                if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                    await registerAndSavePushToken(String(userId));
+                }
+                return;
+            }
+            await requestUserPermission();
+            await registerAndSavePushToken(String(userId));
         };
         initNotifications();
     }, [user]);

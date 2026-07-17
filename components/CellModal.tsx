@@ -137,15 +137,11 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
 
     if (!date) return null
 
-    // Filtr podle dne (ne jen hodiny) — CellModal se otevírá i z měsíčního/denního kliku
-    const dayStart = dayjs(date).startOf('day')
-    const dayEnd = dayjs(date).endOf('day')
+    // Jen události, které skutečně probíhají v dané hodině (stejná logika jako týdenní buňka)
+    const hourStart = dayjs(date).startOf('hour').toDate()
+    const hourEnd = dayjs(date).startOf('hour').add(1, 'hour').toDate()
     const hourEvents = dedupeCalendarEvents(
-        events.filter((e) => {
-            const start = dayjs(e.start)
-            const end = dayjs(e.end)
-            return start.isBefore(dayEnd) && end.isAfter(dayStart)
-        })
+        events.filter((e) => e.start < hourEnd && e.end > hourStart)
     ) as any[]
     // weeklyEvents je legacy (expanded events už přicházejí v `events`)
     void weeklyEvents
@@ -186,9 +182,11 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                 }
                                 const count = relevantUserEvents.length;
                                 const userJoined = relevantUserEvents.filter(u => u.user_id === user?.id)
-                                const colorObj = colors.find(c => c.user_id === item.user_id); // najde barvu pro daného uživatele
-                                const backgroundColor = item.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
+                                const colorObj = colors.find(c => String(c.user_id) === String(item.user_id));
+                                const backgroundColor = item.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc';
                                 const textColor = item.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
+                                const owner = users.find(u => String(u.id) === String(item.user_id));
+                                const ownerName = owner?.username || owner?.jmeno || 'Neznámý';
 
                                 return (
                                     <TouchableOpacity
@@ -204,6 +202,60 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                                     </Text>
                                                 )}
                                             </View>
+                                            {!item.is_group ? (
+                                                <View style={styles.ownerRow}>
+                                                    <View
+                                                        style={[
+                                                            styles.ownerDot,
+                                                            {
+                                                                backgroundColor: backgroundColor,
+                                                                borderColor: textColor,
+                                                            },
+                                                        ]}
+                                                    />
+                                                    <Text style={[styles.eventTime, { color: textColor }]}>
+                                                        {ownerName}
+                                                    </Text>
+                                                </View>
+                                            ) : (
+                                                <View style={styles.ownerRow}>
+                                                    <Text style={[styles.eventTime, { color: textColor, flexShrink: 1 }]}>
+                                                        {relevantUserEvents.length > 0
+                                                            ? relevantUserEvents.map((ue, idx) => {
+                                                                const participant = users.find(
+                                                                    (u) => String(u.id) === String(ue.user_id)
+                                                                );
+                                                                const name =
+                                                                    participant?.username ||
+                                                                    `User ${ue.user_id}`;
+                                                                const userColor =
+                                                                    colors.find(
+                                                                        (c) =>
+                                                                            String(c.user_id) ===
+                                                                            String(ue.user_id)
+                                                                    )?.background_color || '#ccc';
+                                                                return (
+                                                                    <Text
+                                                                        key={`${ue.event_id}-${ue.user_id}-${idx}`}
+                                                                        style={{ color: textColor, fontSize: 13 }}
+                                                                    >
+                                                                        <Text style={{ color: userColor }}>● </Text>
+                                                                        {name}
+                                                                        {idx < relevantUserEvents.length - 1
+                                                                            ? ', '
+                                                                            : ''}
+                                                                    </Text>
+                                                                );
+                                                            })
+                                                            : (
+                                                                <>
+                                                                    <Text style={{ color: '#FFD700' }}>● </Text>
+                                                                    Zakladatel: {ownerName}
+                                                                </>
+                                                            )}
+                                                    </Text>
+                                                </View>
+                                            )}
                                             <Text style={[styles.eventTime, { color: textColor }]}>
                                                 {(() => {
                                                     const startDate = (item as any).original_start || item.start;
@@ -273,7 +325,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                         />
                     ) : (
                         <ThemedText>
-                            Žádné události pro tento den
+                            Žádné události v tuto hodinu
                         </ThemedText>
                     )}
 
@@ -314,6 +366,20 @@ const styles = StyleSheet.create({
     },
     eventTime: {
         fontSize: 13,
+    },
+    ownerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 2,
+        marginBottom: 2,
+        flexWrap: 'wrap',
+    },
+    ownerDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+        borderWidth: 0.5,
     },
     createButton: {
         borderRadius: 6,

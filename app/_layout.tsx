@@ -17,6 +17,7 @@ import 'react-native-reanimated'
 import { UnreadMessagesProvider } from '@/contexts/UnreadMessagesContext'
 import { AppDataProvider } from '@/contexts/AppDataContext'
 import { NetworkBanner } from '@/components/NetworkBanner'
+import { WebNotificationPrompt } from '@/components/WebNotificationPrompt'
 
 
 function RootLayoutNav() {
@@ -80,6 +81,7 @@ export default function RootLayout() {
                             <UnreadMessagesProvider>
                                 <NetworkBanner />
                                 <RootLayoutNav />
+                                <WebNotificationPrompt />
                                 <StatusBar style="auto" />
                             </UnreadMessagesProvider>
                         </AppDataProvider>

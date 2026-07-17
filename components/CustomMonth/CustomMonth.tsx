@@ -1,7 +1,7 @@
 import { fetchUsers } from '@/services/users/get_users';
 import { fetchUserEvents } from '@/services/events/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { dedupeCalendarEvents, eventInstanceKey, eventsOverlappingDay, mergeDuplicateEvents } from '@/lib/calendarEvents';
+import { dedupeCalendarEvents, eventInstanceKey, eventsOverlappingDay, mergeDuplicateEvents, visibleSegmentOnDay } from '@/lib/calendarEvents';
 import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -273,7 +273,10 @@ export default function MonthCalendar({ events, weeklyEvents, eventsException, o
                                                         {e.title}
                                                     </ThemedText>
                                                     <ThemedText style={{ fontSize: 9, color: textColor, opacity: 0.8, lineHeight: 11 }} numberOfLines={1}>
-                                                        {dayjs(e.start).format('HH:mm')} - {dayjs(e.end).format('HH:mm')}
+                                                        {(() => {
+                                                            const { eventStart, eventEnd } = visibleSegmentOnDay(e, day);
+                                                            return `${dayjs(eventStart).format('HH:mm')} - ${dayjs(eventEnd).format('HH:mm')}`;
+                                                        })()}
                                                     </ThemedText>
                                                     {e.is_group && (
                                                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
