@@ -383,18 +383,31 @@ export default function SettingsScreen() {
                                     <ThemedText style={styles.iosHintStep}>
                                         4. Tady klepni na „Povolit oznámení prohlížeče“
                                     </ThemedText>
-                                    <TouchableOpacity
-                                        onPress={() =>
-                                            void Linking.openURL(
-                                                'https://www.youtube.com/watch?v=D4ZzDQRGmRk'
-                                            )
-                                        }
-                                        style={{ marginTop: 10 }}
+                                    <Button
+                                        mode="text"
+                                        compact
+                                        onPress={() => {
+                                            const url =
+                                                'https://www.youtube.com/watch?v=D4ZzDQRGmRk';
+                                            if (
+                                                Platform.OS === 'web' &&
+                                                typeof window !== 'undefined'
+                                            ) {
+                                                window.open(url, '_blank', 'noopener,noreferrer');
+                                            } else {
+                                                void Linking.openURL(url);
+                                            }
+                                        }}
+                                        textColor="#FF00AA"
+                                        icon="youtube"
+                                        style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                                        labelStyle={{
+                                            textDecorationLine: 'underline',
+                                            fontWeight: '700',
+                                        }}
                                     >
-                                        <ThemedText style={styles.iosHintLink}>
-                                            Video návod (YouTube)
-                                        </ThemedText>
-                                    </TouchableOpacity>
+                                        Video návod (YouTube)
+                                    </Button>
                                 </ThemedView>
                             </ThemedView>
                         )}
