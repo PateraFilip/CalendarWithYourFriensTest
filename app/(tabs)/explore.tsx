@@ -1,16 +1,16 @@
-import { fetchUsers } from '@/services/users/get_users';
-import { fetchMyFriendships, Friendship, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend } from '@/services/friends/friendships';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
+import { acceptFriendRequest, fetchMyFriendships, Friendship, rejectFriendRequest, removeFriend, sendFriendRequest } from '@/services/friends/friendships';
+import { fetchUsers } from '@/services/users/get_users';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import React, { useEffect, useState, useCallback } from 'react';
-import { FlatList, StyleSheet, View, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 interface User {
     id: string; // changed to string according to users table
@@ -141,7 +141,7 @@ export default function PeopleScreen() {
 
     const renderItem = ({ item }: { item: User & { friendship?: Friendship } }) => {
         if (!user) return null;
-        
+
         const isMe = item.id.toString() === user.id.toString();
         const friendship = item.friendship;
 
@@ -154,7 +154,7 @@ export default function PeopleScreen() {
             <ThemedView style={[styles.card, { backgroundColor: surfaceColor, borderColor, borderWidth: 1 }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <ThemedText style={{ fontSize: 18, fontWeight: 'bold' }}>
-                        {item.username} {isMe && '(To jsi ty)'}
+                        {item.username} {isMe}
                     </ThemedText>
 
                     {!isMe && (
@@ -216,11 +216,11 @@ export default function PeopleScreen() {
                 <FlatList
                     data={users.map(u => ({
                         ...u,
-                        friendship: friendships.find(f => 
-                            (f.user_id.toString() === user?.id?.toString() && f.friend_id.toString() === u.id.toString()) || 
+                        friendship: friendships.find(f =>
+                            (f.user_id.toString() === user?.id?.toString() && f.friend_id.toString() === u.id.toString()) ||
                             (f.friend_id.toString() === user?.id?.toString() && f.user_id.toString() === u.id.toString())
                         )
-                    })).sort((a,b) => a.username.localeCompare(b.username))}
+                    })).sort((a, b) => a.username.localeCompare(b.username))}
                     keyExtractor={(item) => item.id.toString()}
                     renderItem={renderItem}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
