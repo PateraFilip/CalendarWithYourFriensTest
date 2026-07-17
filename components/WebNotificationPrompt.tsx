@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/hooks/useAuth';
 import { registerAndSavePushToken } from '@/lib/push-notifications';
@@ -50,43 +50,56 @@ export function WebNotificationPrompt() {
 
   if (Platform.OS !== 'web' || !visible) return null;
 
-  const enable = async () => {
+  const enable = () => {
+    if (typeof Notification === 'undefined') return;
+
+    const userId = (user as any)?.auth_user_id || user?.id;
+    if (!userId) {
+      if (typeof window !== 'undefined') window.alert('Nejsi přihlášen.');
+      return;
+    }
+
+    // KRITICKÉ pro Chrome: requestPermission() musí startnout synchronně v click handleru.
+    // Jakýkoli setState/await předtím → jen zvoneček v adresním řádku.
+    const permissionPromise: Promise<NotificationPermission> =
+      Notification.permission === 'granted' || Notification.permission === 'denied'
+        ? Promise.resolve(Notification.permission)
+        : Notification.requestPermission();
+
     setBusy(true);
-    try {
-      const userId = (user as any)?.auth_user_id || user?.id;
-      if (!userId) {
-        Alert.alert('Chyba', 'Nejsi přihlášen.');
-        return;
-      }
+    void (async () => {
+      try {
+        const permission = await permissionPromise;
 
-      const token = await registerAndSavePushToken(String(userId));
+        if (permission === 'granted') {
+          const token = await registerAndSavePushToken(String(userId), {
+            skipPermissionRequest: true,
+          });
+          setVisible(false);
+          await saveStorage(DISMISS_KEY, 'true');
+          if (!token) {
+            window.alert(
+              'Oznámení jsou povolená, ale registrace push tokenu se nepovedla. Zkus obnovit stránku.'
+            );
+          }
+          return;
+        }
 
-      // Po rozhodnutí prohlížeče banner zavři i když token selhal
-      if (typeof Notification !== 'undefined' && Notification.permission !== 'default') {
         setVisible(false);
         await saveStorage(DISMISS_KEY, 'true');
+        if (permission === 'denied') {
+          window.alert(
+            'Notifikace jsou zamítnuté. Povol je v nastavení webu (zámek u URL) a zkus znovu.'
+          );
+        }
+      } catch (e: any) {
+        console.error(e);
+        setVisible(false);
+        window.alert(e?.message || 'Nepodařilo se nastavit oznámení.');
+      } finally {
+        setBusy(false);
       }
-
-      if (Notification.permission === 'granted' && !token) {
-        const msg =
-          'Prohlížeč povolil notifikace, ale registrace push tokenu se nepovedla (service worker / síť). Zkus obnovit stránku.';
-        if (typeof window !== 'undefined') window.alert(msg);
-        else Alert.alert('Oznámení povolena', msg);
-      } else if (Notification.permission === 'denied') {
-        const msg =
-          'Notifikace jsou v prohlížeči zakázané. Povol je v nastavení webu a zkus znovu.';
-        if (typeof window !== 'undefined') window.alert(msg);
-        else Alert.alert('Zamítnuto', msg);
-      }
-    } catch (e: any) {
-      console.error(e);
-      setVisible(false);
-      const msg = e?.message || 'Nepodařilo se nastavit oznámení.';
-      if (typeof window !== 'undefined') window.alert(msg);
-      else Alert.alert('Chyba', msg);
-    } finally {
-      setBusy(false);
-    }
+    })();
   };
 
   const dismiss = async () => {

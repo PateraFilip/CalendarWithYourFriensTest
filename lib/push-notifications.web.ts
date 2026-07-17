@@ -87,19 +87,20 @@ async function registerMessagingServiceWorker(): Promise<ServiceWorkerRegistrati
   return registration;
 }
 
-export async function registerAndSavePushToken(userId: string) {
+export async function registerAndSavePushToken(
+  userId: string,
+  opts?: { skipPermissionRequest?: boolean }
+) {
   try {
     if (typeof window === 'undefined') return null;
     if (typeof Notification === 'undefined') return null;
 
-    const permission =
-      Notification.permission === 'granted'
-        ? 'granted'
-        : await withTimeout(
-            Notification.requestPermission(),
-            30000,
-            'Notification.requestPermission'
-          );
+    let permission: NotificationPermission = Notification.permission;
+    if (!opts?.skipPermissionRequest && permission !== 'granted' && permission !== 'denied') {
+      // Pozor: po await už Chrome často ukáže jen „zvoneček“.
+      // Ideálně volej requestPermission synchronně z click handleru a sem pošli skipPermissionRequest.
+      permission = await Notification.requestPermission();
+    }
 
     if (permission !== 'granted') {
       console.log('Web push permission denied.');
