@@ -31,8 +31,9 @@ function RootLayoutNav() {
         if (sessionLoading) return;
 
         const inAuthGroup = segments[0] === '(login)';
+        const inAuthScreens = segments[0] === 'register' || segments[0] === 'reset_password';
 
-        if (!user && !inAuthGroup) {
+        if (!user && !inAuthGroup && !inAuthScreens) {
             router.replace('/(login)');
         } else if (user && inAuthGroup) {
             router.replace('/(tabs)');
