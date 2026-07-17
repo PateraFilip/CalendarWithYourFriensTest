@@ -50,7 +50,7 @@ export default function Login() {
         }
     }, []);
 
-    // Biometrie jen když není „Zůstat přihlášen“
+    // Biometrie jen když není „Zůstat přihlášen"
     useEffect(() => {
         if (!isNative || rememberMe) {
             setShowBiometric(false);
@@ -65,7 +65,7 @@ export default function Login() {
             const ok = await unlockWithBiometric();
             if (!ok) {
                 alert(
-                    'Biometrie se nezdařila, nebo chybí uložená session. Přihlas se heslem bez „Zůstat přihlášen“ — příště můžeš použít otisk / Face ID.'
+                    'Biometrie se nezdařila, nebo chybí uložená session. Přihlas se heslem bez „Zůstat přihlášen" — příště můžeš použít otisk / Face ID.'
                 );
                 return;
             }
@@ -208,7 +208,7 @@ export default function Login() {
 
                     <View style={{ width: '100%' }}>
                         <Link
-                            href="/reset_password"
+                            href="../reset_password"
                             style={{
                                 color: buttonColor,
                                 textAlign: 'left',
@@ -220,7 +220,7 @@ export default function Login() {
                     </View>
                     <View style={{ width: '100%' }}>
                         <Link
-                            href="/register"
+                            href="../register"
                             style={{
                                 color: buttonColor,
                                 textAlign: 'left',
