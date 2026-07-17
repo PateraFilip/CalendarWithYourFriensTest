@@ -1,28 +1,34 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 
 /**
- * Jednoduchý offline banner (web: navigator.onLine; native: best-effort fetch ping).
+ * Offline banner — na webu přes navigator.onLine, na native bez window API.
  */
 export function NetworkBanner() {
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    const update = () => {
-      if (typeof navigator !== 'undefined' && 'onLine' in navigator) {
-        setOffline(!navigator.onLine);
-      }
-    };
-    update();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', update);
-      window.addEventListener('offline', update);
-      return () => {
-        window.removeEventListener('online', update);
-        window.removeEventListener('offline', update);
-      };
+    if (Platform.OS !== 'web') {
+      // Native: bez @react-native-community/netinfo necháme banner vypnutý
+      return;
     }
+
+    const win = typeof globalThis !== 'undefined' ? (globalThis as any).window : undefined;
+    if (!win || typeof win.addEventListener !== 'function') return;
+
+    const update = () => {
+      const nav = win.navigator;
+      setOffline(!!nav && 'onLine' in nav ? !nav.onLine : false);
+    };
+
+    update();
+    win.addEventListener('online', update);
+    win.addEventListener('offline', update);
+    return () => {
+      win.removeEventListener('online', update);
+      win.removeEventListener('offline', update);
+    };
   }, []);
 
   if (!offline) return null;

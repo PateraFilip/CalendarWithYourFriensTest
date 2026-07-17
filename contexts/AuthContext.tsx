@@ -2,7 +2,6 @@ import { loadStorage, removeStorage, saveStorage } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import { AuthContextType } from '@/types/authContext';
 import { User } from '@/types/user';
-import * as LocalAuthentication from 'expo-local-authentication';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
@@ -24,6 +23,7 @@ async function fetchAppUser(authUser: { id: string; email?: string | null }): Pr
         .single();
 
     if (userError || !userData) {
+        if (!authUser.email) return null;
         const { data: userDataByEmail } = await supabase
             .from('users')
             .select('*')
@@ -38,9 +38,10 @@ async function fetchAppUser(authUser: { id: string; email?: string | null }): Pr
 async function promptBiometricUnlock(): Promise<boolean> {
     if (Platform.OS === 'web') return true;
     try {
+        const LocalAuthentication = await import('expo-local-authentication');
         const compatible = await LocalAuthentication.hasHardwareAsync();
         const enrolled = await LocalAuthentication.isEnrolledAsync();
-        if (!compatible || !enrolled) return true; // nelze session, biometrie není
+        if (!compatible || !enrolled) return true;
 
         const result = await LocalAuthentication.authenticateAsync({
             promptMessage: 'Odemknout kalendář',
@@ -69,7 +70,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return false;
     };
 
-    /** Obnovení uživatele z existující Supabase session (po biometrii). */
     const restoreFromSession = async (): Promise<boolean> => {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user) return false;
@@ -77,29 +77,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     useEffect(() => {
+        let cancelled = false;
+
+        // Pojistka: nikdy nenech spinner viset donekonečna (typicky deadlock getSession)
+        const hangTimeout = setTimeout(() => {
+            if (!cancelled) {
+                console.warn('[auth] session bootstrap timeout — uvolňuji UI');
+                setSessionLoading(false);
+            }
+        }, 8000);
+
         const loadSession = async () => {
             try {
                 await removeStorage('credentials');
 
                 const rememberMeSetting = await loadStorage('rememberMe');
-                if (rememberMeSetting === 'false') {
+                // Auto-login jen když uživatel zaškrtl „Zůstat přihlášen“
+                if (rememberMeSetting !== 'true') {
                     await supabase.auth.signOut();
                     await removeStorage('user');
-                    setUser(null);
-                    setSessionLoading(false);
+                    if (!cancelled) setUser(null);
                     return;
                 }
 
-                const { data: { session } } = await supabase.auth.getSession();
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) console.error('[auth] getSession:', error.message);
+
+                if (cancelled) return;
 
                 if (session?.user) {
+                    // Biometrie jen na nativu (volitelný zámek před vstupem)
                     const biometricEnabled = await loadStorage('biometricEnabled');
                     if (biometricEnabled === 'true' && Platform.OS !== 'web') {
                         const unlocked = await promptBiometricUnlock();
                         if (!unlocked) {
-                            // Session zůstane v úložišti; uživatel může zkusit otisk na login obrazovce
                             setUser(null);
-                            setSessionLoading(false);
                             return;
                         }
                     }
@@ -111,22 +123,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             } catch (error) {
                 console.error('Error loading session:', error);
             } finally {
-                setSessionLoading(false);
+                if (!cancelled) {
+                    clearTimeout(hangTimeout);
+                    setSessionLoading(false);
+                }
             }
         };
 
         loadSession();
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session?.user) {
-                await applySessionUser(session.user);
-            } else if (event === 'SIGNED_OUT') {
-                setUser(null);
-                await removeStorage('user');
-            }
+        // DŮLEŽITÉ: uvnitř onAuthStateChange NIKDY nespouštěj přímo await na supabase
+        // (getSession / from) — na webu to deadlockne GoTrue lock a spinner visí.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'INITIAL_SESSION') return;
+
+            setTimeout(() => {
+                if (cancelled) return;
+                if (event === 'SIGNED_IN' && session?.user) {
+                    applySessionUser(session.user).catch(console.error);
+                } else if (event === 'SIGNED_OUT') {
+                    setUser(null);
+                    removeStorage('user').catch(() => {});
+                }
+            }, 0);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            cancelled = true;
+            clearTimeout(hangTimeout);
+            subscription.unsubscribe();
+        };
     }, []);
 
     const login = async (username: string, password: string, rememberMe: boolean = false) => {
@@ -165,9 +191,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             await saveStorage('lastEmail', username);
             await removeStorage('credentials');
             await saveStorage('rememberMe', rememberMe ? 'true' : 'false');
-            // Biometrie odemyká uloženou session (ne heslo)
-            await saveStorage('biometricEnabled', rememberMe && Platform.OS !== 'web' ? 'true' : 'false');
+            // Biometrie jen nativní appka + zapnuté „Zůstat přihlášen“
+            await saveStorage(
+                'biometricEnabled',
+                rememberMe && Platform.OS !== 'web' ? 'true' : 'false'
+            );
             setUser(userData)
+            setSessionLoading(false)
         } finally {
             setLoading(false)
         }
@@ -180,11 +210,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const logout = async () => {
+        await saveStorage('rememberMe', 'false');
+        await saveStorage('biometricEnabled', 'false');
         await supabase.auth.signOut();
         setUser(null)
         await removeStorage('credentials');
         await removeStorage('user');
-        // lastEmail a biometricEnabled necháme — usnadní další přihlášení
     }
 
     const refreshUser = async () => {

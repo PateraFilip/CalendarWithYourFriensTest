@@ -6,11 +6,13 @@ import { useAuth } from '@/hooks/useAuth'
 import { loadStorage } from '@/lib/storage'
 import { Link, useRouter } from 'expo-router'
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Switch, View } from 'react-native'
+import { Platform, StyleSheet, Switch, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import Loading from '../loading'
+
+const isNative = Platform.OS !== 'web'
 
 export default function Login() {
     const [email, setEmail] = useState('')
@@ -44,6 +46,7 @@ export default function Login() {
     }, []);
 
     const handleBiometricLogin = async () => {
+        if (!isNative) return;
         try {
             const ok = await unlockWithBiometric();
             if (!ok) {
@@ -152,7 +155,11 @@ export default function Login() {
                         onValueChange={() => setRememberMe(!rememberMe)}
                         trackColor={{ false: '#767577', true: buttonColor }}
                     />
-                    <ThemedText style={{ marginLeft: 8 }}>Zůstat přihlášen (otisk odemkne appku)</ThemedText>
+                    <ThemedText style={{ marginLeft: 8 }}>
+                        {isNative
+                            ? 'Zůstat přihlášen (otisk odemkne appku)'
+                            : 'Zůstat přihlášen'}
+                    </ThemedText>
                 </View>
 
                 <Button
@@ -164,15 +171,17 @@ export default function Login() {
                 >
                     Přihlásit se
                 </Button>
-                <Button
-                    mode="outlined"
-                    style={[styles.button, { marginTop: 8 }]}
-                    labelStyle={{ color: buttonColor }}
-                    onPress={handleBiometricLogin}
-                    icon="fingerprint"
-                >
-                    Odemknout otiskem / Face ID
-                </Button>
+                {isNative && (
+                    <Button
+                        mode="outlined"
+                        style={[styles.button, { marginTop: 8 }]}
+                        labelStyle={{ color: buttonColor }}
+                        onPress={handleBiometricLogin}
+                        icon="fingerprint"
+                    >
+                        Odemknout otiskem / Face ID
+                    </Button>
+                )}
 
                 <View style={{ width: '100%' }}>
                     <Link
