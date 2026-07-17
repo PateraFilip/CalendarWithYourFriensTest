@@ -2,6 +2,8 @@ import { createEvent, createMultiDateEvent, createPatternEvent } from '@/service
 import { fetchUsers } from '@/services/users/get_users';
 import { joinEvent } from '@/services/events/join_event';
 import { sendSystemMessage } from '@/services/system/send_system_message';
+import { getDefaultInviteIds } from '@/services/events/invites';
+import { fetchMyFriendships } from '@/services/friends/friendships';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -14,7 +16,7 @@ import { LocaleConfig } from 'react-native-calendars';
 import { Button, IconButton, TextInput as PaperTextInput, RadioButton, Switch, TextInput } from 'react-native-paper';
 import { DatePickerModal, TimePickerModal, cs, registerTranslation } from 'react-native-paper-dates';
 import { LocationAutocomplete } from './LocationAutocomplete';
-import { ParticipantsDialog } from './ParticipantsDialog';
+import { ParticipantsDialog, SelectableUserId } from './ParticipantsDialog';
 
 // Skryje otravné varování o vnořených seznamech
 LogBox.ignoreLogs(['VirtualizedLists should never be nested']);
@@ -87,8 +89,10 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
     const [timeStep, setTimeStep] = useState<'start' | 'end'>('start');
     const [timeContext, setTimeContext] = useState<'once' | 'multi' | 'patternSegment'>('once');
 
-    const [selectedParticipants, setSelectedParticipants] = useState<number[]>([]);
-    const [users, setUsers] = useState<any[]>([]);
+    const [selectedInvites, setSelectedInvites] = useState<SelectableUserId[]>([]);
+    const [selectedParticipants, setSelectedParticipants] = useState<SelectableUserId[]>([]);
+    const [friendUsers, setFriendUsers] = useState<any[]>([]);
+    const [inviteModalVisible, setInviteModalVisible] = useState(false);
     const [participantModalVisible, setParticipantModalVisible] = useState(false);
 
     // Téma barev
@@ -106,7 +110,8 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
             { id: Math.random().toString(), type: 'work', days: 2, startTime: dayjs().hour(8).minute(0).toDate(), endTime: dayjs().hour(16).minute(0).toDate() },
             { id: Math.random().toString(), type: 'off', days: 1 }
         ]);
-        setType(false); setEventMode('once'); setGroupEventMode('once'); setSelectedParticipants([]);
+        setType(false); setEventMode('once'); setGroupEventMode('once');
+        setSelectedInvites([]); setSelectedParticipants([]);
     };
 
     useEffect(() => {
@@ -122,11 +127,35 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
     }, [pickedDate]);
 
     useEffect(() => {
-        const loadUsers = async () => { try { const data = await fetchUsers(); setUsers(data); } catch (err) { } };
-        loadUsers();
-    }, []);
+        const loadFriends = async () => {
+            if (!user?.id) return;
+            try {
+                const [allUsers, defaultInvites] = await Promise.all([
+                    fetchUsers(),
+                    getDefaultInviteIds(user.id),
+                ]);
+                const friendships = await fetchMyFriendships(String(user.id));
+                const friendIdSet = new Set(
+                    friendships
+                        .filter((f) => f.status === 'accepted')
+                        .map((f) =>
+                            String(f.user_id) === String(user.id) ? String(f.friend_id) : String(f.user_id)
+                        )
+                );
+                setFriendUsers(allUsers.filter((u: any) => friendIdSet.has(String(u.id))));
+                setSelectedInvites(defaultInvites);
+            } catch (err) {
+                console.error(err);
+            }
+        };
+        loadFriends();
+    }, [user?.id]);
 
-
+    useEffect(() => {
+        // Přihlášení musí být podmnožinou pozvaných
+        const inviteSet = new Set(selectedInvites.map(String));
+        setSelectedParticipants((prev) => prev.filter((id) => inviteSet.has(String(id))));
+    }, [selectedInvites]);
 
     const increase = () => setPeopleCount(prev => prev + 1);
     const decrease = () => setPeopleCount(prev => {
@@ -143,7 +172,8 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
         }
 
         if (selectedParticipants.length > 0) {
-            const getNames = (ids: number[]) => ids.map(id => users.find(u => String(u.id) === String(id))?.username || 'Neznámý').join(', ');
+            const getNames = (ids: SelectableUserId[]) =>
+                ids.map(id => friendUsers.find(u => String(u.id) === String(id))?.username || 'Neznámý').join(', ');
             await sendSystemMessage({
                 type: 'event',
                 message: `přidal(a) účastníky: ${getNames(selectedParticipants)}`,
@@ -169,7 +199,8 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
 
                 const result = await createEvent({
                     title: name, poloha, latitude, longitude, user_id: user.id, start, end,
-                    peopleCount: finalPeopleCount, pravidelnost: false, is_group: finalIsGroup
+                    peopleCount: finalPeopleCount, pravidelnost: false, is_group: finalIsGroup,
+                    inviteUserIds: finalIsGroup ? selectedInvites : undefined,
                 });
                 const eventId = result?.data?.[0]?.id || result?.id;
                 if (finalIsGroup) await assignParticipants(eventId);
@@ -186,6 +217,7 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
                     times: multiTimes,
                     is_group: finalIsGroup,
                     peopleCount: finalPeopleCount,
+                    inviteUserIds: finalIsGroup ? selectedInvites : undefined,
                 });
 
                 // result is now an array of events
@@ -227,6 +259,7 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
                     cas_od: firstWorkSegment?.startTime ? formatTime(firstWorkSegment.startTime) : '08:00',
                     cas_do: firstWorkSegment?.endTime ? formatTime(firstWorkSegment.endTime) : '16:00',
                     is_group: finalIsGroup, peopleCount: finalPeopleCount,
+                    inviteUserIds: finalIsGroup ? selectedInvites : undefined,
                 });
                 const eventId = result?.id || result?.data?.[0]?.id;
                 if (finalIsGroup) await assignParticipants(eventId);
@@ -350,7 +383,19 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
 
             <ThemedView style={[styles.field, styles.rowCenter, { zIndex: 1 }]}>
                 <ThemedText style={styles.label}>Skupinová událost</ThemedText>
-                <Switch value={type} color={buttonColor} onValueChange={setType} />
+                <Switch
+                    value={type}
+                    color={buttonColor}
+                    onValueChange={async (value) => {
+                        setType(value);
+                        if (value && user?.id) {
+                            setSelectedInvites(await getDefaultInviteIds(user.id));
+                        } else {
+                            setSelectedInvites([]);
+                            setSelectedParticipants([]);
+                        }
+                    }}
+                />
             </ThemedView>
 
             {/* VÝBĚR TYPU UDÁLOSTI */}
@@ -540,11 +585,24 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
             )}
 
             {type && (
-                <ThemedView style={[styles.field, { zIndex: 1 }]}>
-                    <Button mode="outlined" onPress={() => setParticipantModalVisible(true)} icon="account-plus" style={{ borderColor: buttonColor }} labelStyle={{ color: buttonColor }}>
-                        Přidat účastníky ({selectedParticipants.length + 1}/{peopleCount})
-                    </Button>
-                </ThemedView>
+                <>
+                    <ThemedView style={[styles.field, { zIndex: 1 }]}>
+                        <ThemedText style={[styles.label, { color: secondaryTextColor }]}>
+                            Pozvaní vidí událost a dostanou oznámení (výchozí: všichni přátelé)
+                        </ThemedText>
+                        <Button mode="outlined" onPress={() => setInviteModalVisible(true)} icon="account-eye" style={{ borderColor: buttonColor }} labelStyle={{ color: buttonColor }}>
+                            Pozvaní ({selectedInvites.length})
+                        </Button>
+                    </ThemedView>
+                    <ThemedView style={[styles.field, { zIndex: 1 }]}>
+                        <ThemedText style={[styles.label, { color: secondaryTextColor }]}>
+                            Přihlášení k účasti (volitelné, počítá se do kapacity)
+                        </ThemedText>
+                        <Button mode="outlined" onPress={() => setParticipantModalVisible(true)} icon="account-plus" style={{ borderColor: buttonColor }} labelStyle={{ color: buttonColor }}>
+                            Přihlášení ({selectedParticipants.length + 1}/{peopleCount})
+                        </Button>
+                    </ThemedView>
+                </>
             )}
 
             <Button mode="contained" onPress={handleCreate} disabled={isDisabled} buttonColor={buttonColor} labelStyle={{ color: buttonTextColor }} style={[styles.createButton, { zIndex: 1 }]}>
@@ -552,13 +610,26 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
             </Button>
 
             <ParticipantsDialog
+                visible={inviteModalVisible}
+                onDismiss={() => setInviteModalVisible(false)}
+                users={friendUsers}
+                currentUserId={user?.id}
+                selectedParticipants={selectedInvites}
+                setSelectedParticipants={setSelectedInvites}
+                title="Komu zobrazit (pozvaní)"
+                buttonColor={buttonColor}
+                cardBackgroundColor={cardBackgroundColor}
+            />
+
+            <ParticipantsDialog
                 visible={participantModalVisible}
                 onDismiss={() => setParticipantModalVisible(false)}
-                users={users}
+                users={friendUsers.filter((u) => selectedInvites.map(String).includes(String(u.id)))}
                 currentUserId={user?.id}
                 selectedParticipants={selectedParticipants}
                 setSelectedParticipants={setSelectedParticipants}
                 peopleCount={peopleCount}
+                title="Přihlášení k účasti"
                 buttonColor={buttonColor}
                 cardBackgroundColor={cardBackgroundColor}
             />

@@ -21,17 +21,13 @@ import { useCalendarEvents } from '@/hooks/useCalendarEvents'
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader'
 import { registerAndSavePushToken } from '@/lib/push-notifications'
 import { loadStorage, saveStorage } from '@/lib/storage'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabaseClient'
 import dayjs from 'dayjs'
 import 'dayjs/locale/cs'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Dimensions, StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { SegmentedButtons } from 'react-native-paper'
-
-const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 interface WeeklyEvent { id: number; title: string; cas_od: Date; cas_do: Date; user_id: number; den: string; }
 interface Event { id: number; title: string; start: Date; end: Date; user_id: number; pocet_lidi: number; pravidelnost: boolean; is_group: boolean; original_start?: Date; original_end?: Date; }
@@ -104,7 +100,10 @@ export default function SharedCalendar() {
 
     useEffect(() => {
         requestUserPermission()
-        const initNotifications = async () => { if (user?.auth_user_id) await registerAndSavePushToken(user.auth_user_id); };
+        const initNotifications = async () => {
+            const userId = user?.auth_user_id || user?.id;
+            if (userId) await registerAndSavePushToken(String(userId));
+        };
         initNotifications();
     }, [user]);
 
@@ -191,9 +190,19 @@ export default function SharedCalendar() {
 
             {selectCalendar()}
 
-            <CellModal visible={cellModalVisible} date={selectedDate} events={events} weeklyEvents={weeklyEvents} colors={colors} users={users} eventsException={eventException}
+            <CellModal visible={cellModalVisible} date={selectedDate} events={filteredEvents} weeklyEvents={[]} colors={colors} users={users} eventsException={eventException}
                 onCreateEvent={() => { setPendingCreateDate(selectedDate ?? new Date()); setCellModalVisible(false); }}
-                onPressEvent={(event: Event) => { setCellModalVisible(false); router.push({ pathname: `/events/${event.id}`, params: { event: JSON.stringify(event) } }) }}
+                onPressEvent={(event: any) => {
+                    setCellModalVisible(false);
+                    const instanceDate = event.instance_date || dayjs(event.start).format('YYYY-MM-DD');
+                    router.push({
+                        pathname: `/events/${event.id}`,
+                        params: {
+                            event: JSON.stringify(event),
+                            instance_date: instanceDate,
+                        },
+                    });
+                }}
                 onDismiss={() => setCellModalVisible(false)}
             />
 

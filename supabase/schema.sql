@@ -1,20 +1,19 @@
 -- =============================================================================
--- ShareCalendarWithYourFriends – cílové schéma DB
--- Spusť v Supabase SQL Editoru (nejdřív záloha!)
+-- ShareCalendarWithYourFriends – referenční schéma (aktuální záměr)
+-- NEPOUŽÍVEJ jako blind bootstrap na produkci se starými daty.
+-- RLS politiky: viz rls-policies.sql a migrations/20260717_*.sql
 -- =============================================================================
 
--- -----------------------------------------------------------------------------
--- Uživatelé a profil
--- -----------------------------------------------------------------------------
+-- users: UUID = auth.users.id (bez hesla v public.users)
 CREATE TABLE IF NOT EXISTS users (
-  id            BIGSERIAL PRIMARY KEY,
-  username      TEXT NOT NULL UNIQUE,
-  heslo         TEXT NOT NULL,
-  email         TEXT UNIQUE,
-  jmeno         TEXT,
-  prijmeni      TEXT,
-  datum_narozeni DATE,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username        TEXT NOT NULL UNIQUE,
+  email           TEXT UNIQUE,
+  jmeno           TEXT,
+  prijmeni        TEXT,
+  datum_narozeni  DATE,
+  notify_friend_requests BOOLEAN DEFAULT TRUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS colors (
@@ -22,32 +21,32 @@ CREATE TABLE IF NOT EXISTS colors (
   name             TEXT NOT NULL,
   background_color TEXT NOT NULL,
   text_color       TEXT NOT NULL,
-  user_id          BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  user_id          UUID REFERENCES users(id) ON DELETE SET NULL,
   UNIQUE (user_id)
 );
 
-CREATE TABLE IF NOT EXISTS password_resets (
-  id         BIGSERIAL PRIMARY KEY,
-  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  code       TEXT NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  used       BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS friendships (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  friend_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status     TEXT NOT NULL DEFAULT 'pending'
+               CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, friend_id)
 );
 
--- -----------------------------------------------------------------------------
--- Šablony událostí (nový jednotný model)
--- recurrence_rule JSON – viz supabase/_shared/recurrence.ts
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS event_series (
   id              BIGSERIAL PRIMARY KEY,
   nazev           TEXT NOT NULL,
-  zakladatel_id   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  zakladatel_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   pocet_lidi      INT NOT NULL DEFAULT 1 CHECK (pocet_lidi >= 1),
   is_group        BOOLEAN NOT NULL DEFAULT FALSE,
   cas_od          TIME NOT NULL,
   cas_do          TIME NOT NULL,
   timezone        TEXT NOT NULL DEFAULT 'Europe/Prague',
+  poloha          TEXT,
+  latitude        DOUBLE PRECISION,
+  longitude       DOUBLE PRECISION,
   recurrence_rule JSONB NOT NULL,
   valid_from      DATE,
   valid_until     DATE,
@@ -56,12 +55,6 @@ CREATE TABLE IF NOT EXISTS event_series (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_event_series_zakladatel ON event_series (zakladatel_id);
-CREATE INDEX IF NOT EXISTS idx_event_series_is_group ON event_series (is_group);
-CREATE INDEX IF NOT EXISTS idx_event_series_rule_type ON event_series ((recurrence_rule->>'type'));
-CREATE INDEX IF NOT EXISTS idx_event_series_group_id ON event_series (group_id);
-
--- Výjimky pro konkrétní instance série (zrušení / přesun směny)
 CREATE TABLE IF NOT EXISTS series_exceptions (
   id              BIGSERIAL PRIMARY KEY,
   series_id       BIGINT NOT NULL REFERENCES event_series(id) ON DELETE CASCADE,
@@ -73,113 +66,139 @@ CREATE TABLE IF NOT EXISTS series_exceptions (
   den_do          DATE,
   cas_od          TIME,
   cas_do          TIME,
+  title           TEXT,
+  poloha          TEXT,
+  latitude        DOUBLE PRECISION,
+  longitude       DOUBLE PRECISION,
+  pocet_lidi      INT,
+  is_group        BOOLEAN,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (series_id, puvodni_den, typ)
+  UNIQUE (series_id, puvodni_den)
 );
 
-CREATE INDEX IF NOT EXISTS idx_series_exceptions_series ON series_exceptions (series_id);
-
--- Účast na skupinové události (vázáno na sérii, ne na instanci)
 CREATE TABLE IF NOT EXISTS event_users (
-  id        BIGSERIAL PRIMARY KEY,
-  series_id BIGINT NOT NULL REFERENCES event_series(id) ON DELETE CASCADE,
-  user_id   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  instance_date TEXT, -- Volitelné datum instance pro opakující se události
-  joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id            BIGSERIAL PRIMARY KEY,
+  series_id     BIGINT NOT NULL REFERENCES event_series(id) ON DELETE CASCADE,
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  instance_date TEXT,
+  joined_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (series_id, user_id, instance_date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_event_users_series ON event_users (series_id);
-CREATE INDEX IF NOT EXISTS idx_event_users_user ON event_users (user_id);
+CREATE TABLE IF NOT EXISTS event_invites (
+  id         BIGSERIAL PRIMARY KEY,
+  series_id  BIGINT NOT NULL REFERENCES event_series(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (series_id, user_id)
+);
 
--- Chat u série a instancí
 CREATE TABLE IF NOT EXISTS event_messages (
+  id                 BIGSERIAL PRIMARY KEY,
+  series_id          BIGINT NOT NULL REFERENCES event_series(id) ON DELETE CASCADE,
+  user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  instance_date      TEXT,
+  message            TEXT NOT NULL CHECK (char_length(trim(message)) > 0),
+  is_system_message  BOOLEAN DEFAULT FALSE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_notifications (
   id            BIGSERIAL PRIMARY KEY,
-  series_id     BIGINT NOT NULL REFERENCES event_series(id) ON DELETE CASCADE,
-  user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  instance_date TEXT, -- NULL = chat pro celou sérii, YYYY-MM-DD = chat pro konkrétní instanci
-  message       TEXT NOT NULL CHECK (char_length(trim(message)) > 0),
+  recipient_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id      UUID REFERENCES users(id) ON DELETE SET NULL,
+  type          TEXT NOT NULL DEFAULT 'info',
+  message       TEXT NOT NULL,
+  series_id     BIGINT REFERENCES event_series(id) ON DELETE SET NULL,
+  instance_date TEXT,
+  read_at       TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Globální chat pro všechny
-CREATE TABLE IF NOT EXISTS global_messages (
-  id         BIGSERIAL PRIMARY KEY,
-  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  message    TEXT NOT NULL CHECK (char_length(trim(message)) > 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_global_messages_time ON global_messages (created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_event_messages_series ON event_messages (series_id, created_at);
-
--- Nastavení upozornění (volitelně synchronizované z klienta)
-CREATE TABLE IF NOT EXISTS user_notification_settings (
-  user_id        BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  enabled        BOOLEAN NOT NULL DEFAULT TRUE,
-  event_changes  BOOLEAN NOT NULL DEFAULT TRUE,
-  group_events   BOOLEAN NOT NULL DEFAULT TRUE,
-  chat_messages  BOOLEAN NOT NULL DEFAULT TRUE,
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Push tokeny – mobil (FCM)
 CREATE TABLE IF NOT EXISTS user_devices (
   id         BIGSERIAL PRIMARY KEY,
-  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   fcm_token  TEXT NOT NULL UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Web Push odběry
 CREATE TABLE IF NOT EXISTS web_push_subscriptions (
   id                   BIGSERIAL PRIMARY KEY,
-  user_id              BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id              UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   subscription_object  JSONB NOT NULL,
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (user_id, subscription_object)
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- -----------------------------------------------------------------------------
--- Legacy tabulky (zachovat během migrace, později smazat)
--- -----------------------------------------------------------------------------
--- events, weekly_events, event_exceptions – viz migration.sql
-
--- -----------------------------------------------------------------------------
--- Realtime
--- -----------------------------------------------------------------------------
-ALTER PUBLICATION supabase_realtime ADD TABLE event_series;
-ALTER PUBLICATION supabase_realtime ADD TABLE series_exceptions;
-ALTER PUBLICATION supabase_realtime ADD TABLE event_users;
-ALTER PUBLICATION supabase_realtime ADD TABLE event_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE global_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE colors;
-ALTER PUBLICATION supabase_realtime ADD TABLE users;
-
--- -----------------------------------------------------------------------------
--- RLS (základ – uprav podle produkce)
--- -----------------------------------------------------------------------------
-ALTER TABLE event_series ENABLE ROW LEVEL SECURITY;
-ALTER TABLE series_exceptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE event_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE event_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE global_messages ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "event_series_read" ON event_series FOR SELECT USING (true);
-CREATE POLICY "series_exceptions_read" ON series_exceptions FOR SELECT USING (true);
-CREATE POLICY "event_users_read" ON event_users FOR SELECT USING (true);
-CREATE POLICY "event_messages_read" ON event_messages FOR SELECT USING (true);
-CREATE POLICY "event_messages_insert" ON event_messages FOR INSERT WITH CHECK (true);
-CREATE POLICY "global_messages_read" ON global_messages FOR SELECT USING (true);
-CREATE POLICY "global_messages_insert" ON global_messages FOR INSERT WITH CHECK (true);
-
--- -----------------------------------------------------------------------------
--- Tabulka pro sledov�n� p�e�ten�ch zpr�v
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chat_reads (
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    room_id TEXT NOT NULL,
-    last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, room_id)
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  room_id      TEXT NOT NULL,
+  last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, room_id)
 );
 
+-- Ligy (zjednodušený tvar – sloupce mohou mít další migrace)
+CREATE TABLE IF NOT EXISTS leagues (
+  id           BIGSERIAL PRIMARY KEY,
+  name         TEXT NOT NULL,
+  sport_id     TEXT,
+  team_size    INT NOT NULL DEFAULT 1,
+  scoring_type TEXT,
+  config       JSONB DEFAULT '{}'::jsonb,
+  is_global    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS league_players (
+  id             BIGSERIAL PRIMARY KEY,
+  league_id      BIGINT NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating         FLOAT DEFAULT 1500,
+  matches_played INT DEFAULT 0,
+  wins           INT DEFAULT 0,
+  losses         INT DEFAULT 0,
+  draws          INT DEFAULT 0,
+  total_score    FLOAT DEFAULT 0,
+  score_for      FLOAT DEFAULT 0,
+  score_against  FLOAT DEFAULT 0,
+  score_diff     FLOAT DEFAULT 0,
+  UNIQUE (league_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS league_matches (
+  id         BIGSERIAL PRIMARY KEY,
+  league_id  BIGINT NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  metadata   JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS league_match_participants (
+  id         BIGSERIAL PRIMARY KEY,
+  match_id   BIGINT NOT NULL REFERENCES league_matches(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  team       INT NOT NULL DEFAULT 0,
+  is_winner  BOOLEAN,
+  score      FLOAT
+);
+
+CREATE TABLE IF NOT EXISTS league_pair_ratings (
+  id                 BIGSERIAL PRIMARY KEY,
+  league_id          BIGINT NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  pair_key           TEXT NOT NULL,
+  rating             FLOAT NOT NULL DEFAULT 1500,
+  matches_played     INT NOT NULL DEFAULT 0,
+  wins               INT NOT NULL DEFAULT 0,
+  losses             INT NOT NULL DEFAULT 0,
+  draws              INT NOT NULL DEFAULT 0,
+  score_for          FLOAT NOT NULL DEFAULT 0,
+  score_against      FLOAT NOT NULL DEFAULT 0,
+  score_diff         FLOAT NOT NULL DEFAULT 0,
+  last_rating_change FLOAT NOT NULL DEFAULT 0,
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (league_id, pair_key)
+);
+
+-- Poznámka: global_messages je deprecated (nahrazeno user_notifications).
+-- RLS: spusť supabase/rls-policies.sql a migrations/20260717_friendships_leagues_rls.sql

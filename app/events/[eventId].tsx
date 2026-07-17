@@ -12,6 +12,13 @@ import { fetchUsers } from '@/services/users/get_users'
 import { cancelEvent } from '@/services/events/cancel_event'
 import { joinEvent } from '@/services/events/join_event'
 import { sendSystemMessage } from '@/services/system/send_system_message'
+import {
+    fetchEventInviteIds,
+    getDefaultInviteIds,
+    setEventInvites,
+} from '@/services/events/invites'
+import { createNotificationsForRecipients } from '@/services/notifications/notifications'
+import { fetchMyFriendships } from '@/services/friends/friendships'
 
 import { updateEvent, updateWeeklyEvent } from '@/services/events/update_event'
 
@@ -25,7 +32,8 @@ import { useThemeColor } from '@/hooks/use-theme-color'
 
 import { useAuth } from '@/hooks/useAuth'
 
-import { createClient } from '@supabase/supabase-js'
+import { getSafeDates } from '@/lib/eventDates'
+import { supabase } from '@/lib/supabaseClient'
 
 import dayjs from 'dayjs'
 
@@ -56,6 +64,7 @@ import {
     TextInput as PaperTextInput,
     Portal,
     TextInput,
+    Switch,
 } from 'react-native-paper'
 
 import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates'
@@ -79,41 +88,6 @@ interface PatternSegment {
     endTime?: Date
 }
 
-const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
-
-const SUPABASE_KEY =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-
-const getSafeDates = (ev: any) => {
-    if (!ev) return { s: new Date(), e: new Date(Date.now() + 3600000) }
-
-    const s = ev.start ? new Date(ev.start) : (ev.startTime ? new Date(ev.startTime) : new Date())
-
-    let e = ev.end ? new Date(ev.end) : (ev.endTime ? new Date(ev.endTime) : new Date(s.getTime() + 3600000))
-
-    if (ev.cas_od) {
-        const parts = String(ev.cas_od).split(':')
-
-        if (parts.length >= 2)
-            s.setHours(Number(parts[0]), Number(parts[1]), 0, 0)
-    }
-
-    if (ev.cas_do) {
-        const parts = String(ev.cas_do).split(':')
-
-        if (parts.length >= 2)
-            e.setHours(Number(parts[0]), Number(parts[1]), 0, 0)
-    }
-
-    if (isNaN(s.getTime())) s.setTime(new Date().getTime())
-
-    if (isNaN(e.getTime())) e.setTime(s.getTime() + 3600000)
-
-    return { s, e }
-}
-
 export default function EventDetail() {
     const router = useRouter()
 
@@ -127,7 +101,17 @@ export default function EventDetail() {
         instance_date?: string
     }>()
 
-    const initialEventObj = eventParam ? JSON.parse(eventParam) : null
+    const initialEventObj = eventParam
+        ? {
+              ...JSON.parse(eventParam),
+              instance_date:
+                  instance_date &&
+                  instance_date !== 'undefined' &&
+                  instance_date !== 'null'
+                      ? instance_date
+                      : JSON.parse(eventParam).instance_date,
+          }
+        : null
 
     const [eventObj, setEventObj] = useState<any>(initialEventObj)
     const [isLoadingEvent, setIsLoadingEvent] = useState(
@@ -183,6 +167,10 @@ export default function EventDetail() {
     >(null)
 
     const [editAllInstances, setEditAllInstances] = useState(false)
+    /** true = tento den a budoucí (ne celá historie) */
+    const [editFutureOnly, setEditFutureOnly] = useState(false)
+
+    const [isGroupEvent, setIsGroupEvent] = useState(!!eventObj?.is_group)
 
     const [title, setTitle] = useState(eventObj?.title || '')
 
@@ -221,6 +209,7 @@ export default function EventDetail() {
             setLatitude(eventObj.latitude || null)
             setLongitude(eventObj.longitude || null)
             setPeopleCount(eventObj.pocet_lidi || 2)
+            setIsGroupEvent(!!eventObj.is_group)
             const safeDates = getSafeDates(eventObj)
             setDateRange({ startDate: safeDates.s, endDate: safeDates.e })
             setTimeRange({ start: safeDates.s, end: safeDates.e })
@@ -270,6 +259,12 @@ export default function EventDetail() {
     const [selectedParticipants, setSelectedParticipants] = useState<number[]>(
         []
     )
+
+    const [selectedInvites, setSelectedInvites] = useState<Array<string | number>>(
+        []
+    )
+
+    const [friendUsers, setFriendUsers] = useState<User[]>([])
 
     const [participantModalVisible, setParticipantModalVisible] =
         useState(false)
@@ -395,6 +390,36 @@ export default function EventDetail() {
             loadRelatedEvents()
         }
     }, [eventObj?.series_id, eventObj?.group_id, eventObj?.id])
+
+    useEffect(() => {
+        const loadInvitesAndFriends = async () => {
+            if (!user?.id || users.length === 0) return
+            try {
+                const friendships = await fetchMyFriendships(String(user.id))
+                const friendIdSet = new Set(
+                    friendships
+                        .filter((f) => f.status === 'accepted')
+                        .map((f) =>
+                            String(f.user_id) === String(user.id)
+                                ? String(f.friend_id)
+                                : String(f.user_id)
+                        )
+                )
+                setFriendUsers(users.filter((u) => friendIdSet.has(String(u.id))))
+
+                if (eventObj?.id && eventObj.is_group) {
+                    const invites = await fetchEventInviteIds(eventObj.id)
+                    setSelectedInvites(invites)
+                } else if (eventObj?.id && !eventObj.is_group) {
+                    const defaults = await getDefaultInviteIds(user.id)
+                    setSelectedInvites(defaults)
+                }
+            } catch (err) {
+                console.error(err)
+            }
+        }
+        loadInvitesAndFriends()
+    }, [user?.id, users, eventObj?.id, eventObj?.is_group])
 
     const fetchEventFromDb = async (id: string, date?: string) => {
         try {
@@ -567,15 +592,18 @@ export default function EventDetail() {
             setLongitude(eventObj.longitude || null)
         }
 
-        if (field === 'capacity') setPeopleCount(eventObj.pocet_lidi || 2)
+        if (field === 'capacity') {
+            setPeopleCount(eventObj.pocet_lidi || 2)
+            setIsGroupEvent(!!eventObj.is_group)
+        }
 
         if (field === 'participants') {
             const isRecurring = !!eventObj.pravidelnost;
 
             if (!editAllInstances && isRecurring) {
-                const instanceDateStr = dayjs(eventObj.start).format(
-                    'YYYY-MM-DD'
-                )
+                const instanceDateStr = dayjs(
+                    eventObj.instance_date || eventObj.start
+                ).format('YYYY-MM-DD')
                 const clearedMarker = userEvents.find(
                     (u) => u.event_id === eventObj.id && u.instance_date === `CLEARED-${instanceDateStr}`
                 )
@@ -603,6 +631,14 @@ export default function EventDetail() {
                         .map((ue) => ue.user_id)
                 )
             }
+
+            fetchEventInviteIds(eventObj.id).then(async (invites) => {
+                if (invites.length > 0) {
+                    setSelectedInvites(invites)
+                } else if (user?.id) {
+                    setSelectedInvites(await getDefaultInviteIds(user.id))
+                }
+            }).catch(console.error)
         }
 
         // Pokud jde o cyklus/sérii nebo multi-date skupinu, vždy vyvoláme Dialog s rozcestníkem rozsahu změn
@@ -634,12 +670,11 @@ export default function EventDetail() {
         }
     }
 
-    const handleScopeSelection = (allInstances: boolean) => {
+    const handleScopeSelection = (scope: 'instance' | 'future' | 'all') => {
         setScopeDialogVisible(false)
-
-        setEditAllInstances(allInstances)
-
-        openMainModal(allInstances)
+        setEditAllInstances(scope !== 'instance')
+        setEditFutureOnly(scope === 'future')
+        openMainModal(scope !== 'instance')
     }
 
     // --- PARSER CYKLU Z DATABÁZE ---
@@ -828,11 +863,15 @@ export default function EventDetail() {
     }
 
     const handleSave = async () => {
+      try {
         const { start, end } = getSaveDates()
 
         const origDates = getSafeDates(eventObj)
 
-        const finalIsGroup = peopleCount > 1
+        const finalIsGroup =
+            editField === 'participants' || editField === 'capacity' || editField === 'all'
+                ? isGroupEvent
+                : !!eventObj.is_group
         const isChangingToGroup = !eventObj.is_group && finalIsGroup
         const isChangingToPrivate = eventObj.is_group && !finalIsGroup
 
@@ -892,7 +931,9 @@ export default function EventDetail() {
                     end: finalEnd,
                     typ: 'UPDATE',
 
-                    puvodni_den: origDates.s,
+                    puvodni_den:
+                        eventObj.instance_date ||
+                        dayjs(origDates.s).format('YYYY-MM-DD'),
                     puvodni_cas_od: origDates.s,
                     puvodni_cas_do: origDates.e,
 
@@ -925,9 +966,9 @@ export default function EventDetail() {
                         eventId: eventObj.id,
                         selectedParticipants,
                     })
-                    const instanceDateStr = dayjs(eventObj.start).format(
-                        'YYYY-MM-DD'
-                    )
+                    const instanceDateStr = dayjs(
+                        eventObj.instance_date || eventObj.start
+                    ).format('YYYY-MM-DD')
                     // Remove all current participants for this instance
                     await supabase
                         .from('event_users')
@@ -997,94 +1038,93 @@ export default function EventDetail() {
                     : eventObj.recurrence_rule
 
             if (eventObj.group_id) {
-                // Update all instances in the multi-date group
+                // Update all / future instances in the multi-date group (IN PLACE — bez mazání)
+                const instanceDay = dayjs(
+                    eventObj.instance_date || eventObj.start
+                ).format('YYYY-MM-DD')
+
                 if (editField === 'datetime' || editField === 'all') {
-                    // Delete all existing instances in the group
-                    await supabase
-                        .from('event_series')
-                        .delete()
-                        .eq('group_id', eventObj.group_id)
+                    for (const instance of multiDateInstances) {
+                        if (!instance.id) continue
+                        const instDay = dayjs(instance.date).format('YYYY-MM-DD')
+                        if (editFutureOnly && instDay < instanceDay) continue
 
-                    // Create new instances from multiDateInstances
-                    const eventsToInsert = multiDateInstances.map(
-                        (instance) => ({
-                            nazev: payload.title !== undefined ? payload.title : (instance.nazev || eventObj.title),
-                            zakladatel_id: eventObj.user_id,
-                            cas_od: dayjs(instance.startTime).format('HH:mm'),
-                            cas_do: dayjs(instance.endTime).format('HH:mm'),
-                            pocet_lidi: payload.peopleCount !== undefined ? payload.peopleCount : (instance.pocet_lidi !== undefined ? instance.pocet_lidi : eventObj.pocet_lidi),
-                            is_group: payload.is_group !== undefined ? payload.is_group : (instance.is_group !== undefined ? instance.is_group : eventObj.is_group),
-                            poloha: payload.poloha !== undefined ? payload.poloha : (instance.poloha !== undefined ? instance.poloha : eventObj.poloha),
-                            latitude: payload.latitude !== undefined ? payload.latitude : (instance.latitude !== undefined ? instance.latitude : eventObj.latitude),
-                            longitude: payload.longitude !== undefined ? payload.longitude : (instance.longitude !== undefined ? instance.longitude : eventObj.longitude),
-                            recurrence_rule: {
-                                type: 'once',
-                                start_date: dayjs(instance.date).format(
-                                    'YYYY-MM-DD'
-                                ),
-                                end_date: dayjs(instance.date).format(
-                                    'YYYY-MM-DD'
-                                ),
-                            },
-                            valid_from: dayjs(instance.date).format(
-                                'YYYY-MM-DD'
-                            ),
-                            valid_until: dayjs(instance.date).format(
-                                'YYYY-MM-DD'
-                            ),
-                            group_id: eventObj.group_id,
-                        })
-                    )
-
-                    const { error } = await supabase
-                        .from('event_series')
-                        .insert(eventsToInsert)
-                    if (error) {
-                        console.error('Error updating multi-date group:', error)
+                        const { error } = await supabase
+                            .from('event_series')
+                            .update({
+                                nazev:
+                                    payload.title !== undefined
+                                        ? payload.title
+                                        : instance.nazev || eventObj.title,
+                                cas_od: dayjs(instance.startTime).format('HH:mm'),
+                                cas_do: dayjs(instance.endTime).format('HH:mm'),
+                                pocet_lidi:
+                                    payload.peopleCount !== undefined
+                                        ? payload.peopleCount
+                                        : instance.pocet_lidi !== undefined
+                                          ? instance.pocet_lidi
+                                          : eventObj.pocet_lidi,
+                                is_group:
+                                    payload.is_group !== undefined
+                                        ? payload.is_group
+                                        : instance.is_group !== undefined
+                                          ? instance.is_group
+                                          : eventObj.is_group,
+                                poloha:
+                                    payload.poloha !== undefined
+                                        ? payload.poloha
+                                        : instance.poloha !== undefined
+                                          ? instance.poloha
+                                          : eventObj.poloha,
+                                latitude:
+                                    payload.latitude !== undefined
+                                        ? payload.latitude
+                                        : instance.latitude !== undefined
+                                          ? instance.latitude
+                                          : eventObj.latitude,
+                                longitude:
+                                    payload.longitude !== undefined
+                                        ? payload.longitude
+                                        : instance.longitude !== undefined
+                                          ? instance.longitude
+                                          : eventObj.longitude,
+                                recurrence_rule: {
+                                    type: 'once',
+                                    start_date: instDay,
+                                    end_date: instDay,
+                                },
+                                valid_from: instDay,
+                                valid_until: instDay,
+                            })
+                            .eq('id', instance.id)
+                        if (error) {
+                            console.error('Error updating multi-date instance:', error)
+                            throw new Error(error.message)
+                        }
                     }
                 } else {
-                    // Update non-datetime fields for all instances
+                    // Update non-datetime fields for all / future instances
                     const updateData: any = {}
-                    if (
-                        payload.title !== undefined &&
-                        payload.title !== eventObj.title
-                    )
-                        updateData.nazev = payload.title
-                    if (
-                        payload.poloha !== undefined &&
-                        payload.poloha !== eventObj.poloha
-                    )
-                        updateData.poloha = payload.poloha
-                    if (
-                        payload.latitude !== undefined &&
-                        payload.latitude !== eventObj.latitude
-                    )
-                        updateData.latitude = payload.latitude
-                    if (
-                        payload.longitude !== undefined &&
-                        payload.longitude !== eventObj.longitude
-                    )
-                        updateData.longitude = payload.longitude
-                    if (
-                        payload.peopleCount !== undefined &&
-                        payload.peopleCount !== eventObj.pocet_lidi
-                    )
-                        updateData.pocet_lidi = payload.peopleCount
-                    if (
-                        payload.is_group !== undefined &&
-                        payload.is_group !== eventObj.is_group
-                    )
-                        updateData.is_group = payload.is_group
+                    if (payload.title !== undefined) updateData.nazev = payload.title
+                    if (payload.poloha !== undefined) updateData.poloha = payload.poloha
+                    if (payload.latitude !== undefined) updateData.latitude = payload.latitude
+                    if (payload.longitude !== undefined) updateData.longitude = payload.longitude
+                    if (payload.peopleCount !== undefined) updateData.pocet_lidi = payload.peopleCount
+                    if (payload.is_group !== undefined) updateData.is_group = payload.is_group
 
-                    const { error } = await supabase
-                        .from('event_series')
-                        .update(updateData)
-                        .eq('group_id', eventObj.group_id)
-                    if (error) {
-                        console.error(
-                            'Error updating multi-date group fields:',
-                            error
-                        )
+                    if (Object.keys(updateData).length > 0) {
+                        let query = supabase
+                            .from('event_series')
+                            .update(updateData)
+                            .eq('group_id', eventObj.group_id)
+                        if (editFutureOnly) {
+                            query = query.gte('valid_from', instanceDay)
+                        }
+                        const { error } = await query
+                        if (error) {
+                            console.error('Error updating multi-date group fields:', error)
+                            throw new Error(error.message)
+                        }
                     }
                 }
 
@@ -1210,40 +1250,33 @@ export default function EventDetail() {
                     }
                 }
             } else if (eventObj.pravidelnost) {
-                if (editField === 'datetime' || editField === 'all') {
-                    // Rozdělení historie a vytvoření nové větve cyklu
-
+                const buildPatternPayload = () => {
                     const pattern: any[] = []
-
                     let cycleDays = 0
-
                     patternSegments.forEach((segment) => {
                         const sTime = segment.startTime
                             ? formatTime(segment.startTime)
                             : '08:00'
-
                         const eTime = segment.endTime
                             ? formatTime(segment.endTime)
                             : '16:00'
-
                         for (let i = 0; i < segment.days; i++) {
                             if (segment.type === 'work')
-                                pattern.push({
-                                    work: true,
-                                    start: sTime,
-                                    end: eTime,
-                                })
+                                pattern.push({ work: true, start: sTime, end: eTime })
                             else pattern.push({ work: false })
-
                             cycleDays++
                         }
                     })
+                    const firstWork = patternSegments.find((s) => s.type === 'work')
+                    return { pattern, cycleDays, firstWork }
+                }
 
-                    const firstWork = patternSegments.find(
-                        (s) => s.type === 'work'
+                if (editFutureOnly) {
+                    // Tento den a budoucí: ukonči starou sérii a založ novou větev
+                    const { pattern, cycleDays, firstWork } = buildPatternPayload()
+                    const oldValidUntil = dayjs(
+                        eventObj.instance_date || newStartDateStr
                     )
-
-                    const oldValidUntil = dayjs(newStartDateStr)
                         .subtract(1, 'day')
                         .format('YYYY-MM-DD')
 
@@ -1253,211 +1286,89 @@ export default function EventDetail() {
                         .eq('id', eventObj.id)
 
                     const result = await createPatternEvent({
-                        title: payload.title,
-                        poloha: payload.poloha,
-                        latitude: payload.latitude,
-                        longitude: payload.longitude,
-
+                        title: payload.title ?? eventObj.title,
+                        poloha: payload.poloha ?? eventObj.poloha,
+                        latitude: payload.latitude ?? eventObj.latitude,
+                        longitude: payload.longitude ?? eventObj.longitude,
                         user_id: eventObj.user_id,
-                        anchor_date: new Date(newStartDateStr),
+                        anchor_date: new Date(
+                            eventObj.instance_date || newStartDateStr
+                        ),
                         valid_until: newValidUntilStr || undefined,
-
-                        cycle_days: cycleDays,
-                        pattern: pattern,
-
+                        cycle_days: cycleDays || 1,
+                        pattern:
+                            pattern.length > 0
+                                ? pattern
+                                : [{ work: true, start: '08:00', end: '16:00' }],
                         cas_od: firstWork?.startTime
                             ? formatTime(firstWork.startTime)
-                            : '08:00',
-
+                            : dayjs(finalStart).format('HH:mm'),
                         cas_do: firstWork?.endTime
                             ? formatTime(firstWork.endTime)
-                            : '16:00',
-
-                        is_group: payload.is_group,
-                        peopleCount: payload.peopleCount,
+                            : dayjs(finalEnd).format('HH:mm'),
+                        is_group: payload.is_group ?? eventObj.is_group,
+                        peopleCount: payload.peopleCount ?? eventObj.pocet_lidi,
+                        inviteUserIds: selectedInvites,
                     })
 
                     const newEventId = result?.id || result?.data?.[0]?.id
-
                     if (newEventId) {
                         const currentParticipants = [
                             ...new Set(userEvents.map((u) => u.user_id)),
                         ]
-
                         for (const participantId of currentParticipants) {
                             await joinEvent({
-                                user_id: participantId,
+                                user_id: String(participantId),
                                 event_id: newEventId,
+                                skipSystemMessage: true,
                             })
                         }
                     }
                 } else {
-                    // Změna polí (Title, Poloha, Kapacita) pro celý vzor od začátku řady
+                    // Celá série včetně minulosti — update in place
+                    const updatePayload: any = { ...payload }
+                    if (editField === 'datetime' || editField === 'all') {
+                        const { pattern, cycleDays, firstWork } = buildPatternPayload()
+                        if (pattern.length > 0 && cycleDays > 0) {
+                            updatePayload.recurrence_rule = {
+                                type: 'pattern',
+                                cycle_days: cycleDays,
+                                anchor_date:
+                                    dayjs(dateRange.startDate || eventObj.start).format(
+                                        'YYYY-MM-DD'
+                                    ),
+                                pattern,
+                            }
+                            updatePayload.cas_od = firstWork?.startTime
+                                ? formatTime(firstWork.startTime)
+                                : dayjs(finalStart).format('HH:mm')
+                            updatePayload.cas_do = firstWork?.endTime
+                                ? formatTime(firstWork.endTime)
+                                : dayjs(finalEnd).format('HH:mm')
+                        }
+                        if (newValidUntilStr) updatePayload.valid_until = newValidUntilStr
+                    }
 
                     await updateWeeklyEvent({
                         id: eventObj.id,
-                        ...payload,
+                        ...updatePayload,
                         valid_from: eventObj.valid_from,
-                        valid_until: eventObj.valid_until,
+                        valid_until:
+                            updatePayload.valid_until ?? eventObj.valid_until,
                     })
 
-                    // Handle participants for pattern series (all instances)
                     if (editField === 'participants') {
-                        console.log(
-                            'Saving participants for all instances (pattern series):',
-                            { eventId: eventObj.id, selectedParticipants }
-                        )
-                        // Remove all participants for the series (both with and without instance_date)
                         await supabase
                             .from('event_users')
                             .delete()
                             .eq('series_id', eventObj.id)
-                        // Add selected participants for all instances (without instance_date)
                         if (selectedParticipants.length > 0) {
-                            const participantsToInsert =
+                            await supabase.from('event_users').insert(
                                 selectedParticipants.map((userId) => ({
                                     series_id: eventObj.id,
                                     user_id: userId,
                                 }))
-                            const { error: insertError } = await supabase
-                                .from('event_users')
-                                .insert(participantsToInsert)
-                            console.log(
-                                'Insert participants for all instances error:',
-                                insertError
                             )
-                        }
-                    }
-
-                    // Aktualizujeme výjimky (přepíšeme i existující hodnoty)
-                    const { data: exceptions } = await supabase
-                        .from('series_exceptions')
-                        .select('*')
-                        .eq('series_id', eventObj.id)
-                    console.log(
-                        'Updating exceptions for series:',
-                        eventObj.id,
-                        'found:',
-                        exceptions?.length,
-                        'exceptions'
-                    )
-                    console.log(
-                        'Exceptions details:',
-                        exceptions?.map((e) => ({
-                            id: e.id,
-                            puvodni_den: e.puvodni_den,
-                            poloha: e.poloha,
-                        }))
-                    )
-                    if (exceptions && exceptions.length > 0) {
-                        // Zjistíme, jaké sloupce má tabulka
-                        if (exceptions.length > 0) {
-                            console.log(
-                                'Available columns in series_exceptions:',
-                                Object.keys(exceptions[0])
-                            )
-                        }
-                        const updateData: any = {}
-                        // Aktualizujeme pouze pole, která se liší od původních hodnot
-                        if (
-                            payload.title !== undefined &&
-                            payload.title !== eventObj.title
-                        )
-                            updateData.title = payload.title
-                        if (
-                            payload.poloha !== undefined &&
-                            payload.poloha !== eventObj.poloha
-                        )
-                            updateData.poloha = payload.poloha
-                        if (
-                            payload.latitude !== undefined &&
-                            payload.latitude !== eventObj.latitude
-                        )
-                            updateData.latitude = payload.latitude
-                        if (
-                            payload.longitude !== undefined &&
-                            payload.longitude !== eventObj.longitude
-                        )
-                            updateData.longitude = payload.longitude
-                        if (
-                            payload.peopleCount !== undefined &&
-                            payload.peopleCount !== eventObj.pocet_lidi
-                        )
-                            updateData.pocet_lidi = payload.peopleCount
-                        if (
-                            payload.is_group !== undefined &&
-                            payload.is_group !== eventObj.is_group
-                        )
-                            updateData.is_group = payload.is_group
-
-                        console.log('Update data for exceptions:', updateData)
-                        // Aktualizujeme všechny výjimky pomocí SQL příkazu
-                        for (const exc of exceptions) {
-                            if (Object.keys(updateData).length > 0) {
-                                console.log(
-                                    'Updating exception:',
-                                    exc.id,
-                                    'puvodni_den:',
-                                    exc.puvodni_den,
-                                    'with:',
-                                    updateData
-                                )
-                                // Zkusíme použít SQL příkaz přímo
-                                const rpcParams: any = {
-                                    p_id: exc.id,
-                                    p_title: updateData.title,
-                                    p_poloha: updateData.poloha,
-                                    p_latitude: updateData.latitude,
-                                    p_longitude: updateData.longitude,
-                                    p_pocet_lidi: updateData.pocet_lidi,
-                                    p_is_group:
-                                        updateData.is_group !== undefined
-                                            ? updateData.is_group
-                                            : exc.is_group,
-                                }
-                                const { data: updatedExc, error } =
-                                    await supabase.rpc(
-                                        'update_series_exception',
-                                        rpcParams
-                                    )
-                                console.log('RPC update response:', {
-                                    error,
-                                    data: updatedExc,
-                                })
-                                if (error) {
-                                    console.error(
-                                        'RPC error, trying direct update:',
-                                        error
-                                    )
-                                    // Fallback na přímý update
-                                    const {
-                                        data: fallbackData,
-                                        error: fallbackError,
-                                    } = await supabase
-                                        .from('series_exceptions')
-                                        .update(updateData)
-                                        .eq('id', exc.id)
-                                        .select()
-                                    console.log('Fallback update response:', {
-                                        error: fallbackError,
-                                        data: fallbackData,
-                                    })
-                                }
-                                // Ověříme stav výjimky po update
-                                const { data: verifyExc } = await supabase
-                                    .from('series_exceptions')
-                                    .select('*')
-                                    .eq('id', exc.id)
-                                console.log(
-                                    'Verified exception after update:',
-                                    verifyExc
-                                )
-                                console.log(
-                                    'RPC returned row count:',
-                                    updatedExc,
-                                    '- should be 1 if update succeeded'
-                                )
-                            }
                         }
                     }
                 }
@@ -1510,10 +1421,16 @@ export default function EventDetail() {
                     !eventObj.pravidelnost || !editAllInstances
                         ? dayjs(origDates.s).format('YYYY-MM-DD')
                         : ''
-                sendSystemMessage({
-                    type: 'global',
+                const inviteIds = selectedInvites.length
+                    ? selectedInvites
+                    : await fetchEventInviteIds(eventObj.id)
+                createNotificationsForRecipients({
+                    recipientIds: inviteIds,
+                    actorId: user.id,
+                    type: 'event_updated',
                     message: `změnil(a) termín skupinové události "${t}" na ${dayjs(finalStart).format('D.M.YYYY HH:mm')}. [EVENT:${eventObj.id}:${dStr}:${t}]`,
-                    user_id: user.id,
+                    seriesId: eventObj.id,
+                    instanceDate: dStr || null,
                 }).catch(console.error)
             }
         }
@@ -1547,10 +1464,16 @@ export default function EventDetail() {
                     !eventObj.pravidelnost || !editAllInstances
                         ? dayjs(origDates.s).format('YYYY-MM-DD')
                         : ''
-                sendSystemMessage({
-                    type: 'global',
+                const inviteIds = selectedInvites.length
+                    ? selectedInvites
+                    : await fetchEventInviteIds(eventObj.id)
+                createNotificationsForRecipients({
+                    recipientIds: inviteIds,
+                    actorId: user.id,
+                    type: 'event_slot_freed',
                     message: `Uvolnilo se místo ve skupinové události "${t}"! [EVENT:${eventObj.id}:${dStr}:${t}]`,
-                    user_id: user.id,
+                    seriesId: eventObj.id,
+                    instanceDate: dStr || null,
                 }).catch(console.error)
             }
         }
@@ -1575,16 +1498,30 @@ export default function EventDetail() {
             })
         }
 
+        if (finalIsGroup && user?.id && (editField === 'participants' || editField === 'capacity' || editField === 'all' || isChangingToGroup)) {
+            const inviteIds = selectedInvites.length
+                ? selectedInvites
+                : await getDefaultInviteIds(user.id)
+            await setEventInvites(eventObj.id, inviteIds)
+            setSelectedInvites(inviteIds)
+        }
+
         if (isChangingToGroup && user?.id) {
             const t = payload.title || eventObj.title
             const dStr =
                 !eventObj.pravidelnost || !editAllInstances
                     ? dayjs(origDates.s).format('YYYY-MM-DD')
                     : ''
-            sendSystemMessage({
-                type: 'global',
+            const inviteIds = selectedInvites.length
+                ? selectedInvites
+                : await getDefaultInviteIds(user.id)
+            createNotificationsForRecipients({
+                recipientIds: inviteIds,
+                actorId: user.id,
+                type: 'event_created',
                 message: `změnil(a) soukromou událost "${t}" na skupinovou. [EVENT:${eventObj.id}:${dStr}:${t}]`,
-                user_id: user.id,
+                seriesId: eventObj.id,
+                instanceDate: dStr || null,
             }).catch(console.error)
         }
 
@@ -1594,17 +1531,27 @@ export default function EventDetail() {
                 !eventObj.pravidelnost || !editAllInstances
                     ? dayjs(origDates.s).format('YYYY-MM-DD')
                     : ''
-            sendSystemMessage({
-                type: 'global',
+            const previousInvites = await fetchEventInviteIds(eventObj.id)
+            createNotificationsForRecipients({
+                recipientIds: previousInvites,
+                actorId: user.id,
+                type: 'event_updated',
                 message: `změnil(a) skupinovou událost "${t}" na soukromou. [EVENT:${eventObj.id}:${dStr}:${t}]`,
-                user_id: user.id,
+                seriesId: eventObj.id,
+                instanceDate: dStr || null,
             }).catch(console.error)
+            await setEventInvites(eventObj.id, [])
+            setSelectedInvites([])
         }
-        // KONEC SYSTÉMOVÝCH ZPRÁV
+        // KONEC SYSTÉMOVÝCH ZPRÁV / OZNÁMENÍ
 
         setModalVisible(false)
 
         router.back()
+      } catch (e: any) {
+        console.error('handleSave error:', e)
+        Alert.alert('Chyba při ukládání', e?.message || 'Změny se nepodařilo uložit.')
+      }
     }
 
     const handleSaveSpecificRelatedEvent = async () => {
@@ -1668,18 +1615,28 @@ export default function EventDetail() {
 
     const handleDeleteInstance = async () => {
         setDeleteDialogVisible(false)
-        const typ =
-            eventObj.pravidelnost === 'Týdně' ? 'cancelled_weekly' : 'cancelled'
-        await createException({
-            event_id: eventObj.series_id || eventObj.id,
-            start: eventObj.start,
-            end: eventObj.end,
-            typ: typ,
-            puvodni_den: eventObj.start,
-            puvodni_cas_od: eventObj.start,
-            puvodni_cas_do: eventObj.end,
-        })
-        router.back()
+        try {
+            // Multi-date = smaž jeden řádek; pattern/weekly = DELETE výjimka
+            if (eventObj.group_id && !eventObj.pravidelnost) {
+                await deleteEvent(eventObj.id)
+            } else {
+                await createException({
+                    event_id: eventObj.series_id || eventObj.id,
+                    typ: 'DELETE',
+                    puvodni_den:
+                        eventObj.instance_date ||
+                        dayjs(eventObj.start).format('YYYY-MM-DD'),
+                    start: eventObj.start,
+                    end: eventObj.end,
+                    puvodni_cas_od: eventObj.start,
+                    puvodni_cas_do: eventObj.end,
+                })
+            }
+            router.back()
+        } catch (e: any) {
+            console.error(e)
+            Alert.alert('Chyba', e?.message || 'Nepodařilo se smazat termín.')
+        }
     }
 
     const handleDeleteSeries = async () => {
@@ -2402,8 +2359,7 @@ export default function EventDetail() {
                     </Dialog.Title>
                     <Dialog.Content>
                         <ThemedText>
-                            Chcete provést tuto změnu pouze pro tuto konkrétní
-                            instanci, nebo upravit celou budoucí sérii/cyklus?
+                            Jaký rozsah má mít tato změna?
                         </ThemedText>
                     </Dialog.Content>
                     <Dialog.Actions
@@ -2417,17 +2373,25 @@ export default function EventDetail() {
                             mode="contained"
                             buttonColor={buttonColor}
                             textColor={buttonTextColor}
-                            onPress={() => handleScopeSelection(false)}
+                            onPress={() => handleScopeSelection('instance')}
                         >
-                            Pouze tuto jednu instanci
+                            Jen tento den
                         </Button>
                         <Button
                             mode="outlined"
                             style={{ borderColor: buttonColor }}
                             textColor={buttonColor}
-                            onPress={() => handleScopeSelection(true)}
+                            onPress={() => handleScopeSelection('future')}
                         >
-                            Všechny budoucí instance (Celá série)
+                            Tento den a budoucí
+                        </Button>
+                        <Button
+                            mode="outlined"
+                            style={{ borderColor: buttonColor }}
+                            textColor={buttonColor}
+                            onPress={() => handleScopeSelection('all')}
+                        >
+                            Celá série (včetně minulosti)
                         </Button>
                     </Dialog.Actions>
                 </Dialog>
@@ -2674,7 +2638,19 @@ export default function EventDetail() {
                             )}
 
                             {editField === 'capacity' && (
-                                <ThemedView style={styles.counterRow}>
+                                <ThemedView>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                                        <ThemedText>Skupinová událost</ThemedText>
+                                        <Switch
+                                            value={isGroupEvent}
+                                            onValueChange={setIsGroupEvent}
+                                            color={buttonColor}
+                                        />
+                                    </View>
+                                    <ThemedText style={[styles.label, { color: secondaryTextColor, marginBottom: 8 }]}>
+                                        Maximální počet lidí
+                                    </ThemedText>
+                                    <ThemedView style={styles.counterRow}>
                                     <IconButton
                                         icon="minus"
                                         mode="contained"
@@ -2697,6 +2673,7 @@ export default function EventDetail() {
                                         iconColor={buttonTextColor}
                                         containerColor={buttonColor}
                                     />
+                                    </ThemedView>
                                 </ThemedView>
                             )}
 
@@ -2711,7 +2688,65 @@ export default function EventDetail() {
                                             },
                                         ]}
                                     >
-                                        Účastníci
+                                        Pozvaní (vidí událost, výchozí všichni přátelé)
+                                    </ThemedText>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+                                        <Button
+                                            mode="text"
+                                            compact
+                                            onPress={async () => {
+                                                if (selectedInvites.length > 0) {
+                                                    setSelectedInvites([])
+                                                } else if (user?.id) {
+                                                    setSelectedInvites(await getDefaultInviteIds(user.id))
+                                                }
+                                            }}
+                                        >
+                                            {selectedInvites.length > 0 ? 'Zrušit pozvánky' : 'Pozvat všechny přátele'}
+                                        </Button>
+                                    </View>
+                                    <ScrollView style={{ maxHeight: 180, paddingRight: 8, marginBottom: 16 }} persistentScrollbar>
+                                        {(friendUsers.length ? friendUsers : users).map((u) => {
+                                            const invited = selectedInvites.map(String).includes(String(u.id))
+                                            return (
+                                                <View
+                                                    key={`invite-${u.id}`}
+                                                    style={{
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        paddingVertical: 4,
+                                                        borderBottomWidth: 1,
+                                                        borderBottomColor: borderColorTheme,
+                                                    }}
+                                                >
+                                                    <ThemedText>{u.username}</ThemedText>
+                                                    <IconButton
+                                                        icon={invited ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                                                        onPress={() => {
+                                                            if (invited) {
+                                                                setSelectedInvites(selectedInvites.filter((id) => String(id) !== String(u.id)))
+                                                                setSelectedParticipants(selectedParticipants.filter((id) => String(id) !== String(u.id)))
+                                                            } else {
+                                                                setSelectedInvites([...selectedInvites, u.id])
+                                                            }
+                                                        }}
+                                                    />
+                                                </View>
+                                            )
+                                        })}
+                                    </ScrollView>
+
+                                    <ThemedText
+                                        style={[
+                                            styles.label,
+                                            {
+                                                color: secondaryTextColor,
+                                                marginBottom: 8,
+                                            },
+                                        ]}
+                                    >
+                                        Přihlášení k účasti
                                     </ThemedText>
 
                                     <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
@@ -2722,15 +2757,17 @@ export default function EventDetail() {
                                                 if (selectedParticipants.length > 1) {
                                                     setSelectedParticipants(user?.id ? [user.id] : []);
                                                 } else {
-                                                    const allIds = users.map(u => u.id);
+                                                    const inviteSet = new Set(selectedInvites.map(String));
                                                     const me = user?.id ? [user.id] : [];
-                                                    const others = allIds.filter(id => id !== user?.id);
+                                                    const others = (friendUsers.length ? friendUsers : users)
+                                                        .map(u => u.id)
+                                                        .filter(id => inviteSet.has(String(id)) && String(id) !== String(user?.id));
                                                     const toSelect = [...me, ...others].slice(0, peopleCount);
                                                     setSelectedParticipants(toSelect);
                                                 }
                                             }}
                                         >
-                                            {selectedParticipants.length > 1 ? 'Zrušit výběr' : 'Vybrat všechny'}
+                                            {selectedParticipants.length > 1 ? 'Zrušit výběr' : 'Vybrat z pozvaných'}
                                         </Button>
                                     </View>
                                     <ScrollView style={{ maxHeight: 300, paddingRight: 8 }} persistentScrollbar={true}>

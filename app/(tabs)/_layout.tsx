@@ -141,7 +141,7 @@ export default function TabLayout() {
                         <Tabs.Screen
                             name="chats"
                             options={{
-                                title: 'Chaty',
+                                title: 'Oznámení',
                                 tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
                                 tabBarIcon: ({ color }) => (
                                     <IconSymbol size={28} name="paperplane.fill" color={color} />

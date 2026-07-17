@@ -2,7 +2,7 @@ import { fetchUsers } from '@/services/users/get_users';
 import { fetchUserEvents } from '@/services/events/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { dedupeCalendarEvents, eventInstanceKey, eventsOverlappingDay, mergeDuplicateEvents } from '@/lib/calendarEvents';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -77,10 +77,6 @@ interface UserEvent {
     user_id: number;
     instance_date?: string;
 }
-
-const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, onPressEvent, defaultDate, colors, onVisibleDateChange }: MonthCalendarProps) {
     const currentMonth = defaultDate || new Date();

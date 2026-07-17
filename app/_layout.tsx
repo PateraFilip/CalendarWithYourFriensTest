@@ -9,11 +9,13 @@ import {
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
+import * as SplashScreen from 'expo-splash-screen'
 import { ActivityIndicator, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Provider } from 'react-native-paper'
 import 'react-native-reanimated'
 import { UnreadMessagesProvider } from '@/contexts/UnreadMessagesContext'
+import { NetworkBanner } from '@/components/NetworkBanner'
 
 
 function RootLayoutNav() {
@@ -31,6 +33,12 @@ function RootLayoutNav() {
         } else if (user && inAuthGroup) {
             router.replace('/(tabs)');
         }
+
+        // Vynuceně skryjeme splash screen, jakmile máme jasno o přihlášení
+        setTimeout(() => {
+            SplashScreen.hideAsync().catch(() => {});
+        }, 500);
+
     }, [user, sessionLoading, segments]);
 
     if (sessionLoading) {
@@ -68,6 +76,7 @@ export default function RootLayout() {
                 >
                     <AuthProvider>
                         <UnreadMessagesProvider>
+                            <NetworkBanner />
                             <RootLayoutNav />
                             <StatusBar style="auto" />
                         </UnreadMessagesProvider>

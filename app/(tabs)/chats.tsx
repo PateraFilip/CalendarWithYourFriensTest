@@ -1,38 +1,37 @@
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import React, { useState } from 'react';
-import { StyleSheet, View, Platform } from 'react-native';
-import { SegmentedButtons, Badge } from 'react-native-paper';
-import ChatScreen from '@/components/ChatScreen';
+import { StyleSheet, View } from 'react-native';
+import { SegmentedButtons } from 'react-native-paper';
 import EventChatsList from '@/components/EventChatsList';
-import MuteChatButton from '@/components/MuteChatButton';
+import NotificationsInbox from '@/components/NotificationsInbox';
 import { useUnreadMessages } from '@/contexts/UnreadMessagesContext';
 
 export default function ChatsScreen() {
     const { user } = useAuth();
-    const { unreadGlobalCount, unreadEventRooms } = useUnreadMessages();
-    const [activeTab, setActiveTab] = useState<'global' | 'events'>('global');
+    const { unreadGlobalCount, unreadEventRooms, refreshUnread } = useUnreadMessages();
+    const [activeTab, setActiveTab] = useState<'notifications' | 'events'>('notifications');
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
-    const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text');
 
     return (
         <ThemedSafeView style={styles.container}>
             <View style={styles.headerContainer}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <ThemedText type="title">Chaty</ThemedText>
-                    {activeTab === 'global' && <MuteChatButton chatId="global" />}
+                    <ThemedText type="title">Chaty a oznámení</ThemedText>
                 </View>
 
                 <SegmentedButtons
                     value={activeTab}
-                    onValueChange={(value) => setActiveTab(value as 'global' | 'events')}
+                    onValueChange={(value) => {
+                        setActiveTab(value as 'notifications' | 'events');
+                        if (value === 'notifications') refreshUnread();
+                    }}
                     buttons={[
                         {
-                            value: 'global',
-                            label: unreadGlobalCount > 0 ? `Globální (${unreadGlobalCount})` : 'Globální chat',
+                            value: 'notifications',
+                            label: unreadGlobalCount > 0 ? `Oznámení (${unreadGlobalCount})` : 'Oznámení',
                         },
                         {
                             value: 'events',
@@ -40,13 +39,14 @@ export default function ChatsScreen() {
                         },
                     ]}
                     style={styles.segmentedButtons}
+                    theme={{ colors: { secondaryContainer: buttonColor } }}
                 />
             </View>
 
-            {activeTab === 'global' && (
+            {activeTab === 'notifications' && (
                 <View style={styles.tabContentChat}>
                     {user ? (
-                        <ChatScreen type="global" currentUserId={user.id as number | string} keyboardOffset={Platform.OS === 'ios' ? 90 : 160} />
+                        <NotificationsInbox currentUserId={user.id as number | string} />
                     ) : (
                         <ThemedText style={styles.placeholder}>Načítám uživatele...</ThemedText>
                     )}
@@ -74,16 +74,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 16,
     },
-    header: {
-        marginBottom: 16,
-    },
     segmentedButtons: {
         marginBottom: 16,
-    },
-    tabContent: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
     },
     tabContentChat: {
         flex: 1,
@@ -91,5 +83,6 @@ const styles = StyleSheet.create({
     },
     placeholder: {
         opacity: 0.6,
+        padding: 16,
     },
 });

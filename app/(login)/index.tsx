@@ -4,9 +4,8 @@ import { ThemedSafeView } from '@/components/ThemedSafeView'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { loadStorage } from '@/lib/storage'
-import * as LocalAuthentication from 'expo-local-authentication'
 import { Link, useRouter } from 'expo-router'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Switch, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen'
@@ -27,7 +26,7 @@ export default function Login() {
     const router = useRouter()
     const theme = useTheme()
 
-    const { login, loading } = useAuth()
+    const { login, loading, unlockWithBiometric } = useAuth()
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor(
@@ -35,44 +34,30 @@ export default function Login() {
         'text'
     )
 
+    useEffect(() => {
+        loadStorage('lastEmail').then((stored) => {
+            if (stored) setEmail(stored);
+        });
+        loadStorage('rememberMe').then((v) => {
+            if (v === 'true') setRememberMe(true);
+        });
+    }, []);
+
     const handleBiometricLogin = async () => {
         try {
-            // 1️⃣ Ověření, že zařízení podporuje biometriku
-            const compatible = await LocalAuthentication.hasHardwareAsync();
-            const enrolled = await LocalAuthentication.isEnrolledAsync();
-
-            if (!compatible || !enrolled) {
-                alert('Biometrické ověření není dostupné na tomto zařízení.');
+            const ok = await unlockWithBiometric();
+            if (!ok) {
+                alert(
+                    'Biometrie se nezdařila, nebo nemáš uloženou session. Přihlaš se heslem se zapnutým „Zůstat přihlášen“ — pak tě příště odemkne otisk.'
+                );
                 return;
             }
-
-            // 2️⃣ Vyvolání nativního biometrického dialogu
-            const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: 'Přihlášení pomocí otisku prstu',
-                fallbackLabel: 'Zadej heslo',
-            });
-
-            if (!result.success) {
-                alert('Ověření otiskem prstu se nezdařilo.');
-                return;
-            }
-
-            // 3️⃣ Po úspěšném ověření načti uložené údaje a přihlaš
-            const stored = await loadStorage('credentials');
-            if (!stored) {
-                alert('Nejsou uloženy přihlašovací údaje. Přihlaš se nejprve ručně.');
-                return;
-            }
-
-            const { username, password } = JSON.parse(stored);
-            await login(username, password);
             router.replace('/(tabs)');
         } catch (err) {
             console.error(err);
             alert('Chyba při biometrickém přihlášení.');
         }
     };
-
 
     const handleLogin = async () => {
         const newErrors = {
@@ -84,7 +69,6 @@ export default function Login() {
         if (!newErrors.email && !newErrors.password) {
             try {
                 await login(email, password, rememberMe)
-
                 router.replace('/(tabs)')
             } catch (err) {
                 console.error(err)
@@ -113,6 +97,8 @@ export default function Login() {
                     activeOutlineColor={buttonColor}
                     style={styles.input}
                     error={errors.email}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
                     left={
                         <TextInput.Icon
                             icon={() => (
@@ -166,7 +152,7 @@ export default function Login() {
                         onValueChange={() => setRememberMe(!rememberMe)}
                         trackColor={{ false: '#767577', true: buttonColor }}
                     />
-                    <ThemedText style={{ marginLeft: 8 }}>Zůstat přihlášen</ThemedText>
+                    <ThemedText style={{ marginLeft: 8 }}>Zůstat přihlášen (otisk odemkne appku)</ThemedText>
                 </View>
 
                 <Button
@@ -174,7 +160,7 @@ export default function Login() {
                     style={styles.button}
                     labelStyle={{ color: buttonTextColor }}
                     buttonColor={buttonColor}
-                    onPress={handleLogin} // volání FastAPI
+                    onPress={handleLogin}
                 >
                     Přihlásit se
                 </Button>
@@ -185,7 +171,7 @@ export default function Login() {
                     onPress={handleBiometricLogin}
                     icon="fingerprint"
                 >
-                    Přihlásit se otiskem prstu
+                    Odemknout otiskem / Face ID
                 </Button>
 
                 <View style={{ width: '100%' }}>

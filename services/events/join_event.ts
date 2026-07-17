@@ -9,6 +9,25 @@ interface JoinEvent {
 }
 
 export const joinEvent = async (event: JoinEvent) => {
+  const { data: series } = await supabase
+    .from('event_series')
+    .select('zakladatel_id, is_group')
+    .eq('id', event.event_id)
+    .single();
+
+  if (series?.is_group && String(series.zakladatel_id) !== String(event.user_id)) {
+    const { data: invite } = await supabase
+      .from('event_invites')
+      .select('id')
+      .eq('series_id', event.event_id)
+      .eq('user_id', event.user_id)
+      .maybeSingle();
+
+    if (!invite) {
+      throw new Error('Nejste pozváni na tuto událost');
+    }
+  }
+
   const { data, error } = await supabase
     .from('event_users')
     .insert({

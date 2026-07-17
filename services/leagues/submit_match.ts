@@ -1,4 +1,17 @@
 import { supabase } from '@/lib/supabaseClient';
+import {
+  applyMatchToPlayerMap,
+  applyMatchToPairMap,
+  emptyPlayerStats,
+  PlayerStatRow,
+} from '@/services/leagues/match_engine';
+import {
+  emptyPairStats,
+  fetchLeaguePairRatings,
+  makePairKey,
+  PairStatRow,
+  upsertPairStats,
+} from '@/services/leagues/pair_ratings';
 
 export interface SubmitMatchData {
   league_id: number;
@@ -12,17 +25,25 @@ export interface SubmitMatchData {
     is_draw: boolean;
     position?: number;
   }[];
+  /** Pokud je nastaveno, přepíše existující zápas a přepočítá ligu. */
+  replace_match_id?: number;
 }
 
 export const submitMatch = async (data: SubmitMatchData) => {
-  // 1. Fetch league
   const { data: league } = await supabase.from('leagues').select('*').eq('id', data.league_id).single();
   if (!league) throw new Error('League not found');
 
-  // 2. Extract all user_ids
-  const allUserIds = data.teams.flatMap(t => t.user_ids);
-  
-  // Fetch their current stats
+  // Edit: smaž starý zápas, založ nový, pak plný přepočet
+  if (data.replace_match_id) {
+    const { error: delError } = await supabase
+      .from('league_matches')
+      .delete()
+      .eq('id', data.replace_match_id);
+    if (delError) throw delError;
+  }
+
+  const allUserIds = data.teams.flatMap((t) => t.user_ids);
+
   const { data: playersInfo } = await supabase
     .from('league_players')
     .select('*')
@@ -31,198 +52,141 @@ export const submitMatch = async (data: SubmitMatchData) => {
 
   if (!playersInfo) throw new Error('Could not fetch players');
 
-  const playerStatsMap = new Map(playersInfo.map(p => [p.user_id, p]));
-
-  // Pokud někdo v lize ještě není, přidáme ho
-  for (const userId of allUserIds) {
-      if (!playerStatsMap.has(userId)) {
-          const newPlayer = {
-              league_id: data.league_id,
-              user_id: userId,
-              rating: league.config?.track_elo ? 1500 : 0
-          };
-          const { data: inserted, error } = await supabase.from('league_players').insert(newPlayer).select().single();
-          if (error) throw error;
-          playerStatsMap.set(userId, inserted);
-      }
+  const playerStatsMap = new Map<string, PlayerStatRow>();
+  for (const p of playersInfo) {
+    playerStatsMap.set(String(p.user_id), {
+      id: p.id,
+      user_id: String(p.user_id),
+      rating: p.rating,
+      matches_played: p.matches_played || 0,
+      wins: p.wins || 0,
+      losses: p.losses || 0,
+      draws: p.draws || 0,
+      first_places: p.first_places || 0,
+      second_places: p.second_places || 0,
+      third_places: p.third_places || 0,
+      total_score: p.total_score || 0,
+      score_for: p.score_for || 0,
+      score_against: p.score_against || 0,
+      score_diff: p.score_diff || 0,
+    });
   }
 
-  // 3. Create match entry
+  for (const userId of allUserIds) {
+    if (!playerStatsMap.has(String(userId))) {
+      const newPlayer = {
+        league_id: data.league_id,
+        user_id: userId,
+        rating: league.config?.track_elo ? 1500 : 0,
+      };
+      const { data: inserted, error } = await supabase
+        .from('league_players')
+        .insert(newPlayer)
+        .select()
+        .single();
+      if (error) throw error;
+      const empty = emptyPlayerStats(String(userId), !!league.config?.track_elo);
+      empty.id = inserted.id;
+      playerStatsMap.set(String(userId), empty);
+    }
+  }
+
+  // Při editaci vždy přepočítáme celou ligu (kvůli ELO pořadí)
+  if (data.replace_match_id) {
+    const { data: matchEntry, error: matchError } = await supabase
+      .from('league_matches')
+      .insert([
+        {
+          league_id: data.league_id,
+          created_by: data.created_by,
+          metadata: data.metadata,
+        },
+      ])
+      .select()
+      .single();
+    if (matchError) throw matchError;
+
+    const participantsToInsert = data.teams.flatMap((team) =>
+      team.user_ids.map((userId) => ({
+        match_id: matchEntry.id,
+        user_id: userId,
+        team: team.team_index,
+        score: team.score || 0,
+        rating_change: 0,
+        position: team.position || null,
+        is_winner: team.is_winner,
+      }))
+    );
+    if (participantsToInsert.length) {
+      await supabase.from('league_match_participants').insert(participantsToInsert);
+    }
+
+    const { recomputeLeagueStats } = await import('@/services/leagues/recompute_league');
+    await recomputeLeagueStats(data.league_id);
+    return matchEntry;
+  }
+
+  // Snapshot statistik před zápasem pro inkrementální update
+  const before = new Map(
+    Array.from(playerStatsMap.entries()).map(([k, v]) => [k, { ...v }])
+  );
+
+  const { ratingChanges } = applyMatchToPlayerMap(
+    league,
+    data.teams,
+    data.metadata,
+    playerStatsMap
+  );
+
+  // Samostatné ELO sestav (čtyřhra / NvN)
+  const pairStatsMap = new Map<string, PairStatRow>();
+  if (league.team_size > 1) {
+    try {
+      const existingPairs = await fetchLeaguePairRatings(data.league_id);
+      for (const row of existingPairs) {
+        pairStatsMap.set(row.pair_key, { ...row });
+      }
+    } catch (e) {
+      console.error('Pair ratings unavailable, continuing without pair ELO:', e);
+    }
+    for (const team of data.teams) {
+      if (team.user_ids.length >= 2) {
+        const key = makePairKey(team.user_ids);
+        if (!pairStatsMap.has(key)) {
+          pairStatsMap.set(key, emptyPairStats(key, !!league.config?.track_elo));
+        }
+      }
+    }
+    if (pairStatsMap.size > 0) {
+      applyMatchToPairMap(league, data.teams, data.metadata, pairStatsMap);
+    }
+  }
+
   const { data: matchEntry, error: matchError } = await supabase
     .from('league_matches')
-    .insert([{
-      league_id: data.league_id,
-      created_by: data.created_by,
-      metadata: data.metadata
-    }])
+    .insert([
+      {
+        league_id: data.league_id,
+        created_by: data.created_by,
+        metadata: data.metadata,
+      },
+    ])
     .select()
     .single();
-
   if (matchError) throw matchError;
 
   const participantsToInsert: any[] = [];
-  const playerUpdates: any[] = [];
-
-  const config = league.config || {};
-
-  // ELO calculation
-  let team1Change = 0;
-  let team2Change = 0;
-  const ffaRatingChanges = new Map<number, number>();
-
-  if (config.track_elo) {
-      if (league.team_size > 0 && data.teams.length === 2) {
-          // Standardní 1v1 nebo 2v2
-          const team1 = data.teams[0];
-          const team2 = data.teams[1];
-
-          const r1 = team1.user_ids.reduce((sum, uid) => sum + (playerStatsMap.get(uid)?.rating || 1500), 0) / (team1.user_ids.length || 1);
-          const r2 = team2.user_ids.reduce((sum, uid) => sum + (playerStatsMap.get(uid)?.rating || 1500), 0) / (team2.user_ids.length || 1);
-
-          const e1 = 1 / (1 + Math.pow(10, (r2 - r1) / 400));
-          const e2 = 1 / (1 + Math.pow(10, (r1 - r2) / 400));
-
-          let s1 = team1.is_draw ? 0.5 : (team1.is_winner ? 1 : 0);
-          let s2 = team2.is_draw ? 0.5 : (team2.is_winner ? 1 : 0);
-
-          const K = 32;
-          team1Change = K * (s1 - e1);
-          team2Change = K * (s2 - e2);
-      } else if (league.team_size === 0) {
-        if (config.lower_is_better) {
-          data.teams.sort((a, b) => a.score - b.score);
-        } else {
-          data.teams.sort((a, b) => b.score - a.score);
-        }
-        
-        let currentPos = 1;
-        let prevScore = data.teams[0].score;
-        
-        data.teams.forEach((t, i) => {
-          if (config.lower_is_better) {
-            if (t.score > prevScore) {
-              currentPos++; // Dense ranking
-              prevScore = t.score;
-            }
-          } else {
-            if (t.score < prevScore) {
-              currentPos++; // Dense ranking
-              prevScore = t.score;
-            }
-          }
-          t.position = currentPos;
-          t.is_winner = t.position === 1;
-          t.is_draw = false;
-        });
-      }
-      
-      if (league.team_size === 0 && data.teams.length > 1) {
-          // Multiplayer ELO pro FFA
-          const K = 32;
-          const N = data.teams.length;
-          
-          data.teams.forEach(teamA => {
-              let totalChange = 0;
-              const rA = teamA.user_ids.reduce((sum, uid) => sum + (playerStatsMap.get(uid)?.rating || 1500), 0) / (teamA.user_ids.length || 1);
-              
-              data.teams.forEach(teamB => {
-                  if (teamA.team_index === teamB.team_index) return;
-                  
-                  const rB = teamB.user_ids.reduce((sum, uid) => sum + (playerStatsMap.get(uid)?.rating || 1500), 0) / (teamB.user_ids.length || 1);
-                  const eA = 1 / (1 + Math.pow(10, (rB - rA) / 400));
-                  
-                  let sA = 0.5;
-                  if (config.lower_is_better) {
-                      if (teamA.score < teamB.score) sA = 1;
-                      else if (teamA.score > teamB.score) sA = 0;
-                  } else {
-                      if (teamA.score > teamB.score) sA = 1;
-                      else if (teamA.score < teamB.score) sA = 0;
-                  }
-                  
-                  totalChange += K * (sA - eA);
-              });
-              
-              ffaRatingChanges.set(teamA.team_index, totalChange / (N - 1));
-          });
-      }
-  }
-
-  // Calculate against score for exactly 2 teams
-  const getAgainstScore = (myTeamIndex: number) => {
-      if (data.teams.length !== 2) return 0;
-      return data.teams.find(t => t.team_index !== myTeamIndex)?.score || 0;
-  };
-
-  // Process all participants
-  data.teams.forEach((team, idx) => {
-    const scoreFor = team.score || 0;
-    const scoreAgainst = getAgainstScore(team.team_index);
-    const scoreDiff = scoreFor - scoreAgainst;
-
-    let ratingChange = 0;
-    if (config.track_elo) {
-        if (league.team_size > 0 && data.teams.length === 2) {
-            ratingChange = idx === 0 ? team1Change : team2Change;
-        } else if (league.team_size === 0) {
-            ratingChange = ffaRatingChanges.get(team.team_index) || 0;
-        }
-    }
-
-    team.user_ids.forEach(userId => {
-        const stats = playerStatsMap.get(userId);
-        if (!stats) return;
-
-        participantsToInsert.push({
-            match_id: matchEntry.id,
-            user_id: userId,
-            team: team.team_index,
-            score: scoreFor,
-            rating_change: ratingChange,
-            position: team.position || null,
-            is_winner: team.is_winner
-        });
-
-        // Calculate updates
-        let baseRating = stats.rating;
-        if (config.track_elo && (baseRating === 0 || baseRating === null)) {
-            baseRating = 1500;
-        }
-        let newRating = (baseRating || 0) + ratingChange;
-        let newTotalScore = (stats.total_score || 0) + scoreFor;
-        let newMatchesPlayed = (stats.matches_played || 0) + 1;
-        let newWins = stats.wins || 0;
-        let newLosses = stats.losses || 0;
-        let newDraws = stats.draws || 0;
-        let newFirstPlaces = stats.first_places || 0;
-        let newSecondPlaces = stats.second_places || 0;
-        let newThirdPlaces = stats.third_places || 0;
-
-        if (config.track_wins_losses) {
-            if (team.is_draw) newDraws++;
-            else if (team.is_winner) newWins++;
-            else newLosses++;
-        }
-        
-        if (team.position === 1) newFirstPlaces++;
-        else if (team.position === 2) newSecondPlaces++;
-        else if (team.position === 3) newThirdPlaces++;
-
-        playerUpdates.push({
-            id: stats.id,
-            rating: newRating,
-            matches_played: newMatchesPlayed,
-            wins: newWins,
-            losses: newLosses,
-            draws: newDraws,
-            first_places: newFirstPlaces,
-            second_places: newSecondPlaces,
-            third_places: newThirdPlaces,
-            total_score: newTotalScore,
-            score_for: (stats.score_for || 0) + (config.track_score ? scoreFor : 0),
-            score_against: (stats.score_against || 0) + (config.track_score ? scoreAgainst : 0),
-            score_diff: (stats.score_diff || 0) + (config.track_score_diff ? scoreDiff : 0),
-        });
+  data.teams.forEach((team) => {
+    team.user_ids.forEach((userId) => {
+      participantsToInsert.push({
+        match_id: matchEntry.id,
+        user_id: userId,
+        team: team.team_index,
+        score: team.score || 0,
+        rating_change: ratingChanges.get(String(userId)) || 0,
+        position: team.position || null,
+        is_winner: team.is_winner,
+      });
     });
   });
 
@@ -230,9 +194,46 @@ export const submitMatch = async (data: SubmitMatchData) => {
     await supabase.from('league_match_participants').insert(participantsToInsert);
   }
 
-  for (const update of playerUpdates) {
-    await supabase.from('league_players').update(update).eq('id', update.id);
+  for (const [userId, stats] of playerStatsMap.entries()) {
+    if (!allUserIds.map(String).includes(userId)) continue;
+    const prev = before.get(userId);
+    if (!prev?.id && !stats.id) continue;
+    await supabase
+      .from('league_players')
+      .update({
+        rating: stats.rating,
+        matches_played: stats.matches_played,
+        wins: stats.wins,
+        losses: stats.losses,
+        draws: stats.draws,
+        first_places: stats.first_places,
+        second_places: stats.second_places,
+        third_places: stats.third_places,
+        total_score: stats.total_score,
+        score_for: stats.score_for,
+        score_against: stats.score_against,
+        score_diff: stats.score_diff,
+      })
+      .eq('id', stats.id || prev?.id);
   }
+
+  if (pairStatsMap.size > 0) {
+    // Uložit jen sestavy z tohoto zápasu
+    const touchedKeys = new Set(
+      data.teams
+        .filter((t) => t.user_ids.length >= 2)
+        .map((t) => makePairKey(t.user_ids))
+    );
+    await upsertPairStats(
+      data.league_id,
+      Array.from(pairStatsMap.values()).filter((r) => touchedKeys.has(r.pair_key))
+    );
+  }
+
+  await supabase
+    .from('leagues')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', data.league_id);
 
   return matchEntry;
 };

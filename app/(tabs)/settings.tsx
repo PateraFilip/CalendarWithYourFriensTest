@@ -7,7 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { loadNotificationSettings, saveNotificationSettings, type NotificationSettings } from '@/lib/notificationSettings';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Appearance, TouchableOpacity, View, TextInput } from 'react-native';
 import { Button, Switch } from 'react-native-paper';
@@ -21,10 +21,6 @@ interface Color {
     text_color: string;
     user_id: number | null;
 }
-
-const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 type EditableField = 'username' | 'jmeno' | 'prijmeni' | 'color' | 'email' | null;
 
@@ -239,7 +235,7 @@ export default function SettingsScreen() {
                         </ThemedView>
 
                         <ThemedView style={styles.settingRow}>
-                            <ThemedText>Globální chat</ThemedText>
+                            <ThemedText>Oznámení o událostech</ThemedText>
                             <Switch
                                 value={user?.notify_global_chat ?? true}
                                 onValueChange={(v) => handleSaveNotificationToggle('notify_global_chat', v)}

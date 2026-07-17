@@ -1,8 +1,10 @@
-import { loadStorage, saveStorage } from '@/lib/storage';
+import { loadStorage, removeStorage, saveStorage } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import { AuthContextType } from '@/types/authContext';
 import { User } from '@/types/user';
+import * as LocalAuthentication from 'expo-local-authentication';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -14,66 +16,97 @@ export const useAuth = () => {
     return context;
 };
 
+async function fetchAppUser(authUser: { id: string; email?: string | null }): Promise<User | null> {
+    let { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+    if (userError || !userData) {
+        const { data: userDataByEmail } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', authUser.email)
+            .single();
+        if (userDataByEmail) userData = userDataByEmail;
+    }
+
+    return userData ? (userData as User) : null;
+}
+
+async function promptBiometricUnlock(): Promise<boolean> {
+    if (Platform.OS === 'web') return true;
+    try {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        if (!compatible || !enrolled) return true; // nelze session, biometrie není
+
+        const result = await LocalAuthentication.authenticateAsync({
+            promptMessage: 'Odemknout kalendář',
+            fallbackLabel: 'Zadej heslo v aplikaci',
+            cancelLabel: 'Zrušit',
+        });
+        return result.success;
+    } catch {
+        return false;
+    }
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null)
     const [loading, setLoading] = useState(false)
     const [sessionLoading, setSessionLoading] = useState(true)
 
-    // Load saved session on app start
+    const applySessionUser = async (authUser: { id: string; email?: string | null }) => {
+        const userData = await fetchAppUser(authUser);
+        if (userData) {
+            setUser(userData);
+            await saveStorage('user', JSON.stringify(userData));
+            return true;
+        }
+        setUser(null);
+        return false;
+    };
+
+    /** Obnovení uživatele z existující Supabase session (po biometrii). */
+    const restoreFromSession = async (): Promise<boolean> => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return false;
+        return applySessionUser(session.user);
+    };
+
     useEffect(() => {
         const loadSession = async () => {
             try {
-                // Check if they wanted to stay logged in
+                await removeStorage('credentials');
+
                 const rememberMeSetting = await loadStorage('rememberMe');
                 if (rememberMeSetting === 'false') {
-                    // Sign out explicitly so they are not logged in after restarting
                     await supabase.auth.signOut();
-                    await saveStorage('user', '');
+                    await removeStorage('user');
                     setUser(null);
                     setSessionLoading(false);
                     return;
                 }
 
-                // Try to get current Supabase session
                 const { data: { session } } = await supabase.auth.getSession();
 
                 if (session?.user) {
-                    // Fetch user data from public.users - use id instead of auth_user_id
-                    let { data: userData, error: userError } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
-
-                    // If not found by auth_user_id, try by email
-                    if (userError || !userData) {
-                        const { data: userDataByEmail } = await supabase
-                            .from('users')
-                            .select('*')
-                            .eq('email', session.user.email)
-                            .single();
-
-                        if (userDataByEmail) {
-                            userData = userDataByEmail;
+                    const biometricEnabled = await loadStorage('biometricEnabled');
+                    if (biometricEnabled === 'true' && Platform.OS !== 'web') {
+                        const unlocked = await promptBiometricUnlock();
+                        if (!unlocked) {
+                            // Session zůstane v úložišti; uživatel může zkusit otisk na login obrazovce
+                            setUser(null);
+                            setSessionLoading(false);
+                            return;
                         }
                     }
-
-                    if (userData) {
-                        setUser(userData as User);
-                    }
+                    await applySessionUser(session.user);
                 } else {
-                    // Try to load from storage as fallback
-                    const savedUser = await loadStorage('user');
-                    if (savedUser) {
-                        setUser(JSON.parse(savedUser));
-
-                        // Try auto-login with saved credentials
-                        const savedCredentials = await loadStorage('credentials');
-                        if (savedCredentials) {
-                            const { username, password } = JSON.parse(savedCredentials);
-                            await login(username, password, true);
-                        }
-                    }
+                    await removeStorage('user');
+                    setUser(null);
                 }
             } catch (error) {
                 console.error('Error loading session:', error);
@@ -84,47 +117,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         loadSession();
 
-        // Listen for auth state changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log('Auth state changed:', event, session?.user?.id);
-
             if (event === 'SIGNED_IN' && session?.user) {
-                console.log('Fetching user data for signed in user');
-                // Fetch user data when signed in - use id instead of auth_user_id
-                let { data: userData, error: userError } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
-
-                console.log('User data by id:', { userData, userError });
-
-                if (userError || !userData) {
-                    console.log('User not found by auth_user_id, trying email');
-                    const { data: userDataByEmail } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('email', session.user.email)
-                        .single();
-
-                    console.log('User data by email:', userDataByEmail);
-
-                    if (userDataByEmail) {
-                        userData = userDataByEmail;
-                        console.log('Found user by email');
-                    }
-                }
-
-                if (userData) {
-                    console.log('Setting user state:', userData.id);
-                    setUser(userData as User);
-                } else {
-                    console.log('No user data found, setting user to null');
-                    setUser(null);
-                }
+                await applySessionUser(session.user);
             } else if (event === 'SIGNED_OUT') {
-                console.log('User signed out, setting user to null');
                 setUser(null);
+                await removeStorage('user');
             }
         });
 
@@ -134,46 +132,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const login = async (username: string, password: string, rememberMe: boolean = false) => {
         setLoading(true)
         try {
-            // Sign in with Supabase Auth directly
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: username,
                 password,
             });
 
-            if (error) {
-                throw error;
-            }
+            if (error) throw error;
 
-            // Fetch user data from public.users table - try by id first, then by email
-            let { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
+            let userData = await fetchAppUser(data.user);
 
-            // If not found by id, try by email
-            if (userError || !userData) {
-                console.log('User not found by id, trying email lookup');
-                const { data: userDataByEmail, error: emailError } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('email', data.user.email)
-                    .single();
-
-                console.log('Email lookup result:', { userDataByEmail, emailError });
-
-                if (!emailError && userDataByEmail) {
-                    userData = userDataByEmail;
-                    console.log('Found user by email');
-                }
-            }
-
-            // If user still doesn't exist, create them manually
-            if (userError || !userData) {
-                console.warn('User not found in public.users, creating manually');
-                console.log('Attempting to create user with email:', data.user.email);
-
-                // Create user record using Supabase user ID directly
+            if (!userData) {
                 const { data: newUser, error: insertError } = await supabase
                     .from('users')
                     .insert({
@@ -187,37 +155,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     .select('*')
                     .single();
 
-                console.log('Insert result:', { newUser, insertError });
-
                 if (insertError || !newUser) {
-                    console.error('Failed to create user:', insertError);
                     throw new Error(`Nepodařilo se vytvořit uživatelská data: ${insertError?.message}`);
                 }
-
-                userData = newUser;
+                userData = newUser as User;
             }
 
-            const loggedInUser = userData as User;
-            await saveStorage('user', JSON.stringify(loggedInUser));
-            if (rememberMe) {
-                await saveStorage('credentials', JSON.stringify({ username, password }));
-                await saveStorage('rememberMe', 'true');
-            } else {
-                await saveStorage('credentials', '');
-                await saveStorage('rememberMe', 'false');
-            }
-            setUser(loggedInUser)
+            await saveStorage('user', JSON.stringify(userData));
+            await saveStorage('lastEmail', username);
+            await removeStorage('credentials');
+            await saveStorage('rememberMe', rememberMe ? 'true' : 'false');
+            // Biometrie odemyká uloženou session (ne heslo)
+            await saveStorage('biometricEnabled', rememberMe && Platform.OS !== 'web' ? 'true' : 'false');
+            setUser(userData)
         } finally {
             setLoading(false)
         }
     }
 
+    const unlockWithBiometric = async (): Promise<boolean> => {
+        const unlocked = await promptBiometricUnlock();
+        if (!unlocked) return false;
+        return restoreFromSession();
+    };
+
     const logout = async () => {
         await supabase.auth.signOut();
         setUser(null)
-        // Clear saved credentials on logout
-        await saveStorage('credentials', '');
-        await saveStorage('user', '');
+        await removeStorage('credentials');
+        await removeStorage('user');
+        // lastEmail a biometricEnabled necháme — usnadní další přihlášení
     }
 
     const refreshUser = async () => {
@@ -230,7 +197,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, refreshUser, loading, sessionLoading }}>
+        <AuthContext.Provider
+            value={{
+                user,
+                login,
+                logout,
+                refreshUser,
+                unlockWithBiometric,
+                restoreFromSession,
+                loading,
+                sessionLoading,
+            }}
+        >
             {children}
         </AuthContext.Provider>
     )

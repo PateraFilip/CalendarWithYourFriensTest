@@ -26,6 +26,9 @@ export interface LeaguePlayer {
   score_for: number;
   score_against: number;
   score_diff: number;
+  first_places?: number;
+  second_places?: number;
+  third_places?: number;
   users?: {
     username: string;
     jmeno: string;
@@ -33,18 +36,64 @@ export interface LeaguePlayer {
   };
 }
 
-export const fetchMyLeagues = async (userId: string) => {
-  // Všechny ligy jsou nyní globální, načteme prostě vše
-  const { data, error } = await supabase.from('leagues').select('*');
+/** Já + přátelé + přátelé přátel */
+export async function fetchNetworkIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc('get_extended_network_ids', {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error('get_extended_network_ids:', error.message);
+    return [userId];
+  }
+  const ids = (data || [])
+    .map((r: any) => (typeof r === 'string' ? r : r.u_id))
+    .filter(Boolean)
+    .map(String);
+  if (!ids.includes(String(userId))) ids.push(String(userId));
+  return ids;
+}
 
+export const fetchMyLeagues = async (userId: string) => {
+  const networkIds = await fetchNetworkIds(String(userId));
+
+  const { data: allLeagues, error } = await supabase.from('leagues').select('*');
   if (error) {
     console.error('Error fetching leagues:', error);
     return [];
   }
 
-  console.log('Fetched leagues count:', data?.length);
-  return data as League[];
+  const { data: myParticipations } = await supabase
+    .from('league_players')
+    .select('league_id')
+    .eq('user_id', String(userId));
+  const myLeagueIds = new Set((myParticipations || []).map((p) => Number(p.league_id)));
+
+  const { data: networkPlayers } = await supabase
+    .from('league_players')
+    .select('league_id, user_id')
+    .in('user_id', networkIds);
+  const leaguesWithNetworkPlayer = new Set(
+    (networkPlayers || []).map((p) => Number(p.league_id))
+  );
+
+  const networkSet = new Set(networkIds.map(String));
+
+  // Viditelné: moje / od někoho ze sítě (FoF) / kde hraje někdo ze sítě / seed globální tabulky
+  const refined = (allLeagues || []).filter((league: League) => {
+    if (myLeagueIds.has(Number(league.id))) return true;
+    if (league.created_by && networkSet.has(String(league.created_by))) return true;
+    if (leaguesWithNetworkPlayer.has(Number(league.id))) return true;
+    if (league.is_global && !league.created_by) return true;
+    return false;
+  });
+
+  return refined as League[];
 };
+
+export async function canViewLeague(leagueId: number, userId: string): Promise<boolean> {
+  const leagues = await fetchMyLeagues(userId);
+  return leagues.some((l) => Number(l.id) === Number(leagueId));
+}
 
 export const fetchLeagueDetails = async (leagueId: number) => {
   const { data, error } = await supabase
@@ -88,40 +137,44 @@ export const createLeague = async (leagueData: {
 }) => {
   const { data, error } = await supabase
     .from('leagues')
-    .insert([{ ...leagueData, is_global: true }])
+    .insert([{ ...leagueData, is_global: false }])
     .select()
     .single();
 
   if (error) throw error;
-  
-  // Zakladatel se rovnou přidá do ligy
-  await joinLeague(data.id, leagueData.created_by);
+
+  await joinLeague(data.id, leagueData.created_by, !!leagueData.config?.track_elo);
 
   return data as League;
 };
 
-const joinLeague = async (leagueId: number, userId: string) => {
-  // Pro jistotu zkontrolujeme, zda už tam není
+const joinLeague = async (leagueId: number, userId: string, trackElo?: boolean) => {
   const { data: existing } = await supabase
     .from('league_players')
     .select('id')
     .eq('league_id', leagueId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (existing) return;
 
-  // Rating default: 1500 pro ELO, jinak 0
-  const { data: league } = await supabase.from('leagues').select('scoring_type').eq('id', leagueId).single();
-  const defaultRating = league?.scoring_type === 'elo' ? 1500 : 0;
+  let useElo = trackElo;
+  if (useElo === undefined) {
+    const { data: league } = await supabase
+      .from('leagues')
+      .select('config')
+      .eq('id', leagueId)
+      .single();
+    useElo = !!league?.config?.track_elo;
+  }
 
-  const { error } = await supabase
-    .from('league_players')
-    .insert([{
+  const { error } = await supabase.from('league_players').insert([
+    {
       league_id: leagueId,
       user_id: userId,
-      rating: defaultRating
-    }]);
+      rating: useElo ? 1500 : 0,
+    },
+  ]);
 
   if (error) throw error;
 };

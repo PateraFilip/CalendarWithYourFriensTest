@@ -57,6 +57,7 @@ export default function EventChatScreen() {
                 series_id={seriesId} 
                 instance_date={isInstance ? String(instance_date) : undefined} 
                 currentUserId={user.id}
+                eventTitle={event_title ? String(event_title) : undefined}
                 keyboardOffset={Platform.OS === 'ios' ? 90 : 90}
             />
         </SafeAreaView>

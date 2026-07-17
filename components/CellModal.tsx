@@ -5,17 +5,13 @@ import { ThemedText } from '@/components/themed-text'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { dedupeCalendarEvents, eventInstanceKey } from '@/lib/calendarEvents'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabaseClient'
 import dayjs from 'dayjs'
 import React, { useEffect, useState } from 'react'
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Button, Modal, Portal } from 'react-native-paper'
 import { ThemedView } from './themed-view'
 import { router } from 'expo-router'
-
-const SUPABASE_URL = 'https://sdzyhihtqrgsntbxlugp.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkenloaWh0cXJnc250YnhsdWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NDk2MTEsImV4cCI6MjA5NjEyNTYxMX0.4L2K8gmIvWn6FwkECofkvJ-cpFr8hXCZbjxOqpECN38'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 interface CellModalProps {
     visible: boolean
@@ -140,50 +136,19 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     }
 
     if (!date) return null
-    const hourEvents = dedupeCalendarEvents([
-        ...events.filter(e =>
-            e.start.getTime() < date.getTime() + 60 * 60 * 1000 &&
-            e.end.getTime() > date.getTime()
-        ),
 
-        ...(weeklyEvents.length > 0 ? weeklyEvents
-            .filter(w => {
-                const daysShort = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-                const eventDay = daysShort[date.getDay()];
-                const eventDayPrev = daysShort[(date.getDay() + 6) % 7]
-                if ((w.den.trim().normalize() !== eventDay && w.den.trim().normalize() !== eventDayPrev) || (w.den.trim().normalize() === eventDayPrev && w.cas_do > w.cas_od)) return;
-
-                const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
-                let end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
-                if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
-                else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
-
-                // zkontroluj, jestli spadá do této hodiny
-                return start.getTime() < date.getTime() + 60 * 60 * 1000 && end.getTime() > date.getTime();
-            })
-            .map(w => {
-                const daysShort = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-                const eventDay = daysShort[date.getDay()];
-                const eventDayPrev = daysShort[(date.getDay() + 6) % 7]
-                const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_od.getHours(), w.cas_od.getMinutes());
-                let end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), w.cas_do.getHours(), w.cas_do.getMinutes());
-                if (end < start && w.den.trim().normalize() === eventDay) end.setDate(end.getDate() + 1);
-                else if (end < start && w.den.trim().normalize() === eventDayPrev) start.setDate(start.getDate() - 1);
-
-
-                // běžný výstup
-                return {
-                    id: w.id,
-                    title: w.title,
-                    start,
-                    end,
-                    user_id: w.user_id,
-                    pocet_lidi: 1,
-                    pravidelnost: true,
-                    is_group: false,
-                };
-            }) : []),
-    ]);
+    // Filtr podle dne (ne jen hodiny) — CellModal se otevírá i z měsíčního/denního kliku
+    const dayStart = dayjs(date).startOf('day')
+    const dayEnd = dayjs(date).endOf('day')
+    const hourEvents = dedupeCalendarEvents(
+        events.filter((e) => {
+            const start = dayjs(e.start)
+            const end = dayjs(e.end)
+            return start.isBefore(dayEnd) && end.isAfter(dayStart)
+        })
+    ) as any[]
+    // weeklyEvents je legacy (expanded events už přicházejí v `events`)
+    void weeklyEvents
 
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 

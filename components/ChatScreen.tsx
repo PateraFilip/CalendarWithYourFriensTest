@@ -23,10 +23,11 @@ interface ChatScreenProps {
   instance_date?: string;
   currentUserId: number | string;
   keyboardOffset?: number;
+  eventTitle?: string;
 }
 
-export default function ChatScreen({ type, series_id, instance_date, currentUserId, keyboardOffset }: ChatScreenProps) {
-  const { messages, isLoading, sendMessage } = useChat({ type, series_id, instance_date, currentUserId });
+export default function ChatScreen({ type, series_id, instance_date, currentUserId, keyboardOffset, eventTitle }: ChatScreenProps) {
+  const { messages, isLoading, sendMessage } = useChat({ type, series_id, instance_date, currentUserId, eventTitle });
   const [inputText, setInputText] = useState('');
   const [colors, setColors] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -54,7 +55,9 @@ export default function ChatScreen({ type, series_id, instance_date, currentUser
 
   useEffect(() => {
     if (isFocused) {
-      const roomId = type === 'global' ? 'global' : (instance_date ? `instance-${series_id}-${dayjs(instance_date).format('YYYY-MM-DD')}` : `series-${series_id}`);
+      const roomId = instance_date
+        ? `instance-${series_id}-${dayjs(instance_date).format('YYYY-MM-DD')}`
+        : `series-${series_id}`;
       const lastMessageTime = messages.length > 0 ? messages[messages.length - 1].created_at : undefined;
       markRoomAsRead(roomId, lastMessageTime);
     }

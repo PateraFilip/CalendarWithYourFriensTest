@@ -68,8 +68,9 @@ export default function TabulkyScreen() {
                         contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
                         ListEmptyComponent={
                             <ThemedText style={{ textAlign: 'center', marginTop: 40, color: '#888', fontSize: 16 }}>
-                                Zatím nejsi v žádné tabulce. {"\n\n"}
-                                Vytvoř si vlastní ligu pomocí růžového tlačítka + vpravo dole!
+                                Zatím nevidíš žádnou tabulku.{"\n\n"}
+                                Vidíš jen tabulky ze své sítě (přátelé a přátelé přátel).{"\n"}
+                                Vytvoř si vlastní tlačítkem + vpravo dole.
                             </ThemedText>
                         }
                         renderItem={({ item }) => (

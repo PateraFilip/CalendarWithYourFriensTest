@@ -32,6 +32,15 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+
+# debug / local dumps (may contain secrets)
+*.log
+log.txt
+check_triggers.js
+call_check_webhooks.js
+supabase_migrate.js
+check_schema.ts
 
 # typescript
 *.tsbuildinfo

@@ -23,19 +23,17 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
             if (!user?.id) return;
             const data = await fetchEvents(user.id, d, d);
             setEvents(data);
+            const seriesIds = [...new Set(data.map((e) => e.id))];
+            try {
+                const exceptions = await fetchEventsException(seriesIds);
+                setEventException(exceptions);
+            } catch (err) {
+                console.error(err);
+            }
         } catch (err) {
             console.error(err);
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const loadEventsException = async () => {
-        try {
-            const data = await fetchEventsException();
-            setEventException(data);
-        } catch (err) {
-            console.error(err);
         }
     };
 
@@ -44,7 +42,6 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
         let mounted = true;
         if (mounted) {
             loadEvents();
-            loadEventsException();
         }
         return () => { mounted = false; };
     }, [user, selectedDate?.getMonth(), selectedDate?.getFullYear()]);

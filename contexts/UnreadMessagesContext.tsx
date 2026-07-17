@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import dayjs from 'dayjs';
+import { countUnreadNotifications } from '@/services/notifications/notifications';
 
 interface UnreadMessagesContextType {
     unreadGlobalCount: number;
@@ -34,7 +35,9 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
         }
 
         try {
-            // 1. Get user's read receipts
+            const unreadNotifications = await countUnreadNotifications(user.id);
+            setUnreadGlobalCount(unreadNotifications);
+
             const { data: readsData, error: readsError } = await supabase
                 .from('chat_reads')
                 .select('room_id, last_read_at')
@@ -47,38 +50,36 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
                 readsMap.set(r.room_id, r.last_read_at);
             });
 
-            // 2. Check Global Chat unread
-            const globalReadAt = readsMap.get('global');
-            
-            let globalQuery = supabase.from('global_messages').select('id', { count: 'exact', head: true });
-            
-            // Aplikovat filtr pro systémové zprávy jako v chatu
-            const { data: netData } = await supabase.rpc('get_extended_network_ids', { p_user_id: user.id });
-            const netIds = netData ? netData.map((r: any) => typeof r === 'string' ? r : r.u_id).filter(Boolean) : [];
-            netIds.push(user.id);
-            const validIds = netIds.filter((id: any) => id && id.toString().trim() !== '');
-            if (validIds.length > 0) {
-                globalQuery = globalQuery.or(`is_system_message.eq.false,related_user_id.is.null,related_user_id.in.(${validIds.join(',')})`);
-            } else {
-                globalQuery = globalQuery.or(`is_system_message.eq.false,related_user_id.is.null`);
+            // Event chats: jen místnosti, kde jsem účastník nebo zakladatel
+            const { data: myParticipations } = await supabase
+                .from('event_users')
+                .select('series_id')
+                .eq('user_id', user.id);
+
+            const { data: mySeries } = await supabase
+                .from('event_series')
+                .select('id')
+                .eq('zakladatel_id', user.id);
+
+            const allowedSeries = new Set<number>([
+                ...(myParticipations ?? []).map((p) => Number(p.series_id)),
+                ...(mySeries ?? []).map((s) => Number(s.id)),
+            ]);
+
+            if (allowedSeries.size === 0) {
+                setUnreadEventRooms(new Set());
+                return;
             }
 
-            if (globalReadAt) {
-                globalQuery = globalQuery.gt('created_at', globalReadAt);
-            }
-            const { count: globalCount } = await globalQuery;
-            setUnreadGlobalCount(globalCount || 0);
-
-            // 3. Check Event Chats unread
-            // Fetch all event messages
             const { data: eventMessages, error: eventsError } = await supabase
                 .from('event_messages')
                 .select('series_id, instance_date, created_at')
-                .order('created_at', { ascending: false });
+                .in('series_id', Array.from(allowedSeries))
+                .order('created_at', { ascending: false })
+                .limit(400);
 
             if (eventsError) throw eventsError;
 
-            // Group by room_id to find last_message_at
             const roomLastMessage = new Map<string, string>();
             eventMessages?.forEach(msg => {
                 const iDate = msg.instance_date ? dayjs(msg.instance_date).format('YYYY-MM-DD') : null;
@@ -106,11 +107,16 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
     const markRoomAsRead = useCallback(async (roomId: string, timestamp?: string) => {
         if (!user) return;
         try {
-            // Pokud máme timestamp poslední zprávy, použijeme ho + přidáme 1s pro jistotu.
-            // Jinak použijeme aktuální čas a přidáme 5s jako prevenci proti nesynchronizovaným hodinám
             let readAt = new Date(Date.now() + 5000).toISOString();
             if (timestamp) {
                 readAt = new Date(new Date(timestamp).getTime() + 1000).toISOString();
+            }
+
+            if (roomId === 'notifications' || roomId === 'global') {
+                const { markAllNotificationsRead } = await import('@/services/notifications/notifications');
+                await markAllNotificationsRead(user.id);
+                setUnreadGlobalCount(0);
+                return;
             }
 
             const { error } = await supabase.from('chat_reads').upsert({
@@ -120,16 +126,11 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
             });
             if (error) throw error;
             
-            // Okamžitá lokální aktualizace UI
-            if (roomId === 'global') {
-                setUnreadGlobalCount(0);
-            } else {
-                setUnreadEventRooms(prev => {
-                    const next = new Set(prev);
-                    next.delete(roomId);
-                    return next;
-                });
-            }
+            setUnreadEventRooms(prev => {
+                const next = new Set(prev);
+                next.delete(roomId);
+                return next;
+            });
         } catch (err) {
             console.error('Error marking room as read:', err);
         }
@@ -138,10 +139,30 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
     useEffect(() => {
         refreshUnread();
         
-        // Polling as a fallback, or we can rely on focus events
-        const interval = setInterval(refreshUnread, 30000); // 30s
-        return () => clearInterval(interval);
-    }, [refreshUnread]);
+        if (!user) return;
+
+        const channel = supabase
+            .channel(`unread_notifications_${user.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'user_notifications',
+                    filter: `recipient_id=eq.${user.id}`,
+                },
+                () => {
+                    refreshUnread();
+                }
+            )
+            .subscribe();
+
+        const interval = setInterval(refreshUnread, 30000);
+        return () => {
+            clearInterval(interval);
+            supabase.removeChannel(channel);
+        };
+    }, [refreshUnread, user]);
 
     const totalUnread = unreadGlobalCount + unreadEventRooms.size;
 

@@ -1,11 +1,13 @@
 import { supabase } from '@/lib/supabaseClient';
+import { getDeviceTimezone } from '@/lib/eventDates';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import { sendSystemMessage } from '@/services/system/send_system_message';
+import { setEventInvites, setEventInvitesForSeriesIds } from '@/services/events/invites';
+import { createNotificationsForRecipients } from '@/services/notifications/notifications';
 
 interface CreateEventInput {
   title: string
-  user_id: number
+  user_id: number | string
   start: Date
   end: Date | null
   peopleCount?: number
@@ -14,12 +16,12 @@ interface CreateEventInput {
   poloha?: string
   latitude?: number | null
   longitude?: number | null
+  inviteUserIds?: Array<string | number>
 }
-
 
 interface CreatePatternEventInput {
   title: string
-  user_id: number
+  user_id: number | string
   anchor_date: Date
   cycle_days: number
   pattern: { work: boolean; start?: string; end?: string }[]
@@ -31,11 +33,12 @@ interface CreatePatternEventInput {
   latitude?: number | null
   longitude?: number | null
   valid_until?: string
+  inviteUserIds?: Array<string | number>
 }
 
 interface CreateMultiDateEventInput {
   title: string
-  user_id: number
+  user_id: number | string
   dates: Date[]
   times: Record<string, { start?: Date; end?: Date }>
   is_group?: boolean
@@ -43,9 +46,29 @@ interface CreateMultiDateEventInput {
   poloha?: string
   latitude?: number | null
   longitude?: number | null
+  inviteUserIds?: Array<string | number>
+}
+
+async function notifyInvitesAboutNewEvent(
+  seriesId: number,
+  title: string,
+  userId: string | number,
+  inviteUserIds: Array<string | number> | undefined,
+  suffix = ''
+) {
+  if (!inviteUserIds?.length) return;
+  await setEventInvites(seriesId, inviteUserIds);
+  await createNotificationsForRecipients({
+    recipientIds: inviteUserIds,
+    actorId: userId,
+    type: 'event_created',
+    message: `vytvořil(a) novou skupinovou událost${suffix}: ${title} [EVENT:${seriesId}::${title}]`,
+    seriesId,
+  });
 }
 
 export const createEvent = async (event: CreateEventInput) => {
+  const timezone = getDeviceTimezone();
   const { data, error } = await supabase
     .from('event_series')
     .insert({
@@ -58,6 +81,7 @@ export const createEvent = async (event: CreateEventInput) => {
       poloha: event.poloha,
       latitude: event.latitude,
       longitude: event.longitude,
+      timezone,
       recurrence_rule: {
         type: 'once',
         start_date: dayjs(event.start).format('YYYY-MM-DD'),
@@ -73,9 +97,8 @@ export const createEvent = async (event: CreateEventInput) => {
     throw new Error(error.message || 'Failed to create event');
   }
 
-  // Zpráva do globálního chatu pokud je skupinová
   if (event.is_group) {
-    sendSystemMessage({ type: 'global', message: `vytvořil(a) novou skupinovou událost: ${event.title} [EVENT:${data.id}::${event.title}]`, user_id: event.user_id }).catch(console.error);
+    await notifyInvitesAboutNewEvent(data.id, event.title, event.user_id, event.inviteUserIds);
   }
 
   return data;
@@ -83,6 +106,7 @@ export const createEvent = async (event: CreateEventInput) => {
 
 
 export const createPatternEvent = async (event: CreatePatternEventInput) => {
+  const timezone = getDeviceTimezone();
   const { data, error } = await supabase
     .from('event_series')
     .insert({
@@ -95,6 +119,7 @@ export const createPatternEvent = async (event: CreatePatternEventInput) => {
       poloha: event.poloha,
       latitude: event.latitude,
       longitude: event.longitude,
+      timezone,
       recurrence_rule: {
         type: 'pattern',
         cycle_days: event.cycle_days,
@@ -112,7 +137,7 @@ export const createPatternEvent = async (event: CreatePatternEventInput) => {
   }
 
   if (event.is_group) {
-    sendSystemMessage({ type: 'global', message: `vytvořil(a) novou skupinovou událost (cyklus): ${event.title} [EVENT:${data.id}::${event.title}]`, user_id: event.user_id }).catch(console.error);
+    await notifyInvitesAboutNewEvent(data.id, event.title, event.user_id, event.inviteUserIds, ' (cyklus)');
   }
 
   return data;
@@ -122,21 +147,21 @@ export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => 
   const sortedDates = event.dates.sort((a, b) => a.getTime() - b.getTime());
   const dateStrings = sortedDates.map(d => dayjs(d).format('YYYY-MM-DD'));
 
-  // Generate a unique group_id for this set of events
-  const { data: groupData, error: groupError } = await supabase
+  const { data: groupData } = await supabase
     .from('event_series')
-    .select('id')
-    .order('id', { ascending: false })
+    .select('group_id')
+    .not('group_id', 'is', null)
+    .order('group_id', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  const nextGroupId = (groupData?.id || 0) + 1;
+  const nextGroupId = (groupData?.group_id || 0) + 1;
 
-  // Create individual events for each date with shared group_id
   const eventsToInsert = dateStrings.map(dateStr => {
     const timeForDate = event.times[dateStr];
     const startTime = timeForDate?.start ? dayjs(timeForDate.start).format('HH:mm') : '08:00';
     const endTime = timeForDate?.end ? dayjs(timeForDate.end).format('HH:mm') : '09:00';
+    const timezone = getDeviceTimezone();
 
     return {
       nazev: event.title,
@@ -148,6 +173,7 @@ export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => 
       poloha: event.poloha,
       latitude: event.latitude,
       longitude: event.longitude,
+      timezone,
       recurrence_rule: {
         type: 'once',
         start_date: dateStr,
@@ -168,9 +194,17 @@ export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => 
     throw new Error(error.message || 'Failed to create multi-date events');
   }
 
-  if (data && data.length > 0) {
-    if (event.is_group) {
-      sendSystemMessage({ type: 'global', message: `vytvořil(a) novou skupinu událostí: ${event.title} [EVENT:${data[0].id}::${event.title}]`, user_id: event.user_id }).catch(console.error);
+  if (data && data.length > 0 && event.is_group) {
+    const ids = data.map((e) => e.id);
+    if (event.inviteUserIds?.length) {
+      await setEventInvitesForSeriesIds(ids, event.inviteUserIds);
+      await createNotificationsForRecipients({
+        recipientIds: event.inviteUserIds,
+        actorId: event.user_id,
+        type: 'event_created',
+        message: `vytvořil(a) novou skupinu událostí: ${event.title} [EVENT:${data[0].id}::${event.title}]`,
+        seriesId: data[0].id,
+      });
     }
   }
 
