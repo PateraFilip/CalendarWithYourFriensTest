@@ -16,23 +16,42 @@ export const useAuth = () => {
 };
 
 async function fetchAppUser(authUser: { id: string; email?: string | null }): Promise<User | null> {
-    let { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('id', authUser.id)
-        .single();
+        .maybeSingle();
 
-    if (userError || !userData) {
-        if (!authUser.email) return null;
+    if (!userError && userData) {
+        return {
+            ...(userData as User),
+            auth_user_id: authUser.id,
+        };
+    }
+
+    if (authUser.email) {
         const { data: userDataByEmail } = await supabase
             .from('users')
             .select('*')
             .eq('email', authUser.email)
-            .single();
-        if (userDataByEmail) userData = userDataByEmail;
+            .maybeSingle();
+        if (userDataByEmail) {
+            // Varování: email match, ale id může ≠ auth.uid() → rozbije RLS
+            if (String(userDataByEmail.id) !== String(authUser.id)) {
+                console.warn(
+                    '[auth] users.id ≠ auth.uid() — oprav profil v DB:',
+                    userDataByEmail.id,
+                    authUser.id
+                );
+            }
+            return {
+                ...(userDataByEmail as User),
+                auth_user_id: authUser.id,
+            };
+        }
     }
 
-    return userData ? (userData as User) : null;
+    return null;
 }
 
 async function promptBiometricUnlock(): Promise<boolean> {
@@ -174,7 +193,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 if (insertError || !newUser) {
                     throw new Error(`Nepodařilo se vytvořit uživatelská data: ${insertError?.message}`);
                 }
-                userData = newUser as User;
+                userData = {
+                    ...(newUser as User),
+                    auth_user_id: data.user.id,
+                };
             }
 
             await saveStorage('user', JSON.stringify(userData));

@@ -6,7 +6,7 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/:path*",
+      "source": "/((?!firebase-messaging-sw\\.js).*)",
       "destination": "/"
     }
   ]

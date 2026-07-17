@@ -1,5 +1,5 @@
 export type User = {
-    id: number
+    id: string | number
     auth_user_id?: string | null
     username: string
     name: string

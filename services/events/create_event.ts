@@ -5,6 +5,35 @@ import 'dayjs/locale/cs';
 import { setEventInvites, setEventInvitesForSeriesIds } from '@/services/events/invites';
 import { createNotificationsForRecipients } from '@/services/notifications/notifications';
 
+/** Aktuální auth.uid() — musí existovat i řádek v public.users se stejným id. */
+async function resolveZakladatelId(): Promise<string> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user?.id) {
+    throw new Error('Nejste přihlášeni — obnovte session a zkuste znovu.');
+  }
+
+  const authId = user.id;
+
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', authId)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error('[resolveZakladatelId] users lookup:', profileError.message);
+    throw new Error(profileError.message);
+  }
+
+  if (!profile?.id) {
+    throw new Error(
+      'V tabulce users chybí profil pro tvůj účet (id ≠ auth.uid()). Odhlas se, přihlas znovu, nebo oprav řádek users.id.'
+    );
+  }
+
+  return String(profile.id);
+}
+
 interface CreateEventInput {
   title: string
   user_id: number | string
@@ -69,11 +98,12 @@ async function notifyInvitesAboutNewEvent(
 
 export const createEvent = async (event: CreateEventInput) => {
   const timezone = getDeviceTimezone();
+  const zakladatelId = await resolveZakladatelId();
   const { data, error } = await supabase
     .from('event_series')
     .insert({
       nazev: event.title,
-      zakladatel_id: event.user_id,
+      zakladatel_id: zakladatelId,
       cas_od: dayjs(event.start).format('HH:mm'),
       cas_do: event.end ? dayjs(event.end).format('HH:mm') : null,
       pocet_lidi: event.peopleCount ?? 1,
@@ -94,11 +124,12 @@ export const createEvent = async (event: CreateEventInput) => {
     .single();
 
   if (error) {
+    console.error('[createEvent] RLS/insert:', error.message, { zakladatelId, code: error.code });
     throw new Error(error.message || 'Failed to create event');
   }
 
   if (event.is_group) {
-    await notifyInvitesAboutNewEvent(data.id, event.title, event.user_id, event.inviteUserIds);
+    await notifyInvitesAboutNewEvent(data.id, event.title, zakladatelId, event.inviteUserIds);
   }
 
   return data;
@@ -107,11 +138,12 @@ export const createEvent = async (event: CreateEventInput) => {
 
 export const createPatternEvent = async (event: CreatePatternEventInput) => {
   const timezone = getDeviceTimezone();
+  const zakladatelId = await resolveZakladatelId();
   const { data, error } = await supabase
     .from('event_series')
     .insert({
       nazev: event.title,
-      zakladatel_id: event.user_id,
+      zakladatel_id: zakladatelId,
       cas_od: event.cas_od,
       cas_do: event.cas_do,
       pocet_lidi: event.peopleCount ?? 1,
@@ -133,17 +165,19 @@ export const createPatternEvent = async (event: CreatePatternEventInput) => {
     .single();
 
   if (error) {
+    console.error('[createPatternEvent] RLS/insert:', error.message, { zakladatelId, code: error.code });
     throw new Error(error.message || 'Failed to create pattern event');
   }
 
   if (event.is_group) {
-    await notifyInvitesAboutNewEvent(data.id, event.title, event.user_id, event.inviteUserIds, ' (cyklus)');
+    await notifyInvitesAboutNewEvent(data.id, event.title, zakladatelId, event.inviteUserIds, ' (cyklus)');
   }
 
   return data;
 }
 
 export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => {
+  const zakladatelId = await resolveZakladatelId();
   const sortedDates = event.dates.sort((a, b) => a.getTime() - b.getTime());
   const dateStrings = sortedDates.map(d => dayjs(d).format('YYYY-MM-DD'));
 
@@ -165,7 +199,7 @@ export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => 
 
     return {
       nazev: event.title,
-      zakladatel_id: event.user_id,
+      zakladatel_id: zakladatelId,
       cas_od: startTime,
       cas_do: endTime,
       pocet_lidi: event.peopleCount ?? 1,
@@ -191,6 +225,7 @@ export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => 
     .select();
 
   if (error) {
+    console.error('[createMultiDateEvent] RLS/insert:', error.message, { zakladatelId, code: error.code });
     throw new Error(error.message || 'Failed to create multi-date events');
   }
 
@@ -200,7 +235,7 @@ export const createMultiDateEvent = async (event: CreateMultiDateEventInput) => 
       await setEventInvitesForSeriesIds(ids, event.inviteUserIds);
       await createNotificationsForRecipients({
         recipientIds: event.inviteUserIds,
-        actorId: event.user_id,
+        actorId: zakladatelId,
         type: 'event_created',
         message: `vytvořil(a) novou skupinu událostí: ${event.title} [EVENT:${data[0].id}::${event.title}]`,
         seriesId: data[0].id,

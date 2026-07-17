@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/hooks/useAuth';
 import { registerAndSavePushToken } from '@/lib/push-notifications';
@@ -29,9 +29,10 @@ export function WebNotificationPrompt() {
     let cancelled = false;
     (async () => {
       if (Notification.permission === 'granted') {
+        if (!cancelled) setVisible(false);
+        // Token na pozadí — nenechávat banner viset
         const userId = (user as any).auth_user_id || user.id;
         void registerAndSavePushToken(String(userId));
-        if (!cancelled) setVisible(false);
         return;
       }
       if (Notification.permission === 'denied') {
@@ -53,11 +54,36 @@ export function WebNotificationPrompt() {
     setBusy(true);
     try {
       const userId = (user as any)?.auth_user_id || user?.id;
-      if (!userId) return;
-      const token = await registerAndSavePushToken(String(userId));
-      if (token || Notification.permission !== 'default') {
-        setVisible(false);
+      if (!userId) {
+        Alert.alert('Chyba', 'Nejsi přihlášen.');
+        return;
       }
+
+      const token = await registerAndSavePushToken(String(userId));
+
+      // Po rozhodnutí prohlížeče banner zavři i když token selhal
+      if (typeof Notification !== 'undefined' && Notification.permission !== 'default') {
+        setVisible(false);
+        await saveStorage(DISMISS_KEY, 'true');
+      }
+
+      if (Notification.permission === 'granted' && !token) {
+        const msg =
+          'Prohlížeč povolil notifikace, ale registrace push tokenu se nepovedla (service worker / síť). Zkus obnovit stránku.';
+        if (typeof window !== 'undefined') window.alert(msg);
+        else Alert.alert('Oznámení povolena', msg);
+      } else if (Notification.permission === 'denied') {
+        const msg =
+          'Notifikace jsou v prohlížeči zakázané. Povol je v nastavení webu a zkus znovu.';
+        if (typeof window !== 'undefined') window.alert(msg);
+        else Alert.alert('Zamítnuto', msg);
+      }
+    } catch (e: any) {
+      console.error(e);
+      setVisible(false);
+      const msg = e?.message || 'Nepodařilo se nastavit oznámení.';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Chyba', msg);
     } finally {
       setBusy(false);
     }
