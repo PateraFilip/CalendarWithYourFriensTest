@@ -3,77 +3,87 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/hooks/useAuth';
 import { registerAndSavePushToken } from '@/lib/push-notifications';
-import { loadStorage, saveStorage } from '@/lib/storage';
+import {
+  clearWebPushPromptDismiss,
+  dismissWebPushPrompt,
+  isWebPushPromptDismissed,
+} from '@/lib/webPushPermission';
 
-const DISMISS_KEY = 'webPushPromptDismissed';
+type Mode = 'ask' | 'denied' | 'waiting';
 
 /**
- * Chrome u „neznámých“ webů často nezobrazí klasický dialog,
- * ale bublinu u adresního řádku („Oznámení blokována“ → Povolit).
- * requestPermission() musí startnout synchronně v click handleru.
+ * Chrome u nových webů často ukáže jen bublinu u URL.
+ * Po „Teď ne“ / denied se banner schová — znovu: Nastavení → Povolit oznámení prohlížeče.
  */
 export function WebNotificationPrompt() {
   const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<Mode>('ask');
   const [hint, setHint] = useState<string | null>(null);
 
+  const refreshVisibility = async () => {
+    if (Platform.OS !== 'web' || !user?.id || typeof Notification === 'undefined') {
+      setVisible(false);
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      setVisible(false);
+      const userId = (user as any).auth_user_id || user.id;
+      void registerAndSavePushToken(String(userId), { skipPermissionRequest: true });
+      return;
+    }
+
+    const dismissed = await isWebPushPromptDismissed();
+
+    if (Notification.permission === 'denied') {
+      // Ukaž návod, pokud to uživatel neschoval
+      if (!dismissed) {
+        setMode('denied');
+        setVisible(true);
+      } else {
+        setVisible(false);
+      }
+      return;
+    }
+
+    // default — ptát se, pokud neschováno
+    if (!dismissed) {
+      setMode('ask');
+      setVisible(true);
+    } else {
+      setVisible(false);
+    }
+  };
+
   useEffect(() => {
-    if (Platform.OS !== 'web' || !user?.id) {
-      setVisible(false);
-      return;
-    }
-    if (typeof Notification === 'undefined') {
-      setVisible(false);
-      return;
-    }
+    void refreshVisibility();
+  }, [user?.id]);
 
-    let cancelled = false;
-    (async () => {
-      if (Notification.permission === 'granted') {
-        if (!cancelled) setVisible(false);
-        const userId = (user as any).auth_user_id || user.id;
-        void registerAndSavePushToken(String(userId), { skipPermissionRequest: true });
-        return;
-      }
-      if (Notification.permission === 'denied') {
-        if (!cancelled) setVisible(false);
-        return;
-      }
-      const dismissed = await loadStorage(DISMISS_KEY);
-      if (!cancelled) setVisible(dismissed !== 'true');
-    })();
-
+  // Po návratu na tab zkontroluj, jestli uživatel mezitím povolil v Chrome
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onFocus = () => void refreshVisibility();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
     return () => {
-      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
     };
   }, [user?.id]);
 
   if (Platform.OS !== 'web' || !visible) return null;
 
-  const finishWithPermission = async (
-    permission: NotificationPermission,
-    userId: string
-  ) => {
-    if (permission === 'granted') {
-      const token = await registerAndSavePushToken(String(userId), {
-        skipPermissionRequest: true,
-      });
-      setVisible(false);
-      await saveStorage(DISMISS_KEY, 'true');
-      if (!token) {
-        window.alert(
-          'Oznámení jsou povolená, ale registrace push tokenu se nepovedla. Zkus obnovit stránku.'
-        );
-      }
-      return;
-    }
-
+  const finishGranted = async (userId: string) => {
+    const token = await registerAndSavePushToken(String(userId), {
+      skipPermissionRequest: true,
+    });
     setVisible(false);
-    await saveStorage(DISMISS_KEY, 'true');
-    if (permission === 'denied') {
+    await dismissWebPushPrompt();
+    if (!token) {
       window.alert(
-        'Notifikace zůstaly zamítnuté. U zámku v adresním řádku nastav Oznámení → Povolit a obnov stránku.'
+        'Oznámení jsou povolená, ale registrace push tokenu se nepovedla. Zkus obnovit stránku.'
       );
     }
   };
@@ -87,26 +97,38 @@ export function WebNotificationPrompt() {
       return;
     }
 
-    // Synchronně v click handleru — jinak Chrome ukáže jen zvoneček
+    if (Notification.permission === 'denied') {
+      window.alert(
+        'Chrome má oznámení pro tento web zakázaná.\n\n' +
+          '1) Klikni na zámek / tunel vedle URL\n' +
+          '2) Oznámení → Povolit\n' +
+          '3) Obnov stránku\n\n' +
+          'Nebo: Nastavení webu → Oznámení.'
+      );
+      return;
+    }
+
+    // Synchronně v click handleru
     const permissionPromise: Promise<NotificationPermission> =
-      Notification.permission === 'granted' || Notification.permission === 'denied'
-        ? Promise.resolve(Notification.permission)
+      Notification.permission === 'granted'
+        ? Promise.resolve('granted')
         : Notification.requestPermission();
 
     setBusy(true);
+    setMode('waiting');
     setHint(
-      'Chrome u nových webů dialog blokuje. Klikni nahoře u adresního řádku na „Povolit“.'
+      'Podívej se nahoru k adresnímu řádku — Chrome často ukáže „Povolit“ vedle URL (zvoneček / bublina).'
     );
 
     void (async () => {
       try {
-        // Sleduj i manuální klik v Chrome UI — promise někdy visí
         const permission = await new Promise<NotificationPermission>((resolve) => {
           let done = false;
           const finish = (p: NotificationPermission) => {
             if (done) return;
             done = true;
             clearInterval(iv);
+            clearTimeout(to);
             resolve(p);
           };
 
@@ -117,44 +139,83 @@ export function WebNotificationPrompt() {
               finish(Notification.permission);
             }
           }, 250);
+
+          // Po 45s přestaň viset — nech banner s nápovědou
+          const to = setTimeout(() => finish(Notification.permission), 45000);
         });
 
-        await finishWithPermission(permission, String(userId));
+        if (permission === 'granted') {
+          await finishGranted(String(userId));
+          return;
+        }
+
+        if (permission === 'denied') {
+          setMode('denied');
+          setHint(null);
+          return;
+        }
+
+        // pořád default — Chrome UI zmizelo bez rozhodnutí
+        setMode('ask');
+        setHint(
+          'Chrome dialog nezobrazil. Zkus znovu Povolit, nebo klikni na zámek u URL → Oznámení.'
+        );
       } catch (e: any) {
         console.error(e);
-        setVisible(false);
         window.alert(e?.message || 'Nepodařilo se nastavit oznámení.');
       } finally {
         setBusy(false);
-        setHint(null);
       }
     })();
   };
 
   const dismiss = async () => {
-    await saveStorage(DISMISS_KEY, 'true');
+    await dismissWebPushPrompt();
     setVisible(false);
     setHint(null);
     setBusy(false);
   };
 
+  const title =
+    mode === 'denied'
+      ? 'Oznámení jsou v Chrome zakázaná'
+      : mode === 'waiting'
+        ? 'Čekám na Chrome…'
+        : 'Zapnout oznámení?';
+
+  const body =
+    hint ||
+    (mode === 'denied'
+      ? 'Klikni na zámek vedle URL → Oznámení → Povolit, pak obnov stránku. Znovu otevřít lze i v Nastavení.'
+      : 'Dostaneš upozornění na pozvánky, chat a změny událostí i když máš kartu na pozadí.');
+
   return (
     <View style={styles.banner} pointerEvents="box-none">
       <View style={styles.card}>
-        <ThemedText style={styles.title}>Zapnout oznámení?</ThemedText>
-        <ThemedText style={styles.body}>
-          {hint ||
-            'Dostaneš upozornění na pozvánky, chat a změny událostí i když máš kartu na pozadí.'}
-        </ThemedText>
+        <ThemedText style={styles.title}>{title}</ThemedText>
+        <ThemedText style={styles.body}>{body}</ThemedText>
         <View style={styles.row}>
           <Pressable onPress={dismiss} style={styles.secondary}>
             <ThemedText style={styles.secondaryText}>Teď ne</ThemedText>
           </Pressable>
-          <Pressable onPress={enable} style={styles.primary} disabled={busy}>
-            <ThemedText style={styles.primaryText}>
-              {busy ? 'Čekám na Chrome…' : 'Povolit'}
-            </ThemedText>
-          </Pressable>
+          {mode !== 'denied' && (
+            <Pressable onPress={enable} style={styles.primary} disabled={busy}>
+              <ThemedText style={styles.primaryText}>
+                {busy ? 'Čekám na Chrome…' : 'Povolit'}
+              </ThemedText>
+            </Pressable>
+          )}
+          {mode === 'denied' && (
+            <Pressable
+              onPress={() => {
+                void clearWebPushPromptDismiss();
+                enable();
+              }}
+              style={styles.primary}
+            >
+              <ThemedText style={styles.primaryText}>Jak povolit</ThemedText>
+            </Pressable>
+          )}
         </View>
       </View>
     </View>

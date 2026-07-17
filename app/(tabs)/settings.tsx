@@ -7,9 +7,14 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { loadNotificationSettings, saveNotificationSettings, type NotificationSettings } from '@/lib/notificationSettings';
+import { registerAndSavePushToken } from '@/lib/push-notifications';
+import {
+    clearWebPushPromptDismiss,
+    getBrowserNotificationPermission,
+} from '@/lib/webPushPermission';
 import { supabase } from '@/lib/supabaseClient';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Appearance, TouchableOpacity, View, TextInput } from 'react-native';
+import { ScrollView, StyleSheet, Appearance, TouchableOpacity, View, TextInput, Platform } from 'react-native';
 import { Button, Switch } from 'react-native-paper';
 import ColorPicker from '../../components/ColorPicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -32,6 +37,7 @@ export default function SettingsScreen() {
     const [errors, setErrors] = useState<{ color: boolean }>({ color: false });
     const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
     const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+    const [browserPushStatus, setBrowserPushStatus] = useState<string>('—');
 
     // Edit state
     const [editingField, setEditingField] = useState<EditableField>(null);
@@ -40,6 +46,15 @@ export default function SettingsScreen() {
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
+
+    const refreshBrowserPushStatus = () => {
+        if (Platform.OS !== 'web') return;
+        const p = getBrowserNotificationPermission();
+        if (p === 'granted') setBrowserPushStatus('Povoleno');
+        else if (p === 'denied') setBrowserPushStatus('Zakázáno v prohlížeči');
+        else if (p === 'default') setBrowserPushStatus('Zatím nerozhodnuto');
+        else setBrowserPushStatus('Nepodporováno');
+    };
 
     const loadColors = async () => {
         try {
@@ -69,8 +84,47 @@ export default function SettingsScreen() {
 
     useEffect(() => {
         loadNotificationSettings().then(setNotificationSettings);
+        refreshBrowserPushStatus();
     }, []);
 
+    const handleEnableBrowserPush = () => {
+        if (Platform.OS !== 'web' || typeof Notification === 'undefined') return;
+
+        void clearWebPushPromptDismiss();
+
+        if (Notification.permission === 'denied') {
+            alert(
+                'Chrome má oznámení zakázaná.\n\n' +
+                    '1) Klikni na zámek vedle URL\n' +
+                    '2) Oznámení → Povolit\n' +
+                    '3) Obnov stránku'
+            );
+            refreshBrowserPushStatus();
+            return;
+        }
+
+        const userId = (user as any)?.auth_user_id || user?.id;
+        // Synchronně z kliknutí
+        const permissionPromise =
+            Notification.permission === 'granted'
+                ? Promise.resolve('granted' as NotificationPermission)
+                : Notification.requestPermission();
+
+        void (async () => {
+            const permission = await permissionPromise;
+            refreshBrowserPushStatus();
+            if (permission === 'granted' && userId) {
+                await registerAndSavePushToken(String(userId), { skipPermissionRequest: true });
+                alert('Oznámení prohlížeče jsou zapnutá.');
+            } else if (permission === 'denied') {
+                alert('Oznámení zůstala zakázaná. Povol je u zámku v adresním řádku.');
+            } else {
+                alert(
+                    'Podívej se nahoru k URL — Chrome může zobrazit bublinu „Povolit“. Po povolení obnov stránku.'
+                );
+            }
+        })();
+    };
     const updateNotificationSetting = async (key: keyof NotificationSettings, value: boolean) => {
         if (!notificationSettings) return;
         const updated = { ...notificationSettings, [key]: value };
@@ -243,6 +297,22 @@ export default function SettingsScreen() {
                                 color={buttonColor}
                             />
                         </ThemedView>
+
+                        {Platform.OS === 'web' && (
+                            <ThemedView style={{ marginTop: 12, gap: 8 }}>
+                                <ThemedText style={{ opacity: 0.7 }}>
+                                    Prohlížeč: {browserPushStatus}
+                                </ThemedText>
+                                <Button
+                                    mode="outlined"
+                                    onPress={handleEnableBrowserPush}
+                                    textColor={buttonColor}
+                                    style={{ borderColor: buttonColor }}
+                                >
+                                    Povolit oznámení prohlížeče
+                                </Button>
+                            </ThemedView>
+                        )}
                     </ThemedView>
                 )}
 
