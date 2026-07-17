@@ -449,7 +449,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         loadAll(true);
-      }, 1500);
+      }, 400);
     };
 
     const channel = supabase

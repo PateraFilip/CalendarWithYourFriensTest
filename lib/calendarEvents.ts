@@ -65,7 +65,7 @@ export function eventsOverlappingDay<T extends CalendarEventLike>(events: T[], d
   return events.filter((e) => e.end > dayStart && e.start < dayEnd);
 }
 
-/** Viditelný úsek události v rámci jednoho dne (pro denní kalendář) */
+/** Viditelný úsek události v rámci jednoho dne (pro denní/týdenní kalendář) */
 export function visibleSegmentOnDay(
   e: CalendarEventLike,
   day: Date,
@@ -78,7 +78,11 @@ export function visibleSegmentOnDay(
   const eventStart = e.start < dayStart ? dayStart : e.start;
   const eventEnd = e.end > dayEnd ? dayEnd : e.end;
   const startHourOffset = eventStart.getHours() + eventStart.getMinutes() / 60;
-  const endHourOffset = eventEnd.getHours() + eventEnd.getMinutes() / 60;
+  // Konec dne = 24.0 (ne 23:59), ať přes půlnoc zabere zbytek mřížky
+  const endHourOffset =
+    eventEnd.getTime() >= dayEnd.getTime()
+      ? 24
+      : eventEnd.getHours() + eventEnd.getMinutes() / 60 + eventEnd.getSeconds() / 3600;
   const segmentHours = Math.max(endHourOffset - startHourOffset, 1 / 60);
 
   return { eventStart, eventEnd, startHourOffset, segmentHours };

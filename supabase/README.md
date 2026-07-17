@@ -16,7 +16,7 @@ node supabase/scripts/migrate-from-old-supabase.mjs
 
 3. V novém projektu spusť `migration-post.sql`
 4. Nahraj Edge Functions z `supabase/functions/`
-5. **Database Webhooks** na `event_series` a `event_users`
+5. **Database Webhooks** → Edge Function `send-notification` (viz sekce níže)
 
 Alternativa bez skriptu: v `migration.sql` odkomentuj blok **METODA A** (postgres_fdw + heslo ke staré DB).
 
@@ -119,13 +119,23 @@ supabase functions deploy get-event-series
 
 ---
 
-## Webhooky v Supabase
+## Webhooky v Supabase (push mimo appku)
+
+Když je aplikace **zavřená**, lokální Realtime notifikace nefungují. Push jde jen přes FCM:
+
+`INSERT` → Database Webhook → Edge Function **`send-notification`** → FCM → zařízení.
 
 | Tabulka | Události | Edge Function |
 |---------|----------|---------------|
-| `event_series` | INSERT, UPDATE, DELETE | `notifications`, `web-notifications` |
-| `event_users` | INSERT, DELETE | `event-user-notifications`, `event-user-web-notification` |
-| `event_messages` | INSERT | (budoucí) `chat-notifications` |
+| `user_notifications` | INSERT | `send-notification` |
+| `event_messages` | INSERT | `send-notification` |
+| `friendships` | INSERT | `send-notification` |
+
+URL: `https://<PROJECT_REF>.supabase.co/functions/v1/send-notification`
+
+Secret Edge Function: `FIREBASE_SERVICE_ACCOUNT` = celý JSON service accountu Firebase.
+
+Ověření: po přihlášení musí v `user_devices` být FCM token; v logu Edge Function nesmí být `Missing FIREBASE_SERVICE_ACCOUNT` / 401.
 
 ---
 

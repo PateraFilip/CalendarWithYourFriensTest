@@ -4,10 +4,12 @@ import { joinEvent } from '@/services/events/join_event'
 import { ThemedText } from '@/components/themed-text'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppData } from '@/contexts/AppDataContext'
 import { dedupeCalendarEvents, eventInstanceKey } from '@/lib/calendarEvents'
+import { getEventParticipants } from '@/lib/eventParticipants'
 import { supabase } from '@/lib/supabaseClient'
 import dayjs from 'dayjs'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Button, Modal, Portal } from 'react-native-paper'
 import { ThemedView } from './themed-view'
@@ -69,21 +71,36 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
     const { user } = useAuth()
-    const [userEvents, setUserEvents] = useState<UserEvent[]>([])
+    const { userEvents: appUserEvents } = useAppData()
+    const [localUserEvents, setLocalUserEvents] = useState<UserEvent[]>([])
+
+    const userEvents = useMemo(() => {
+        const map = new Map<string, UserEvent>()
+        for (const ue of [...(appUserEvents as UserEvent[] | undefined || []), ...localUserEvents]) {
+            const key = `${ue.event_id}|${ue.user_id}|${ue.instance_date ?? ''}`
+            map.set(key, ue)
+        }
+        return Array.from(map.values())
+    }, [appUserEvents, localUserEvents])
 
     const loadUserEvent = async () => {
         try {
             const data = await fetchUserEvents()
-            setUserEvents(data)
+            setLocalUserEvents(data)
         } catch (err) {
             console.error(err)
         }
     }
 
     useEffect(() => {
+        if (!visible) return
+        void loadUserEvent()
+    }, [visible])
+
+    useEffect(() => {
         let mounted = true;
 
-        loadUserEvent()
+        void loadUserEvent()
 
         const channel = supabase.channel('realtime:public:user_events');
 
@@ -91,9 +108,8 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
             event: '*',
             schema: 'public',
             table: 'event_users'
-        }, (payload) => {
-            console.log('Change in events:', payload);
-            if (mounted) loadUserEvent(); // načti nové eventy
+        }, () => {
+            if (mounted) void loadUserEvent();
         });
 
         channel.subscribe();
@@ -117,7 +133,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
             instance_date: isRecurring ? dayjs(eventDate).format('YYYY-MM-DD') : undefined,
         };
 
-        joinEvent(joinParams);
+        joinEvent(joinParams).then(() => loadUserEvent()).catch(console.error);
     }
 
     function onCancelEvent(event_id: number, isRecurring: boolean, eventDate: Date) {
@@ -132,18 +148,16 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
             instance_date: isRecurring ? dayjs(eventDate).format('YYYY-MM-DD') : undefined,
         };
 
-        cancelEvent(cancelParams);
+        cancelEvent(cancelParams).then(() => loadUserEvent()).catch(console.error);
     }
 
     if (!date) return null
 
-    // Jen události, které skutečně probíhají v dané hodině (stejná logika jako týdenní buňka)
     const hourStart = dayjs(date).startOf('hour').toDate()
     const hourEnd = dayjs(date).startOf('hour').add(1, 'hour').toDate()
     const hourEvents = dedupeCalendarEvents(
         events.filter((e) => e.start < hourEnd && e.end > hourStart)
     ) as any[]
-    // weeklyEvents je legacy (expanded events už přicházejí v `events`)
     void weeklyEvents
 
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -162,26 +176,13 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                             keyExtractor={(item) => eventInstanceKey(item)}
                             style={{ maxHeight: 500 }}
                             renderItem={({ item }) => {
-                                // 🧮 Spočítej, kolikrát se item.id vyskytuje v userEvents.event_id
-                                // Pro pravidelné události filtrujeme podle instance_date
-                                const itemInstanceDate = dayjs(item.start).format('YYYY-MM-DD');
-                                // Check for CLEARED marker for this specific instance
-                                const clearedMarker = userEvents.find(u => u.event_id === item.id && u.instance_date === `CLEARED-${itemInstanceDate}`);
-                                const instanceSpecificEvents = userEvents.filter(u => u.event_id === item.id && u.instance_date === itemInstanceDate);
-                                let relevantUserEvents: any[];
-                                if (item.pravidelnost) {
-                                    if (clearedMarker) {
-                                        relevantUserEvents = [];
-                                    } else if (instanceSpecificEvents.length > 0) {
-                                        relevantUserEvents = instanceSpecificEvents;
-                                    } else {
-                                        relevantUserEvents = userEvents.filter(u => u.event_id === item.id && !u.instance_date);
-                                    }
-                                } else {
-                                    relevantUserEvents = userEvents.filter(u => u.event_id === item.id && !u.instance_date);
-                                }
+                                const relevantUserEvents = item.is_group
+                                    ? getEventParticipants(userEvents, item)
+                                    : []
                                 const count = relevantUserEvents.length;
-                                const userJoined = relevantUserEvents.filter(u => u.user_id === user?.id)
+                                const userJoined = relevantUserEvents.filter(
+                                    (u) => String(u.user_id) === String(user?.id)
+                                )
                                 const colorObj = colors.find(c => String(c.user_id) === String(item.user_id));
                                 const backgroundColor = item.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc';
                                 const textColor = item.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
@@ -227,6 +228,7 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                                                 );
                                                                 const name =
                                                                     participant?.username ||
+                                                                    participant?.jmeno ||
                                                                     `User ${ue.user_id}`;
                                                                 const userColor =
                                                                     colors.find(
@@ -248,10 +250,9 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                                                 );
                                                             })
                                                             : (
-                                                                <>
-                                                                    <Text style={{ color: '#FFD700' }}>● </Text>
-                                                                    Zakladatel: {ownerName}
-                                                                </>
+                                                                <Text style={{ color: textColor, fontSize: 13, opacity: 0.85 }}>
+                                                                    Žádní účastníci
+                                                                </Text>
                                                             )}
                                                     </Text>
                                                 </View>
@@ -287,7 +288,6 @@ export const CellModal: React.FC<CellModalProps> = ({ visible,
                                                     Zrušit účast
                                                 </Button>
                                             )}
-                                            {/* CHAT TLAČÍTKA */}
                                             {!item.is_group && userJoined.length > 0 && (
                                                 <View style={styles.chatButtonsRow}>
                                                     <Button

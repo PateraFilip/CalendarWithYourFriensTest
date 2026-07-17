@@ -1,7 +1,9 @@
 import { fetchUsers } from '@/services/users/get_users';
 import { fetchUserEvents, UserEvent } from '@/services/events/getUserEvents';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAppData } from '@/contexts/AppDataContext';
 import { dedupeCalendarEvents, eventInstanceKey, eventsOverlappingDay, visibleSegmentOnDay } from '@/lib/calendarEvents';
+import { getEventParticipants } from '@/lib/eventParticipants';
 import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -88,7 +90,15 @@ export default function DayCalendar({
   const scrollRef = useRef<ScrollView>(null);
   const verticalScrollRef = useRef<ScrollView>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [userEvents, setUserEvents] = useState<UserEvent[]>([])
+  const [localUserEvents, setLocalUserEvents] = useState<UserEvent[]>([])
+  const { userEvents: appUserEvents } = useAppData()
+  const userEvents = useMemo(() => {
+    const map = new Map<string, UserEvent>()
+    for (const ue of [...(appUserEvents as UserEvent[] | undefined || []), ...localUserEvents]) {
+      map.set(`${ue.event_id}|${ue.user_id}|${ue.instance_date ?? ''}`, ue)
+    }
+    return Array.from(map.values())
+  }, [appUserEvents, localUserEvents])
 
   useEffect(() => {
     const interval = setInterval(() => setTicker(t => t + 1), 60000);
@@ -126,7 +136,7 @@ export default function DayCalendar({
   const loadUserEvent = async () => {
     try {
       const data = await fetchUserEvents()
-      setUserEvents(data)
+      setLocalUserEvents(data)
     } catch (err) {
       console.error(err)
     }
@@ -290,23 +300,7 @@ export default function DayCalendar({
                         if (h !== segmentStartHour) return null;
 
                         const topOffset = (startHourOffset - segmentStartHour) * hourHeight;
-                        // Pro pravidelné události filtrujeme podle instance_date
-                        const itemInstanceDate = dayjs(e.start).format('YYYY-MM-DD');
-                        // Check for CLEARED marker for this specific instance
-                        const clearedMarker = userEvents.find(u => u.event_id === e.id && u.instance_date === `CLEARED-${itemInstanceDate}`);
-                        const instanceSpecificEvents = userEvents.filter(u => u.event_id === e.id && u.instance_date === itemInstanceDate);
-                        let relevantUserEvents: any[];
-                        if (e.pravidelnost) {
-                          if (clearedMarker) {
-                            relevantUserEvents = [];
-                          } else if (instanceSpecificEvents.length > 0) {
-                            relevantUserEvents = instanceSpecificEvents;
-                          } else {
-                            relevantUserEvents = userEvents.filter(u => u.event_id === e.id && !u.instance_date);
-                          }
-                        } else {
-                          relevantUserEvents = userEvents.filter(u => u.event_id === e.id && !u.instance_date);
-                        }
+                        const relevantUserEvents = e.is_group ? getEventParticipants(userEvents, e) : [];
                         const count = relevantUserEvents.length;
                         const col = eventColumns.get(e) || 0;
                         const colorObj = colors.find(c => c.user_id === e.user_id);
@@ -346,7 +340,7 @@ export default function DayCalendar({
                                 </ThemedText>
                                 <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10, flex: 1 }} numberOfLines={1}>
                                   {relevantUserEvents.map((ue, idx) => {
-                                    const participant = users.find(u => u.id === ue.user_id);
+                                    const participant = users.find(u => String(u.id) === String(ue.user_id));
                                     const name = participant ? participant.username : `User ${ue.user_id}`;
                                     const userColorObj = colors.find(c => String(c.user_id) === String(ue.user_id));
                                     const userColor = userColorObj?.background_color || '#ccc';

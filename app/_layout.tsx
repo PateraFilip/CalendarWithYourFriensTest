@@ -24,6 +24,7 @@ function RootLayoutNav() {
     const { user, sessionLoading } = useAuth()
     const router = useRouter()
     const segments = useSegments()
+    useNotificationHandler()
 
     useEffect(() => {
         if (sessionLoading) return;
@@ -69,7 +70,6 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
     const colorScheme = useColorScheme()
-    useNotificationHandler()
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <Provider>

@@ -2,13 +2,14 @@ import { fetchColors } from '@/services/users/get_colors';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { Button, TextInput, useTheme } from 'react-native-paper';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
@@ -205,10 +206,9 @@ export default function ModalScreen() {
         }}
       />
       <ThemedSafeView style={styles.container}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          style={{ width: "100%" }}
+        <KeyboardScreen
+          scroll
+          style={{ width: '100%' }}
           contentContainerStyle={{
             alignItems: 'center',
             justifyContent: 'center',
@@ -467,7 +467,7 @@ export default function ModalScreen() {
             </Button>
 
           </ThemedView>
-        </ScrollView>
+        </KeyboardScreen>
       </ThemedSafeView>
     </>
   );

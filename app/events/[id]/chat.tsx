@@ -47,7 +47,7 @@ export default function EventChatScreen() {
                                 currentUserId={user.id}
                                 eventTitle={titleStr}
                             />
-                            <MuteChatButton chatId={isInstance ? `instance_${seriesId}_${instance_date}` : `series_${seriesId}`} />
+                            <MuteChatButton chatId={isInstance ? `instance_${seriesId}_${instanceDateStr}` : `series_${seriesId}`} />
                             <TouchableOpacity onPress={() => {
                                 router.push({
                                     pathname: '/events/[eventId]',
@@ -66,7 +66,7 @@ export default function EventChatScreen() {
                 instance_date={instanceDateStr} 
                 currentUserId={user.id}
                 eventTitle={titleStr}
-                keyboardOffset={Platform.OS === 'ios' ? 90 : 90}
+                keyboardOffset={Platform.OS === 'ios' ? 90 : 24}
             />
         </SafeAreaView>
     );

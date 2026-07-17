@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, FlatList, ActivityIndicator, Keyboard, Modal } from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity, Platform, FlatList, ActivityIndicator, Keyboard, Dimensions, type KeyboardEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -8,37 +9,56 @@ import { useChat, ChatType, ChatMessage } from '@/hooks/useChat';
 import { fetchColors } from '@/services/users/get_colors';
 import dayjs from 'dayjs';
 import { router } from 'expo-router';
-import { supabase } from '@/lib/supabaseClient';
 import { useUnreadMessages } from '@/contexts/UnreadMessagesContext';
 import { useIsFocused } from '@react-navigation/native';
-import { fetchEvents } from '@/services/events/get_events';
-import { fetchEventsException } from '@/services/events/get_event_exceptions';
-import { fetchUserEvents } from '@/services/events/getUserEvents';
-import { fetchMyFriendships } from '@/services/friends/friendships';
-import { getMyUpcomingEvents } from '@/lib/myEventsHelpers';
 
 interface ChatScreenProps {
   type: ChatType;
   series_id?: number;
   instance_date?: string;
   currentUserId: number | string;
+  /** @deprecated — výška se bere z Keyboard API */
   keyboardOffset?: number;
   eventTitle?: string;
 }
 
-export default function ChatScreen({ type, series_id, instance_date, currentUserId, keyboardOffset, eventTitle }: ChatScreenProps) {
+export default function ChatScreen({ type, series_id, instance_date, currentUserId, eventTitle }: ChatScreenProps) {
   const { messages, isLoading, sendMessage } = useChat({ type, series_id, instance_date, currentUserId, eventTitle });
   const [inputText, setInputText] = useState('');
   const [colors, setColors] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [filterMode, setFilterMode] = useState<'all' | 'group' | 'personal'>('all');
-  const [isAttachModalVisible, setIsAttachModalVisible] = useState(false);
-  const [attachableEvents, setAttachableEvents] = useState<any[]>([]);
+  const [keyboardPad, setKeyboardPad] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets();
   const backgroundColor = useThemeColor({ light: '#fff', dark: '#151718' }, 'background');
   const textColor = useThemeColor({ light: '#11181C', dark: '#ECEDEE' }, 'text');
   const inputBgColor = useThemeColor({ light: '#f0f0f0', dark: '#2A2A2A' }, 'background');
   const otherBubbleBgColor = useThemeColor({ light: '#e6e0f8', dark: '#2A2A2A' }, 'background');
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const onShow = (e: KeyboardEvent) => {
+      const h = e.endCoordinates?.height ?? 0;
+      if (Platform.OS === 'android') {
+        const screenH = Dimensions.get('screen').height;
+        const windowH = Dimensions.get('window').height;
+        const shrunk = screenH - windowH;
+        // resize mode: window už sedí nad klávesnicí
+        setKeyboardPad(shrunk > h * 0.45 ? 8 : Math.max(0, h - Math.min(insets.bottom, 24)));
+      } else {
+        setKeyboardPad(Math.max(0, h));
+      }
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    };
+    const onHide = () => setKeyboardPad(0);
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const a = Keyboard.addListener(showEvt, onShow);
+    const b = Keyboard.addListener(hideEvt, onHide);
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, [insets.bottom]);
   
   // Scrollování dolů při nové zprávě
   useEffect(() => {
@@ -72,55 +92,6 @@ export default function ChatScreen({ type, series_id, instance_date, currentUser
     await sendMessage(inputText.trim());
     setInputText('');
     Keyboard.dismiss();
-  };
-
-  const openAttachModal = async () => {
-    setIsAttachModalVisible(true);
-    try {
-      const currentIdStr = String(currentUserId);
-      const [evs, exceptions, userEv, fr, usersData, colorsData] = await Promise.all([
-        fetchEvents(currentUserId, undefined, dayjs().add(1, 'year').toDate()),
-        fetchEventsException(),
-        fetchUserEvents(),
-        fetchMyFriendships(currentIdStr),
-        supabase.from('users').select('id, username'),
-        fetchColors()
-      ]);
-      
-      setUsers(usersData?.data || []);
-      setColors(colorsData || []);
-      
-      const joinedEventIds = userEv.filter(ue => String(ue.user_id) === currentIdStr).map(ue => ue.event_id);
-      const friendIds = fr.filter(f => f.status === 'accepted').map(f => String(f.user_id) === currentIdStr ? f.friend_id : f.user_id);
-      const allowedIds = [currentIdStr, ...friendIds];
-
-      const myTimeline = getMyUpcomingEvents(evs, [], exceptions, allowedIds, joinedEventIds, 365);
-      
-      const eventsMap = new Map();
-      myTimeline.forEach(e => {
-        const sId = e.id;
-        const iDate = (!e.pravidelnost) ? undefined : dayjs(e.start).format('YYYY-MM-DD');
-        const title = e.title;
-        const key = iDate ? `instance-${sId}-${iDate}` : `series-${sId}`;
-        if (!eventsMap.has(key)) {
-            eventsMap.set(key, { 
-                id: sId, 
-                date: iDate, 
-                title, 
-                user_id: e.user_id, 
-                is_group: e.is_group,
-                event_start: dayjs(e.start).format('YYYY-MM-DD'),
-                is_recurring: !!e.pravidelnost
-            });
-        }
-      });
-      const sortedEvents = Array.from(eventsMap.values()).sort((a, b) => {
-        const dateA = a.date || a.event_start || '9999-12-31';
-        const dateB = b.date || b.event_start || '9999-12-31';
-        return dateA.localeCompare(dateB);
-      });
-      setAttachableEvents(sortedEvents);
-    } catch(e) { console.error(e); }
   };
 
   const renderMessageText = (text: string, isMe: boolean, system: boolean = false) => {
@@ -211,10 +182,8 @@ export default function ChatScreen({ type, series_id, instance_date, currentUser
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={[styles.container, { backgroundColor }]} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={keyboardOffset !== undefined ? keyboardOffset : (Platform.OS === 'ios' ? 90 : 60)}
+    <View
+      style={[styles.container, { backgroundColor, paddingBottom: keyboardPad }]}
     >
       <FlatList
         ref={flatListRef}
@@ -224,12 +193,10 @@ export default function ChatScreen({ type, series_id, instance_date, currentUser
         contentContainerStyle={styles.listContent}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
         onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        keyboardShouldPersistTaps="handled"
       />
       
       <View style={[styles.inputContainer, { backgroundColor: inputBgColor }]}>
-        <TouchableOpacity style={styles.attachButton} onPress={openAttachModal}>
-          <IconSymbol name="calendar.fill" size={24} color="#888" />
-        </TouchableOpacity>
         <TextInput
           style={[styles.input, { color: textColor as string }]}
           placeholder="Napište zprávu..."
@@ -247,75 +214,7 @@ export default function ChatScreen({ type, series_id, instance_date, currentUser
         </TouchableOpacity>
       </View>
 
-      {/* Modal pro výběr události k připojení */}
-      {isAttachModalVisible && (
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: backgroundColor as string, borderColor: textColor as string }]}>
-            <ThemedText style={styles.modalTitle}>Připojit událost</ThemedText>
-            
-            {/* Filtr modalu */}
-            <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 12, gap: 10 }}>
-              <TouchableOpacity onPress={() => setFilterMode('all')} style={[styles.filterChip, filterMode === 'all' && styles.filterChipActive]}>
-                <ThemedText style={[styles.filterChipText, filterMode === 'all' && { color: '#fff' }]}>Vše</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setFilterMode('group')} style={[styles.filterChip, filterMode === 'group' && styles.filterChipActive]}>
-                <ThemedText style={[styles.filterChipText, filterMode === 'group' && { color: '#fff' }]}>Skupinové</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setFilterMode('personal')} style={[styles.filterChip, filterMode === 'personal' && styles.filterChipActive]}>
-                <ThemedText style={[styles.filterChipText, filterMode === 'personal' && { color: '#fff' }]}>Osobní</ThemedText>
-              </TouchableOpacity>
-            </View>
-
-            {attachableEvents.filter(r => filterMode === 'all' || (filterMode === 'group' ? r.is_group : !r.is_group)).length === 0 ? (
-              <ThemedText style={{ opacity: 0.6, marginBottom: 20 }}>Nenašli jsme žádné události.</ThemedText>
-            ) : (
-              <FlatList
-                data={attachableEvents.filter(r => filterMode === 'all' || (filterMode === 'group' ? r.is_group : !r.is_group))}
-                keyExtractor={item => `${item.id}-${item.date || 'none'}`}
-                style={{ maxHeight: 300, width: '100%' }}
-                renderItem={({ item }) => {
-                  const owner = users.find(u => String(u.id) === String(item.user_id));
-                  const ownerName = owner ? owner.username : 'Neznámý';
-                  const userColorInfo = colors.find(c => String(c.user_id) === String(item.user_id));
-                  const userColor = userColorInfo ? userColorInfo.background_color : '#FF00AA';
-                  const isGroup = item.is_group;
-                  const itemBorderColor = isGroup ? '#FF00AA' : userColor;
-                  const itemBgColor = isGroup ? 'rgba(255,0,170,0.1)' : `${userColor}1A`;
-
-                  return (
-                    <TouchableOpacity 
-                      style={[styles.roomItem, { borderLeftWidth: 4, borderLeftColor: itemBorderColor, backgroundColor: itemBgColor, marginBottom: 8, borderRadius: 6, borderBottomWidth: 0 }]} 
-                      onPress={() => {
-                          const evtCode = `[EVENT:${item.id}:${item.date || ''}:${item.title}]`;
-                          setInputText(prev => prev + (prev.length > 0 && !prev.endsWith(' ') ? ' ' : '') + evtCode);
-                          setIsAttachModalVisible(false);
-                      }}
-                    >
-                      <ThemedText style={styles.roomTitle}>{item.title}</ThemedText>
-                      <ThemedText style={{ fontSize: 12, opacity: 0.8, color: isGroup ? '#FF00AA' : userColor, fontWeight: 'bold' }}>
-                          {isGroup ? 'Skupinová událost' : `Od: ${ownerName}`}
-                      </ThemedText>
-                      <ThemedText style={[styles.roomType, { marginTop: 4 }]}>
-                        {item.date 
-                           ? dayjs(item.date).format('D. M. YYYY') 
-                           : (!item.is_recurring && item.event_start ? dayjs(item.event_start).format('D. M. YYYY') : 'Obecný chat události')}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  );
-                }}
-              />
-            )}
-            <TouchableOpacity 
-              style={[styles.closeButton, { borderColor: textColor as string }]} 
-              onPress={() => setIsAttachModalVisible(false)}
-            >
-              <ThemedText style={{ color: '#FF00AA' }}>Zrušit</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -388,65 +287,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  attachButton: {
-    marginRight: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 8,
-  },
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  modalContent: {
-    width: '85%',
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#FF00AA',
-  },
-  filterChipActive: {
-    backgroundColor: '#FF00AA',
-  },
-  filterChipText: {
-    fontSize: 13,
-    color: '#FF00AA',
-  },
-  closeButton: {
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  roomItem: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    width: '100%'
-  },
-  roomTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  roomType: {
-    fontSize: 13,
-    color: '#888',
-  }
 });

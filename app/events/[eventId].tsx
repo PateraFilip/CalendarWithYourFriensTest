@@ -382,6 +382,71 @@ export default function EventDetail() {
         loadColors()
     }, [])
 
+    // Realtime: účastníci + změny série / výjimek
+    useEffect(() => {
+        const seriesId = eventObj?.id || (eventId ? Number(eventId) : null)
+        if (!seriesId) return
+
+        const channel = supabase
+            .channel(`event-detail-${seriesId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'event_users',
+                    filter: `series_id=eq.${seriesId}`,
+                },
+                () => {
+                    loadUserEvent()
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'event_series',
+                    filter: `id=eq.${seriesId}`,
+                },
+                () => {
+                    fetchEventFromDb(String(seriesId), instance_date)
+                    loadRelatedEvents()
+                    loadRecurrenceRule()
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'series_exceptions',
+                    filter: `series_id=eq.${seriesId}`,
+                },
+                () => {
+                    fetchEventFromDb(String(seriesId), instance_date)
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'event_invites',
+                    filter: `series_id=eq.${seriesId}`,
+                },
+                () => {
+                    // pozvánky → obnov seznam (loadInvitesAndFriends běží přes users)
+                    loadUserEvent()
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [eventObj?.id, eventId, instance_date])
+
     useEffect(() => {
         if (!initialEventObj && eventId) {
             fetchEventFromDb(eventId, instance_date)

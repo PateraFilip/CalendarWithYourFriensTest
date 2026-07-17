@@ -43,7 +43,25 @@ async function sendFcmMessage(fcmToken: string, title: string, body: string, dat
       message: {
         token: fcmToken,
         notification: { title, body },
-        data: stringifiedData
+        data: stringifiedData,
+        android: {
+          priority: 'high',
+          notification: {
+            channel_id: 'default',
+            sound: 'default',
+            default_vibrate_timings: true,
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: 'default',
+            },
+          },
+        },
+        webpush: {
+          headers: { Urgency: 'high' },
+        },
       },
     }),
   });
@@ -123,7 +141,7 @@ serve(async (req) => {
       for (const p of participants || []) {
         if (p.user_id === record.user_id) continue;
         const { data: user } = await supabaseClient.from('users').select('notify_chat_messages').eq('id', p.user_id).single()
-        const { data: muted } = await supabaseClient.from('muted_chats').select('*').eq('user_id', p.user_id).eq('chat_id', chat_id).single()
+        const { data: muted } = await supabaseClient.from('muted_chats').select('chat_id').eq('user_id', p.user_id).eq('chat_id', chat_id).maybeSingle()
         
         if (user?.notify_chat_messages !== false && !muted) {
            const cleanMsg = record.message ? record.message.replace(/\[EVENT:[^\]]+\]/g, '').trim() : '';

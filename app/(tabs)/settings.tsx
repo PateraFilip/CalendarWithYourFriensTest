@@ -4,6 +4,7 @@ import { updateUser } from '@/services/users/update_user';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import { loadNotificationSettings, saveNotificationSettings, type NotificationSettings } from '@/lib/notificationSettings';
@@ -14,7 +15,7 @@ import {
 } from '@/lib/webPushPermission';
 import { supabase } from '@/lib/supabaseClient';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Appearance, TouchableOpacity, View, TextInput, Platform } from 'react-native';
+import { StyleSheet, Appearance, TouchableOpacity, View, TextInput, Platform } from 'react-native';
 import { Button, Switch } from 'react-native-paper';
 import ColorPicker from '../../components/ColorPicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -125,11 +126,51 @@ export default function SettingsScreen() {
             }
         })();
     };
+    const handleSaveNotificationToggle = async (field: 'notify_friend_requests' | 'notify_chat_messages' | 'notify_global_chat', value: boolean) => {
+        if (!user) return;
+        try {
+            await updateUser(user.id, { [field]: value });
+            if (refreshUser) await refreshUser();
+            // Sync lokální nastavení (foreground bannery)
+            if (notificationSettings) {
+                const updated = { ...notificationSettings };
+                if (field === 'notify_global_chat') updated.eventChanges = value;
+                if (field === 'notify_chat_messages') updated.chatMessages = value;
+                setNotificationSettings(updated);
+                await saveNotificationSettings(updated);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Uložení selhalo.");
+        }
+    };
+
     const updateNotificationSetting = async (key: keyof NotificationSettings, value: boolean) => {
-        if (!notificationSettings) return;
+        if (!notificationSettings || !user) return;
         const updated = { ...notificationSettings, [key]: value };
         setNotificationSettings(updated);
         await saveNotificationSettings(updated);
+        // Master vypínač → vypni i DB přepínače (FCM)
+        if (key === 'enabled') {
+            try {
+                await updateUser(user.id, {
+                    notify_friend_requests: value,
+                    notify_chat_messages: value,
+                    notify_global_chat: value,
+                });
+                if (refreshUser) await refreshUser();
+                const synced = {
+                    ...updated,
+                    eventChanges: value,
+                    chatMessages: value,
+                    groupEvents: value,
+                };
+                setNotificationSettings(synced);
+                await saveNotificationSettings(synced);
+            } catch (e) {
+                console.error(e);
+            }
+        }
     };
 
     const handleSaveProfileField = async () => {
@@ -141,7 +182,6 @@ export default function SettingsScreen() {
                 if (refreshUser) await refreshUser();
             } else if (selectedColor) {
                 await updateColor(selectedColor.id, user.id);
-                // barva se nenačítá přes refreshUser (je oddělená), loadColors to zařídí přes realtime
             }
             setEditingField(null);
         } catch (e) {
@@ -149,17 +189,6 @@ export default function SettingsScreen() {
             alert("Uložení selhalo.");
         } finally {
             setSaving(false);
-        }
-    };
-
-    const handleSaveNotificationToggle = async (field: 'notify_friend_requests' | 'notify_chat_messages' | 'notify_global_chat', value: boolean) => {
-        if (!user) return;
-        try {
-            await updateUser(user.id, { [field]: value });
-            if (refreshUser) await refreshUser();
-        } catch (e) {
-            console.error(e);
-            alert("Uložení selhalo.");
         }
     };
 
@@ -219,7 +248,7 @@ export default function SettingsScreen() {
         <ThemedSafeView style={styles.container}>
             <ThemedText type="title" style={styles.header}>Nastavení</ThemedText>
 
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <KeyboardScreen scroll contentContainerStyle={styles.scrollContent}>
                 {/* Profil */}
                 <ThemedView style={styles.section}>
                     <ThemedText type="subtitle" style={styles.sectionTitle}>Profil</ThemedText>
@@ -369,7 +398,7 @@ export default function SettingsScreen() {
                         Odhlásit se
                     </Button>
                 </ThemedView>
-            </ScrollView>
+            </KeyboardScreen>
         </ThemedSafeView>
     );
 }

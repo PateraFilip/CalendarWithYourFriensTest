@@ -55,7 +55,10 @@ export default function MuteChatButton({ chatId }: { chatId: string }) {
             // Mute
             const { error } = await supabase
                 .from('muted_chats')
-                .insert({ user_id: user.id, chat_id: chatId });
+                .upsert(
+                    { user_id: user.id, chat_id: chatId },
+                    { onConflict: 'user_id,chat_id', ignoreDuplicates: true }
+                );
                 
             if (error) {
                 console.error('Error muting chat', error);

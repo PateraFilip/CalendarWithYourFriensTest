@@ -5,6 +5,7 @@ import { getDefaultInviteIds } from '@/services/events/invites';
 import { fetchMyFriendships } from '@/services/friends/friendships';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import dayjs from 'dayjs';
@@ -361,7 +362,8 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
     };
 
     return (
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+        <KeyboardScreen scroll={false}>
+            <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
             <ThemedView style={styles.field}>
                 <ThemedText style={styles.label}>Název události</ThemedText>
                 <PaperTextInput placeholder="Zadej název..." value={name} onChangeText={setName} mode="outlined" style={styles.input} activeOutlineColor={buttonColor} />
@@ -621,7 +623,8 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
                 buttonColor={buttonColor}
                 cardBackgroundColor={cardBackgroundColor}
             />
-        </ScrollView>
+            </ScrollView>
+        </KeyboardScreen>
     );
 }
 

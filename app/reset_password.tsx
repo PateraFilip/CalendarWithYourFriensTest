@@ -1,10 +1,11 @@
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedView } from '@/components/themed-view';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { supabase } from '@/lib/supabaseClient';
 import { Stack } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { Button, TextInput, useTheme } from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -119,10 +120,9 @@ export default function ModalScreen() {
       }}
     />
     <ThemedSafeView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        style={{ width: "100%" }}
+      <KeyboardScreen
+        scroll
+        style={{ width: '100%' }}
         contentContainerStyle={{
           alignItems: 'center',
           justifyContent: 'center',
@@ -308,7 +308,7 @@ export default function ModalScreen() {
             </>
           )}
         </ThemedView>
-      </ScrollView>
+      </KeyboardScreen>
     </ThemedSafeView>
   </>
   );

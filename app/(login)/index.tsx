@@ -1,6 +1,7 @@
 import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
 import { ThemedSafeView } from '@/components/ThemedSafeView'
+import { KeyboardScreen } from '@/components/KeyboardScreen'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { loadStorage } from '@/lib/storage'
@@ -97,128 +98,140 @@ export default function Login() {
 
     return (
         <ThemedSafeView style={styles.container}>
-            <ThemedView type='surface' style={styles.box}>
-                <ThemedText type='title'>
-                    Kalendář
-                </ThemedText>
-                <TextInput
-                    label="E-mail"
-                    value={email}
-                    onChangeText={(text) => {
-                        setEmail(text)
-                        if (errors.email)
-                            setErrors((e) => ({ ...e, email: false }))
-                    }}
-                    mode="outlined"
-                    activeOutlineColor={buttonColor}
-                    style={styles.input}
-                    error={errors.email}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    left={
-                        <TextInput.Icon
-                            icon={() => (
-                                <MaterialCommunityIcons
-                                    name="account-outline"
-                                    size={20}
-                                    color={
-                                        errors.email
-                                            ? theme.colors.error
-                                            : buttonColor
-                                    }
-                                />
-                            )}
-                        />
-                    }
-                />
-
-                <TextInput
-                    label="Heslo"
-                    value={password}
-                    onChangeText={(text) => {
-                        setPassword(text)
-                        if (errors.password)
-                            setErrors((e) => ({ ...e, password: false }))
-                    }}
-                    mode="outlined"
-                    activeOutlineColor={buttonColor}
-                    secureTextEntry
-                    style={styles.input}
-                    error={errors.password}
-                    left={
-                        <TextInput.Icon
-                            icon={() => (
-                                <MaterialCommunityIcons
-                                    name="lock-outline"
-                                    size={20}
-                                    color={
-                                        errors.password
-                                            ? theme.colors.error
-                                            : buttonColor
-                                    }
-                                />
-                            )}
-                        />
-                    }
-                />
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                    <Switch
-                        value={rememberMe}
-                        onValueChange={() => setRememberMe(!rememberMe)}
-                        trackColor={{ false: '#767577', true: buttonColor }}
-                    />
-                    <ThemedText style={{ marginLeft: 8 }}>
-                        Zůstat přihlášen
+            <KeyboardScreen
+                scroll
+                gap={28}
+                style={{ width: '100%' }}
+                contentContainerStyle={{
+                    flexGrow: 1,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    paddingVertical: 24,
+                }}
+            >
+                <ThemedView type='surface' style={styles.box}>
+                    <ThemedText type='title'>
+                        Kalendář
                     </ThemedText>
-                </View>
-
-                <Button
-                    mode="contained"
-                    style={styles.button}
-                    labelStyle={{ color: buttonTextColor }}
-                    buttonColor={buttonColor}
-                    onPress={handleLogin}
-                >
-                    Přihlásit se
-                </Button>
-                {isNative && showBiometric && !rememberMe && (
-                    <Button
+                    <TextInput
+                        label="E-mail"
+                        value={email}
+                        onChangeText={(text) => {
+                            setEmail(text)
+                            if (errors.email)
+                                setErrors((e) => ({ ...e, email: false }))
+                        }}
                         mode="outlined"
-                        style={[styles.button, { marginTop: 8 }]}
-                        labelStyle={{ color: buttonColor }}
-                        onPress={handleBiometricLogin}
-                        icon="fingerprint"
-                    >
-                        Přihlásit otiskem / Face ID
-                    </Button>
-                )}
+                        activeOutlineColor={buttonColor}
+                        style={styles.input}
+                        error={errors.email}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        left={
+                            <TextInput.Icon
+                                icon={() => (
+                                    <MaterialCommunityIcons
+                                        name="account-outline"
+                                        size={20}
+                                        color={
+                                            errors.email
+                                                ? theme.colors.error
+                                                : buttonColor
+                                        }
+                                    />
+                                )}
+                            />
+                        }
+                    />
 
-                <View style={{ width: '100%' }}>
-                    <Link
-                        href="/reset_password"
-                        style={{
-                            color: buttonColor,
-                            textAlign: 'left',
-                            fontWeight: 'bold',
+                    <TextInput
+                        label="Heslo"
+                        value={password}
+                        onChangeText={(text) => {
+                            setPassword(text)
+                            if (errors.password)
+                                setErrors((e) => ({ ...e, password: false }))
                         }}
+                        mode="outlined"
+                        activeOutlineColor={buttonColor}
+                        secureTextEntry
+                        style={styles.input}
+                        error={errors.password}
+                        left={
+                            <TextInput.Icon
+                                icon={() => (
+                                    <MaterialCommunityIcons
+                                        name="lock-outline"
+                                        size={20}
+                                        color={
+                                            errors.password
+                                                ? theme.colors.error
+                                                : buttonColor
+                                        }
+                                    />
+                                )}
+                            />
+                        }
+                    />
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                        <Switch
+                            value={rememberMe}
+                            onValueChange={() => setRememberMe(!rememberMe)}
+                            trackColor={{ false: '#767577', true: buttonColor }}
+                        />
+                        <ThemedText style={{ marginLeft: 8 }}>
+                            Zůstat přihlášen
+                        </ThemedText>
+                    </View>
+
+                    <Button
+                        mode="contained"
+                        style={styles.button}
+                        labelStyle={{ color: buttonTextColor }}
+                        buttonColor={buttonColor}
+                        onPress={handleLogin}
                     >
-                        Zapomenuté heslo
-                    </Link>
-                </View>
-                <View style={{ width: '100%' }}>
-                    <Link
-                        href="/register"
-                        style={{
-                            color: buttonColor,
-                            textAlign: 'left',
-                            fontWeight: 'bold',
-                        }}
-                    >
-                        Registrovat se
-                    </Link>
-                </View>
-            </ThemedView>
+                        Přihlásit se
+                    </Button>
+                    {isNative && showBiometric && !rememberMe && (
+                        <Button
+                            mode="outlined"
+                            style={[styles.button, { marginTop: 8 }]}
+                            labelStyle={{ color: buttonColor }}
+                            onPress={handleBiometricLogin}
+                            icon="fingerprint"
+                        >
+                            Přihlásit otiskem / Face ID
+                        </Button>
+                    )}
+
+                    <View style={{ width: '100%' }}>
+                        <Link
+                            href="/reset_password"
+                            style={{
+                                color: buttonColor,
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                            }}
+                        >
+                            Zapomenuté heslo
+                        </Link>
+                    </View>
+                    <View style={{ width: '100%' }}>
+                        <Link
+                            href="/register"
+                            style={{
+                                color: buttonColor,
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                            }}
+                        >
+                            Registrovat se
+                        </Link>
+                    </View>
+                </ThemedView>
+            </KeyboardScreen>
         </ThemedSafeView>
     )
 }

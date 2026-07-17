@@ -118,7 +118,13 @@ export const useChat = ({
                 notifyChatMessage(
                   eventTitle || 'Událost',
                   Number(series_id),
-                  sender
+                  sender,
+                  {
+                    instanceDate: instance_date || null,
+                    chatId: instance_date
+                      ? `instance_${series_id}_${instance_date}`
+                      : `series_${series_id}`,
+                  }
                 ).catch(console.error);
               }
             }

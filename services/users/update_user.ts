@@ -5,6 +5,9 @@ export interface UpdateUserData {
   jmeno?: string;
   prijmeni?: string;
   email?: string;
+  notify_friend_requests?: boolean;
+  notify_chat_messages?: boolean;
+  notify_global_chat?: boolean;
 }
 
 export const updateUser = async (userId: string | number, data: UpdateUserData) => {

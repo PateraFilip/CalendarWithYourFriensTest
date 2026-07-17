@@ -2,7 +2,6 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { fetchEvents } from '@/services/events/get_events';
 import { fetchEventsException } from '@/services/events/get_event_exceptions';
-import { useRealtimeNotifications } from '@/hooks/useNotificationHandler';
 import { useAppDataOptional } from '@/contexts/AppDataContext';
 import dayjs from 'dayjs';
 
@@ -144,9 +143,8 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_series' },
-        (payload) => {
+        () => {
           if (mounted) {
-            useRealtimeNotifications(payload, user);
             loadEvents({ silent: true });
           }
         }
