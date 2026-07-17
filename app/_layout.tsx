@@ -18,6 +18,7 @@ import { UnreadMessagesProvider } from '@/contexts/UnreadMessagesContext'
 import { AppDataProvider } from '@/contexts/AppDataContext'
 import { NetworkBanner } from '@/components/NetworkBanner'
 import { WebNotificationPrompt } from '@/components/WebNotificationPrompt'
+import { AppUpdatePrompt } from '@/components/AppUpdatePrompt'
 
 
 function RootLayoutNav() {
@@ -82,6 +83,7 @@ export default function RootLayout() {
                                 <NetworkBanner />
                                 <RootLayoutNav />
                                 <WebNotificationPrompt />
+                                <AppUpdatePrompt />
                                 <StatusBar style="auto" />
                             </UnreadMessagesProvider>
                         </AppDataProvider>

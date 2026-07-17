@@ -230,6 +230,23 @@ export default function Login() {
                             Registrovat se
                         </Link>
                     </View>
+
+                    {!isNative && (
+                        <Button
+                            mode="outlined"
+                            style={[styles.button, { marginTop: 4 }]}
+                            labelStyle={{ color: buttonColor }}
+                            textColor={buttonColor}
+                            icon="android"
+                            onPress={() => {
+                                if (typeof window !== 'undefined') {
+                                    window.location.href = '/downloads/CalendarWithFriends.apk';
+                                }
+                            }}
+                        >
+                            Stáhnout Android appku
+                        </Button>
+                    )}
                 </ThemedView>
             </KeyboardScreen>
         </ThemedSafeView>

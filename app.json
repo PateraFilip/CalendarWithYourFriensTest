@@ -32,7 +32,12 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/splash-icon.png"
+      "favicon": "./assets/images/splash-icon.png",
+      "name": "CalendarWithFriends",
+      "shortName": "Kalendář",
+      "display": "standalone",
+      "themeColor": "#232323",
+      "backgroundColor": "#232323"
     },
     "plugins": [
       "expo-router",

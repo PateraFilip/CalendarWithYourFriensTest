@@ -15,7 +15,7 @@ import {
 } from '@/lib/webPushPermission';
 import { supabase } from '@/lib/supabaseClient';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Appearance, TouchableOpacity, View, TextInput, Platform } from 'react-native';
+import { StyleSheet, Appearance, TouchableOpacity, View, TextInput, Platform, Linking } from 'react-native';
 import { Button, Switch } from 'react-native-paper';
 import ColorPicker from '../../components/ColorPicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -340,6 +340,62 @@ export default function SettingsScreen() {
                                 >
                                     Povolit oznámení prohlížeče
                                 </Button>
+
+                                <Button
+                                    mode="contained"
+                                    onPress={() => {
+                                        const path = '/downloads/CalendarWithFriends.apk';
+                                        if (typeof window !== 'undefined') {
+                                            window.location.href = path;
+                                        } else {
+                                            void Linking.openURL(path);
+                                        }
+                                    }}
+                                    buttonColor={buttonColor}
+                                    textColor={buttonTextColor}
+                                    icon="android"
+                                >
+                                    Stáhnout Android appku (APK)
+                                </Button>
+                                <ThemedText style={{ opacity: 0.65, fontSize: 12, lineHeight: 16 }}>
+                                    Instalace mimo Google Play: v telefonu povol instalaci z
+                                    prohlížeče / neznámých zdrojů.
+                                </ThemedText>
+
+                                <ThemedView style={styles.iosHintBox}>
+                                    <ThemedText style={styles.iosHintTitle}>
+                                        iPhone (Safari)
+                                    </ThemedText>
+                                    <ThemedText style={styles.iosHintBody}>
+                                        Na iPhonu oznámení z webu fungují jen u aplikace
+                                        přidané na Domovskou obrazovku (iOS 16.4+), ne v běžné
+                                        záložce Safari:
+                                    </ThemedText>
+                                    <ThemedText style={styles.iosHintStep}>
+                                        1. Otevři stránku v Safari
+                                    </ThemedText>
+                                    <ThemedText style={styles.iosHintStep}>
+                                        2. Sdílet (□↑) → Přidat na Domovskou obrazovku
+                                    </ThemedText>
+                                    <ThemedText style={styles.iosHintStep}>
+                                        3. Otevři appku ikonou z Domovské obrazovky
+                                    </ThemedText>
+                                    <ThemedText style={styles.iosHintStep}>
+                                        4. Tady klepni na „Povolit oznámení prohlížeče“
+                                    </ThemedText>
+                                    <TouchableOpacity
+                                        onPress={() =>
+                                            void Linking.openURL(
+                                                'https://www.youtube.com/watch?v=D4ZzDQRGmRk'
+                                            )
+                                        }
+                                        style={{ marginTop: 10 }}
+                                    >
+                                        <ThemedText style={styles.iosHintLink}>
+                                            Video návod (YouTube)
+                                        </ThemedText>
+                                    </TouchableOpacity>
+                                </ThemedView>
                             </ThemedView>
                         )}
                     </ThemedView>
@@ -470,6 +526,35 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: 12,
+    },
+    iosHintBox: {
+        marginTop: 8,
+        padding: 12,
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(128,128,128,0.35)',
+        gap: 4,
+    },
+    iosHintTitle: {
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    iosHintBody: {
+        opacity: 0.75,
+        fontSize: 13,
+        lineHeight: 18,
+        marginBottom: 6,
+    },
+    iosHintStep: {
+        fontSize: 13,
+        lineHeight: 20,
+        opacity: 0.9,
+    },
+    iosHintLink: {
+        color: '#FF00AA',
+        fontWeight: '600',
+        fontSize: 14,
+        textDecorationLine: 'underline',
     },
     logoutButton: {
         borderRadius: 6,
