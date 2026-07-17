@@ -15,6 +15,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Provider } from 'react-native-paper'
 import 'react-native-reanimated'
 import { UnreadMessagesProvider } from '@/contexts/UnreadMessagesContext'
+import { AppDataProvider } from '@/contexts/AppDataContext'
 import { NetworkBanner } from '@/components/NetworkBanner'
 
 
@@ -75,11 +76,13 @@ export default function RootLayout() {
                     value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
                 >
                     <AuthProvider>
-                        <UnreadMessagesProvider>
-                            <NetworkBanner />
-                            <RootLayoutNav />
-                            <StatusBar style="auto" />
-                        </UnreadMessagesProvider>
+                        <AppDataProvider>
+                            <UnreadMessagesProvider>
+                                <NetworkBanner />
+                                <RootLayoutNav />
+                                <StatusBar style="auto" />
+                            </UnreadMessagesProvider>
+                        </AppDataProvider>
                     </AuthProvider>
                 </ThemeProvider>
             </Provider>

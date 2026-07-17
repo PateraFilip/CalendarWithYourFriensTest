@@ -61,6 +61,26 @@ export async function setEventInvites(seriesId: number, inviteUserIds: Array<str
   }
 }
 
+/** Přidá pozvánky bez mazání stávajících (pro přidání z chatu). */
+export async function addEventInvites(seriesId: number, inviteUserIds: Array<string | number>) {
+  const unique = Array.from(new Set(inviteUserIds.map(String).filter(Boolean)));
+  if (unique.length === 0) return;
+
+  const existing = await fetchEventInviteIds(seriesId);
+  const existingSet = new Set(existing);
+  const toInsert = unique.filter((id) => !existingSet.has(id));
+  if (toInsert.length === 0) return;
+
+  const { error } = await supabase.from('event_invites').insert(
+    toInsert.map((user_id) => ({ series_id: seriesId, user_id }))
+  );
+
+  if (error) {
+    console.error('addEventInvites:', error.message);
+    throw error;
+  }
+}
+
 export async function setEventInvitesForSeriesIds(
   seriesIds: number[],
   inviteUserIds: Array<string | number>

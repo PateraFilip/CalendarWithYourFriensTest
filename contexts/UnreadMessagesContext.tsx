@@ -155,9 +155,17 @@ export const UnreadMessagesProvider = ({ children }: { children: ReactNode }) =>
                     refreshUnread();
                 }
             )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'event_messages' },
+                () => {
+                    refreshUnread();
+                }
+            )
             .subscribe();
 
-        const interval = setInterval(refreshUnread, 30000);
+        // Záloha — hlavní cesta je realtime + AppData prefetch
+        const interval = setInterval(refreshUnread, 120000);
         return () => {
             clearInterval(interval);
             supabase.removeChannel(channel);

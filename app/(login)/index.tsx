@@ -18,6 +18,7 @@ export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [rememberMe, setRememberMe] = useState(false)
+    const [showBiometric, setShowBiometric] = useState(false)
     const [errors, setErrors] = useState<{ email: boolean; password: boolean }>(
         {
             email: false,
@@ -28,7 +29,7 @@ export default function Login() {
     const router = useRouter()
     const theme = useTheme()
 
-    const { login, loading, unlockWithBiometric } = useAuth()
+    const { login, loading, unlockWithBiometric, canUnlockWithBiometric } = useAuth()
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor(
@@ -43,15 +44,27 @@ export default function Login() {
         loadStorage('rememberMe').then((v) => {
             if (v === 'true') setRememberMe(true);
         });
+        if (isNative) {
+            canUnlockWithBiometric().then(setShowBiometric);
+        }
     }, []);
 
+    // Biometrie jen když není „Zůstat přihlášen“
+    useEffect(() => {
+        if (!isNative || rememberMe) {
+            setShowBiometric(false);
+            return;
+        }
+        canUnlockWithBiometric().then(setShowBiometric);
+    }, [rememberMe]);
+
     const handleBiometricLogin = async () => {
-        if (!isNative) return;
+        if (!isNative || rememberMe) return;
         try {
             const ok = await unlockWithBiometric();
             if (!ok) {
                 alert(
-                    'Biometrie se nezdařila, nebo nemáš uloženou session. Přihlaš se heslem se zapnutým „Zůstat přihlášen“ — pak tě příště odemkne otisk.'
+                    'Biometrie se nezdařila, nebo chybí uložená session. Přihlas se heslem bez „Zůstat přihlášen“ — příště můžeš použít otisk / Face ID.'
                 );
                 return;
             }
@@ -156,9 +169,7 @@ export default function Login() {
                         trackColor={{ false: '#767577', true: buttonColor }}
                     />
                     <ThemedText style={{ marginLeft: 8 }}>
-                        {isNative
-                            ? 'Zůstat přihlášen (otisk odemkne appku)'
-                            : 'Zůstat přihlášen'}
+                        Zůstat přihlášen
                     </ThemedText>
                 </View>
 
@@ -171,7 +182,7 @@ export default function Login() {
                 >
                     Přihlásit se
                 </Button>
-                {isNative && (
+                {isNative && showBiometric && !rememberMe && (
                     <Button
                         mode="outlined"
                         style={[styles.button, { marginTop: 8 }]}
@@ -179,7 +190,7 @@ export default function Login() {
                         onPress={handleBiometricLogin}
                         icon="fingerprint"
                     >
-                        Odemknout otiskem / Face ID
+                        Přihlásit otiskem / Face ID
                     </Button>
                 )}
 

@@ -92,33 +92,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 await removeStorage('credentials');
 
                 const rememberMeSetting = await loadStorage('rememberMe');
-                // Auto-login jen když uživatel zaškrtl „Zůstat přihlášen“
-                if (rememberMeSetting !== 'true') {
-                    await supabase.auth.signOut();
-                    await removeStorage('user');
-                    if (!cancelled) setUser(null);
-                    return;
-                }
-
                 const { data: { session }, error } = await supabase.auth.getSession();
                 if (error) console.error('[auth] getSession:', error.message);
 
                 if (cancelled) return;
 
-                if (session?.user) {
-                    // Biometrie jen na nativu (volitelný zámek před vstupem)
-                    const biometricEnabled = await loadStorage('biometricEnabled');
-                    if (biometricEnabled === 'true' && Platform.OS !== 'web') {
-                        const unlocked = await promptBiometricUnlock();
-                        if (!unlocked) {
-                            setUser(null);
-                            return;
-                        }
-                    }
+                // „Zůstat přihlášen“ → rovnou do appky, bez biometrie
+                if (rememberMeSetting === 'true' && session?.user) {
+                    await saveStorage('biometricEnabled', 'false');
                     await applySessionUser(session.user);
-                } else {
-                    await removeStorage('user');
+                    return;
+                }
+
+                // Bez remember me: session necháme v úložišti pro volitelné
+                // přihlášení biometrií na login obrazovce — do appky ale nevstupuj
+                if (!cancelled) {
                     setUser(null);
+                    await removeStorage('user');
                 }
             } catch (error) {
                 console.error('Error loading session:', error);
@@ -191,10 +181,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             await saveStorage('lastEmail', username);
             await removeStorage('credentials');
             await saveStorage('rememberMe', rememberMe ? 'true' : 'false');
-            // Biometrie jen nativní appka + zapnuté „Zůstat přihlášen“
+            // Biometrie = alternativa k heslu, když NENÍ „Zůstat přihlášen“
             await saveStorage(
                 'biometricEnabled',
-                rememberMe && Platform.OS !== 'web' ? 'true' : 'false'
+                !rememberMe && Platform.OS !== 'web' ? 'true' : 'false'
             );
             setUser(userData)
             setSessionLoading(false)
@@ -204,9 +194,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const unlockWithBiometric = async (): Promise<boolean> => {
+        const rememberMeSetting = await loadStorage('rememberMe');
+        // Biometrie jen když není zapnuté „Zůstat přihlášen“
+        if (rememberMeSetting === 'true') return false;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return false;
+
         const unlocked = await promptBiometricUnlock();
         if (!unlocked) return false;
-        return restoreFromSession();
+        return applySessionUser(session.user);
+    };
+
+    const canUnlockWithBiometric = async (): Promise<boolean> => {
+        if (Platform.OS === 'web') return false;
+        const rememberMeSetting = await loadStorage('rememberMe');
+        if (rememberMeSetting === 'true') return false;
+        const biometricEnabled = await loadStorage('biometricEnabled');
+        if (biometricEnabled !== 'true') return false;
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return false;
+        try {
+            const LocalAuthentication = await import('expo-local-authentication');
+            const compatible = await LocalAuthentication.hasHardwareAsync();
+            const enrolled = await LocalAuthentication.isEnrolledAsync();
+            return compatible && enrolled;
+        } catch {
+            return false;
+        }
     };
 
     const logout = async () => {
@@ -235,6 +250,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 logout,
                 refreshUser,
                 unlockWithBiometric,
+                canUnlockWithBiometric,
                 restoreFromSession,
                 loading,
                 sessionLoading,

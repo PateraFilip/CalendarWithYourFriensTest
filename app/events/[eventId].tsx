@@ -17,7 +17,11 @@ import {
     getDefaultInviteIds,
     setEventInvites,
 } from '@/services/events/invites'
-import { createNotificationsForRecipients } from '@/services/notifications/notifications'
+import {
+    notifyEventParticipants,
+    notifyInvitesAboutSlotFreed,
+    notifyNewlyInvited,
+} from '@/services/notifications/eventNotify'
 import { fetchMyFriendships } from '@/services/friends/friendships'
 
 import { updateEvent, updateWeeklyEvent } from '@/services/events/update_event'
@@ -1396,16 +1400,29 @@ export default function EventDetail() {
             }
         }
 
-        // SYSTÉMOVÉ ZPRÁVY
+        // SYSTÉMOVÉ ZPRÁVY + OZNÁMENÍ
+        // Účastníci: změny termínu / kapacity / účasti / detailu
+        // Pozvaní: jen nová pozvánka / založení + uvolnění místa
         const changes: string[] = []
+        const t = payload.title || eventObj.title
+        const dStr =
+            !eventObj.pravidelnost || !editAllInstances
+                ? dayjs(origDates.s).format('YYYY-MM-DD')
+                : ''
+        const instanceStr =
+            eventObj.pravidelnost && !editAllInstances
+                ? dayjs(origDates.s).format('YYYY-MM-DD')
+                : undefined
+
         if (payload.title !== undefined && payload.title !== eventObj.title)
             changes.push(`změnil(a) název na "${payload.title}"`)
         if (payload.poloha !== undefined && payload.poloha !== eventObj.poloha)
             changes.push(`změnil(a) polohu na "${payload.poloha}"`)
-        if (
+
+        const capacityChanged =
             payload.peopleCount !== undefined &&
             payload.peopleCount !== eventObj.pocet_lidi
-        )
+        if (capacityChanged)
             changes.push(`změnil(a) kapacitu na ${payload.peopleCount} lidí`)
 
         const dateChanged =
@@ -1415,65 +1432,107 @@ export default function EventDetail() {
             changes.push(
                 `změnil(a) datum a čas na ${dayjs(finalStart).format('D.M. HH:mm')} - ${dayjs(finalEnd).format('HH:mm')}`
             )
-            if (finalIsGroup && user?.id) {
-                const t = payload.title || eventObj.title
-                const dStr =
-                    !eventObj.pravidelnost || !editAllInstances
-                        ? dayjs(origDates.s).format('YYYY-MM-DD')
-                        : ''
-                const inviteIds = selectedInvites.length
-                    ? selectedInvites
-                    : await fetchEventInviteIds(eventObj.id)
-                createNotificationsForRecipients({
-                    recipientIds: inviteIds,
+        }
+
+        const currentEventLinks = userEvents.filter(
+            (u) => String(u.event_id) === String(eventObj.id)
+        )
+        const previousParticipantIds = Array.from(
+            new Set(currentEventLinks.map((u) => String(u.user_id)))
+        )
+        let removed: string[] = []
+        let added: string[] = []
+        if (editField === 'participants') {
+            const selectedIds = selectedParticipants.map(String)
+            removed = previousParticipantIds.filter((id) => !selectedIds.includes(id))
+            added = selectedIds.filter((id) => !previousParticipantIds.includes(id))
+            if (removed.length > 0 || added.length > 0) {
+                const getNames = (ids: string[]) =>
+                    ids
+                        .map(
+                            (id) =>
+                                users.find((u) => String(u.id) === id)?.username ||
+                                'Neznámý'
+                        )
+                        .join(', ')
+                let text = ''
+                if (added.length > 0) text += `přidal(a): ${getNames(added)}`
+                if (removed.length > 0) {
+                    if (text) text += ' a '
+                    text += `odebral(a): ${getNames(removed)}`
+                }
+                if (text) changes.push(text)
+            }
+        }
+
+        const participantRecipients =
+            editField === 'participants'
+                ? selectedParticipants.map(String)
+                : previousParticipantIds
+
+        if (finalIsGroup && user?.id) {
+            if (dateChanged) {
+                notifyEventParticipants({
+                    participantIds: participantRecipients,
                     actorId: user.id,
-                    type: 'event_updated',
                     message: `změnil(a) termín skupinové události "${t}" na ${dayjs(finalStart).format('D.M.YYYY HH:mm')}. [EVENT:${eventObj.id}:${dStr}:${t}]`,
                     seriesId: eventObj.id,
                     instanceDate: dStr || null,
                 }).catch(console.error)
             }
-        }
 
-        if (editField === 'participants') {
-            const currentEventLinks = userEvents.filter((u) => String(u.event_id) === String(eventObj.id));
-            const currentParticipantIds = Array.from(new Set(currentEventLinks.map((u) => u.user_id)));
-            const removed = currentParticipantIds.filter(
-                (id) => !selectedParticipants.includes(id)
-            );
-            const added = selectedParticipants.filter(
-                (id) => !currentParticipantIds.includes(id)
-            );
-            if (removed.length > 0 || added.length > 0) {
-                const getNames = (ids: number[]) => ids.map(id => users.find(u => String(u.id) === String(id))?.username || 'Neznámý').join(', ');
-                let text = '';
-                if (added.length > 0) {
-                    text += `přidal(a): ${getNames(added)}`;
-                }
-                if (removed.length > 0) {
-                    if (text) text += ' a ';
-                    text += `odebral(a): ${getNames(removed)}`;
-                }
-                if (text) {
-                    changes.push(text);
-                }
+            if (capacityChanged) {
+                notifyEventParticipants({
+                    participantIds: participantRecipients,
+                    actorId: user.id,
+                    message: `změnil(a) kapacitu skupinové události "${t}" na ${payload.peopleCount} lidí. [EVENT:${eventObj.id}:${dStr}:${t}]`,
+                    seriesId: eventObj.id,
+                    instanceDate: dStr || null,
+                }).catch(console.error)
             }
-            if (removed.length > 0 && finalIsGroup && user?.id) {
-                const t = payload.title || eventObj.title
-                const dStr =
-                    !eventObj.pravidelnost || !editAllInstances
-                        ? dayjs(origDates.s).format('YYYY-MM-DD')
-                        : ''
+
+            if (editField === 'participants' && (added.length > 0 || removed.length > 0)) {
+                const getNames = (ids: string[]) =>
+                    ids
+                        .map(
+                            (id) =>
+                                users.find((u) => String(u.id) === id)?.username ||
+                                'Neznámý'
+                        )
+                        .join(', ')
+                let partMsg = `změnil(a) účast u "${t}"`
+                if (added.length > 0) partMsg += ` — přidal(a): ${getNames(added)}`
+                if (removed.length > 0) partMsg += ` — odebral(a): ${getNames(removed)}`
+                partMsg += `. [EVENT:${eventObj.id}:${dStr}:${t}]`
+                notifyEventParticipants({
+                    participantIds: participantRecipients,
+                    actorId: user.id,
+                    message: partMsg,
+                    seriesId: eventObj.id,
+                    instanceDate: dStr || null,
+                }).catch(console.error)
+            }
+
+            const finalCapacity = payload.peopleCount ?? eventObj.pocet_lidi
+            const finalCount = participantRecipients.length
+            const capacityIncreased =
+                capacityChanged &&
+                (payload.peopleCount as number) > (eventObj.pocet_lidi || 0)
+            const hasFreeSlot = finalCount < (finalCapacity || 0)
+            const shouldNotifySlotFreed =
+                (removed.length > 0 || capacityIncreased) && hasFreeSlot
+
+            if (shouldNotifySlotFreed) {
                 const inviteIds = selectedInvites.length
                     ? selectedInvites
                     : await fetchEventInviteIds(eventObj.id)
-                createNotificationsForRecipients({
-                    recipientIds: inviteIds,
-                    actorId: user.id,
-                    type: 'event_slot_freed',
-                    message: `Uvolnilo se místo ve skupinové události "${t}"! [EVENT:${eventObj.id}:${dStr}:${t}]`,
+                notifyInvitesAboutSlotFreed({
                     seriesId: eventObj.id,
+                    actorId: user.id,
+                    title: t,
                     instanceDate: dStr || null,
+                    inviteIds,
+                    participantIds: participantRecipients,
                 }).catch(console.error)
             }
         }
@@ -1483,10 +1542,6 @@ export default function EventDetail() {
             user?.id &&
             (finalIsGroup || eventObj.is_group)
         ) {
-            const instanceStr =
-                eventObj.pravidelnost && !editAllInstances
-                    ? dayjs(origDates.s).format('YYYY-MM-DD')
-                    : undefined
             changes.forEach((ch) => {
                 sendSystemMessage({
                     type: 'event',
@@ -1498,27 +1553,45 @@ export default function EventDetail() {
             })
         }
 
-        if (finalIsGroup && user?.id && (editField === 'participants' || editField === 'capacity' || editField === 'all' || isChangingToGroup)) {
+        if (
+            finalIsGroup &&
+            user?.id &&
+            (editField === 'participants' ||
+                editField === 'capacity' ||
+                editField === 'all' ||
+                isChangingToGroup)
+        ) {
+            const previousInviteIds = await fetchEventInviteIds(eventObj.id)
             const inviteIds = selectedInvites.length
                 ? selectedInvites
                 : await getDefaultInviteIds(user.id)
             await setEventInvites(eventObj.id, inviteIds)
             setSelectedInvites(inviteIds)
+
+            if (!isChangingToGroup) {
+                const prevSet = new Set(previousInviteIds.map(String))
+                const newlyInvited = inviteIds
+                    .map(String)
+                    .filter((id) => !prevSet.has(id))
+                if (newlyInvited.length > 0) {
+                    notifyNewlyInvited({
+                        inviteIds: newlyInvited,
+                        actorId: user.id,
+                        message: `tě pozval(a) na skupinovou událost "${t}". [EVENT:${eventObj.id}:${dStr}:${t}]`,
+                        seriesId: eventObj.id,
+                        instanceDate: dStr || null,
+                    }).catch(console.error)
+                }
+            }
         }
 
         if (isChangingToGroup && user?.id) {
-            const t = payload.title || eventObj.title
-            const dStr =
-                !eventObj.pravidelnost || !editAllInstances
-                    ? dayjs(origDates.s).format('YYYY-MM-DD')
-                    : ''
             const inviteIds = selectedInvites.length
                 ? selectedInvites
                 : await getDefaultInviteIds(user.id)
-            createNotificationsForRecipients({
-                recipientIds: inviteIds,
+            notifyNewlyInvited({
+                inviteIds,
                 actorId: user.id,
-                type: 'event_created',
                 message: `změnil(a) soukromou událost "${t}" na skupinovou. [EVENT:${eventObj.id}:${dStr}:${t}]`,
                 seriesId: eventObj.id,
                 instanceDate: dStr || null,
@@ -1526,16 +1599,10 @@ export default function EventDetail() {
         }
 
         if (isChangingToPrivate && user?.id) {
-            const t = payload.title || eventObj.title
-            const dStr =
-                !eventObj.pravidelnost || !editAllInstances
-                    ? dayjs(origDates.s).format('YYYY-MM-DD')
-                    : ''
-            const previousInvites = await fetchEventInviteIds(eventObj.id)
-            createNotificationsForRecipients({
-                recipientIds: previousInvites,
+            // Jen zúčastnění — pozvaní už událost neuvidí
+            notifyEventParticipants({
+                participantIds: participantRecipients,
                 actorId: user.id,
-                type: 'event_updated',
                 message: `změnil(a) skupinovou událost "${t}" na soukromou. [EVENT:${eventObj.id}:${dStr}:${t}]`,
                 seriesId: eventObj.id,
                 instanceDate: dStr || null,
@@ -1858,11 +1925,43 @@ export default function EventDetail() {
             const instanceDate = isRecurringOrMulti
                 ? eventObj.instance_date || eventObj.den_od
                 : undefined
+            const seriesId = eventObj.series_id || eventObj.id
+            const instanceDateStr = instanceDate ? String(instanceDate) : undefined
+
             await cancelEvent({
                 user_id: String(user.id),
-                event_id: eventObj.series_id || eventObj.id,
-                instance_date: instanceDate ? String(instanceDate) : undefined,
+                event_id: seriesId,
+                instance_date: instanceDateStr,
             })
+
+            if (eventObj.is_group) {
+                const remaining = userEvents
+                    .filter(
+                        (u) =>
+                            String(u.event_id) === String(seriesId) &&
+                            String(u.user_id) !== String(user.id)
+                    )
+                    .map((u) => String(u.user_id))
+                const title = eventObj.title
+                const dStr = instanceDateStr || ''
+
+                notifyEventParticipants({
+                    participantIds: remaining,
+                    actorId: user.id,
+                    message: `odhlásil(a) se z události "${title}". [EVENT:${seriesId}:${dStr}:${title}]`,
+                    seriesId,
+                    instanceDate: dStr || null,
+                }).catch(console.error)
+
+                notifyInvitesAboutSlotFreed({
+                    seriesId,
+                    actorId: user.id,
+                    title,
+                    instanceDate: dStr || null,
+                    participantIds: remaining,
+                }).catch(console.error)
+            }
+
             loadUserEvent()
         } catch (e) {
             console.error(e)

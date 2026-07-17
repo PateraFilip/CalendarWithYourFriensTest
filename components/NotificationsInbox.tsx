@@ -1,16 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import dayjs from 'dayjs';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import {
-  fetchMyNotifications,
-  markNotificationRead,
-  UserNotification,
-} from '@/services/notifications/notifications';
-import { supabase } from '@/lib/supabaseClient';
+import { markNotificationRead } from '@/services/notifications/notifications';
+import { useAppData } from '@/contexts/AppDataContext';
 import { useUnreadMessages } from '@/contexts/UnreadMessagesContext';
 
 interface NotificationsInboxProps {
@@ -23,54 +19,39 @@ function extractEventId(message: string): number | null {
 }
 
 export default function NotificationsInbox({ currentUserId }: NotificationsInboxProps) {
+  void currentUserId;
   const router = useRouter();
   const { refreshUnread } = useUnreadMessages();
-  const [items, setItems] = useState<UserNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    notifications,
+    setNotifications,
+    booting,
+    ready,
+    ensureLoaded,
+    refreshNotifications,
+  } = useAppData();
+
   const textColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
   const secondary = useThemeColor({ light: '#666', dark: '#aaa' }, 'text');
   const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#2c2c2e' }, 'background');
   const border = useThemeColor({ light: '#e5e5ea', dark: '#38383a' }, 'text');
 
-  const load = useCallback(async () => {
-    const data = await fetchMyNotifications(currentUserId);
-    setItems(data);
-    setLoading(false);
-    refreshUnread();
-  }, [currentUserId, refreshUnread]);
+  useFocusEffect(
+    useCallback(() => {
+      ensureLoaded();
+      refreshUnread();
+    }, [ensureLoaded, refreshUnread])
+  );
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`user_notifications_${currentUserId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'user_notifications',
-          filter: `recipient_id=eq.${currentUserId}`,
-        },
-        () => {
-          load();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentUserId, load]);
-
-  const openNotification = async (item: UserNotification) => {
+  const openNotification = async (item: (typeof notifications)[0]) => {
     if (!item.read_at) {
       await markNotificationRead(item.id);
-      setItems((prev) =>
-        prev.map((n) => (n.id === item.id ? { ...n, read_at: new Date().toISOString() } : n))
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === item.id ? { ...n, read_at: new Date().toISOString() } : n
+        )
       );
+      refreshUnread();
     }
     const seriesId = item.series_id ?? extractEventId(item.message);
     if (seriesId) {
@@ -78,7 +59,7 @@ export default function NotificationsInbox({ currentUserId }: NotificationsInbox
     }
   };
 
-  if (loading) {
+  if (booting && !ready) {
     return (
       <ThemedView style={styles.center}>
         <ActivityIndicator />
@@ -86,17 +67,20 @@ export default function NotificationsInbox({ currentUserId }: NotificationsInbox
     );
   }
 
-  if (items.length === 0) {
+  if (notifications.length === 0) {
     return (
       <ThemedView style={styles.center}>
         <ThemedText style={{ opacity: 0.6 }}>Zatím žádná oznámení</ThemedText>
+        <Pressable onPress={() => refreshNotifications()} style={{ marginTop: 12 }}>
+          <ThemedText style={{ color: '#FF00AA' }}>Obnovit</ThemedText>
+        </Pressable>
       </ThemedView>
     );
   }
 
   return (
     <FlatList
-      data={items}
+      data={notifications}
       keyExtractor={(item) => String(item.id)}
       contentContainerStyle={styles.list}
       renderItem={({ item }) => {
@@ -112,7 +96,9 @@ export default function NotificationsInbox({ currentUserId }: NotificationsInbox
             ]}
           >
             <View style={{ flex: 1 }}>
-              <ThemedText style={{ color: textColor, fontWeight: unread ? '700' : '500' }}>
+              <ThemedText
+                style={{ color: textColor, fontWeight: unread ? '700' : '500' }}
+              >
                 {actor} {item.message.replace(/\[EVENT:[^\]]+\]/g, '').trim()}
               </ThemedText>
               <ThemedText style={{ color: secondary, fontSize: 12, marginTop: 4 }}>

@@ -122,11 +122,24 @@ function buildEventFromSeries(
   });
 }
 
-async function fetchEventsFromSupabase(userId: string | number, startDate?: Date, endDate?: Date): Promise<any[]> {
-  // Optimalizace: Vždy stáhneme +/- 45 dní (cca 1,5 měsíce) kolem vybraného data.
-  // Díky tomu uživatel vidí předchozí, aktuální a následující měsíc bez zpoždění.
-  const from = startDate ? dayjs(startDate).subtract(60, 'day') : dayjs().subtract(60, 'day');
-  const to = endDate ? dayjs(endDate).add(60, 'day') : dayjs().add(60, 'day');
+export type FetchEventsOptions = {
+  /** Padding kolem start/end (default 60). Pro rychlý první paint použij menší hodnotu. */
+  paddingDays?: number;
+};
+
+async function fetchEventsFromSupabase(
+  userId: string | number,
+  startDate?: Date,
+  endDate?: Date,
+  options?: FetchEventsOptions
+): Promise<any[]> {
+  const padding = options?.paddingDays ?? 60;
+  const from = startDate
+    ? dayjs(startDate).subtract(padding, 'day')
+    : dayjs().subtract(padding, 'day');
+  const to = endDate
+    ? dayjs(endDate).add(padding, 'day')
+    : dayjs().add(padding, 'day');
 
   // Vlastní + osobní přátel + skupinové, kam jsem pozván
   const userIdStr = userId.toString();
@@ -367,7 +380,11 @@ async function fetchEventsFromSupabase(userId: string | number, startDate?: Date
   return dedupeCalendarEvents(result);
 }
 
-export const fetchEvents = async (userId: string | number, startDate?: Date, endDate?: Date): Promise<any[]> => {
-  console.log('Using local fetchEventsFromSupabase (Edge Function disabled) s rozmezím:', startDate, endDate);
-  return fetchEventsFromSupabase(userId, startDate, endDate);
+export const fetchEvents = async (
+  userId: string | number,
+  startDate?: Date,
+  endDate?: Date,
+  options?: FetchEventsOptions
+): Promise<any[]> => {
+  return fetchEventsFromSupabase(userId, startDate, endDate, options);
 };
