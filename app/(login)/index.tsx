@@ -50,7 +50,7 @@ export default function Login() {
         }
     }, []);
 
-    // Biometrie jen když není „Zůstat přihlášen“
+    // Biometrie jen když není „Zůstat přihlášen"
     useEffect(() => {
         if (!isNative || rememberMe) {
             setShowBiometric(false);
@@ -65,7 +65,7 @@ export default function Login() {
             const ok = await unlockWithBiometric();
             if (!ok) {
                 alert(
-                    'Biometrie se nezdařila, nebo chybí uložená session. Přihlas se heslem bez „Zůstat přihlášen“ — příště můžeš použít otisk / Face ID.'
+                    'Biometrie se nezdařila, nebo chybí uložená session. Přihlas se heslem bez „Zůstat přihlášen" — příště můžeš použít otisk / Face ID.'
                 );
                 return;
             }
@@ -209,6 +209,7 @@ export default function Login() {
                         </Button>
                     )}
 
+<<<<<<< HEAD
                     <Pressable
                         onPress={() => router.push('/reset_password')}
                         disabled={loading}
@@ -226,6 +227,29 @@ export default function Login() {
                         hitSlop={12}
                     >
                         <ThemedText style={{ color: buttonColor, fontWeight: 'bold' }}>
+=======
+                    <View style={{ width: '100%' }}>
+                        <Link
+                            href="../reset_password"
+                            style={{
+                                color: buttonColor,
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                            }}
+                        >
+                            Zapomenuté heslo
+                        </Link>
+                    </View>
+                    <View style={{ width: '100%' }}>
+                        <Link
+                            href="../register"
+                            style={{
+                                color: buttonColor,
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                            }}
+                        >
+>>>>>>> a54a2c8f204a05aedd32411df9f68b8c31c1b0f8
                             Registrovat se
                         </ThemedText>
                     </Pressable>
