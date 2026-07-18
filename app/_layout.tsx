@@ -30,19 +30,12 @@ function RootLayoutNav() {
     useEffect(() => {
         if (sessionLoading) return;
 
-<<<<<<< HEAD
         const root = segments[0] as string | undefined;
         // register / reset_password jsou mimo (login), ale musí zůstat veřejné
         const publicRoutes = new Set(['(login)', 'register', 'reset_password']);
         const isPublic = !!root && publicRoutes.has(root);
 
         if (!user && !isPublic) {
-=======
-        const inAuthGroup = segments[0] === '(login)';
-        const inAuthScreens = segments[0] === 'register' || segments[0] === 'reset_password';
-
-        if (!user && !inAuthGroup && !inAuthScreens) {
->>>>>>> a54a2c8f204a05aedd32411df9f68b8c31c1b0f8
             router.replace('/(login)');
         } else if (user && root === '(login)') {
             // Po ověření recovery OTP zůstává uživatel na reset_password (veřejná route)

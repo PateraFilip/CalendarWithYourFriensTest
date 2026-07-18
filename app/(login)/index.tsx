@@ -209,7 +209,6 @@ export default function Login() {
                         </Button>
                     )}
 
-<<<<<<< HEAD
                     <Pressable
                         onPress={() => router.push('/reset_password')}
                         disabled={loading}
@@ -227,29 +226,6 @@ export default function Login() {
                         hitSlop={12}
                     >
                         <ThemedText style={{ color: buttonColor, fontWeight: 'bold' }}>
-=======
-                    <View style={{ width: '100%' }}>
-                        <Link
-                            href="../reset_password"
-                            style={{
-                                color: buttonColor,
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                            }}
-                        >
-                            Zapomenuté heslo
-                        </Link>
-                    </View>
-                    <View style={{ width: '100%' }}>
-                        <Link
-                            href="../register"
-                            style={{
-                                color: buttonColor,
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                            }}
-                        >
->>>>>>> a54a2c8f204a05aedd32411df9f68b8c31c1b0f8
                             Registrovat se
                         </ThemedText>
                     </Pressable>
