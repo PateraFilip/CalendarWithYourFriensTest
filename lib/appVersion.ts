@@ -4,6 +4,10 @@ import { Platform } from 'react-native';
 export const WEB_APP_URL = 'https://share-calendar-with-your-friends.vercel.app/';
 export const VERSION_CHECK_URL = `${WEB_APP_URL}version.json`;
 
+/** APK hostuj na GitHub Releases (ne v gitu — limit 100 MB). */
+export const DEFAULT_APK_URL =
+  'https://github.com/PateraFilip/CalendarWithYourFriensTest/releases/download/v1.0.0/CalendarWithFriends.apk';
+
 export type RemoteVersionInfo = {
   latestVersion: string;
   minVersion?: string;
@@ -70,7 +74,7 @@ export async function checkForAppUpdate(): Promise<VersionCheckResult | null> {
       updateRequired: true,
       forceUpdate: belowMin,
       updateUrl: data.updateUrl || WEB_APP_URL,
-      apkUrl: data.apkUrl || `${WEB_APP_URL}downloads/CalendarWithFriends.apk`,
+      apkUrl: data.apkUrl || DEFAULT_APK_URL,
       message:
         data.message ||
         'Je dostupná nová verze aplikace. Stáhni ji z webu.',

@@ -20,6 +20,7 @@ import { Button, Switch } from 'react-native-paper';
 import ColorPicker from '../../components/ColorPicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ExternalLink } from '@/components/ExternalLink';
+import { DEFAULT_APK_URL } from '@/lib/appVersion';
 
 interface Color {
     id: number;
@@ -349,11 +350,10 @@ export default function SettingsScreen() {
                                 <Button
                                     mode="contained"
                                     onPress={() => {
-                                        const path = '/downloads/CalendarWithFriends.apk';
                                         if (typeof window !== 'undefined') {
-                                            window.location.href = path;
+                                            window.location.href = DEFAULT_APK_URL;
                                         } else {
-                                            void Linking.openURL(path);
+                                            void Linking.openURL(DEFAULT_APK_URL);
                                         }
                                     }}
                                     buttonColor={buttonColor}

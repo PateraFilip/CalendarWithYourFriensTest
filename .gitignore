@@ -50,3 +50,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# APK > 100 MB — GitHub odmítne push; hostuj přes GitHub Releases (ne v gitu)
+*.apk
+public/downloads/*.apk

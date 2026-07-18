@@ -5,6 +5,7 @@ import { KeyboardScreen } from '@/components/KeyboardScreen'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { loadStorage } from '@/lib/storage'
+import { DEFAULT_APK_URL } from '@/lib/appVersion'
 import { useRouter } from 'expo-router'
 import React, { useEffect, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Switch, View } from 'react-native'
@@ -240,7 +241,7 @@ export default function Login() {
                             disabled={loading}
                             onPress={() => {
                                 if (typeof window !== 'undefined') {
-                                    window.location.href = '/downloads/CalendarWithFriends.apk';
+                                    window.location.href = DEFAULT_APK_URL;
                                 }
                             }}
                         >
