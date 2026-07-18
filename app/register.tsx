@@ -53,6 +53,7 @@ export default function ModalScreen() {
 
   const [colors, setColors] = useState<Color[]>([]);
   const [selectedColor, setSelectedColor] = useState<Color | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
 
   const loadColors = async () => {
@@ -121,79 +122,90 @@ export default function ModalScreen() {
     }
 
     setErrors(newErrors);
-    if (!newErrors.email && !newErrors.password && !newErrors.passwordControl && !newErrors.firstName && !newErrors.lastname && !newErrors.birthDate && !newErrors.username && !newErrors.color && selectedColor) {
-      try {
-        // Check if color is available
-        const { data: colorData, error: colorError } = await supabase
-          .from('colors')
-          .select('user_id')
-          .eq('id', selectedColor.id)
-          .single();
+    if (
+      submitting ||
+      newErrors.email ||
+      newErrors.password ||
+      newErrors.passwordControl ||
+      newErrors.firstName ||
+      newErrors.lastname ||
+      newErrors.birthDate ||
+      newErrors.username ||
+      newErrors.color ||
+      !selectedColor
+    ) {
+      return;
+    }
 
-        if (colorError || !colorData) {
-          alert('Chyba při kontrole barvy');
-          return;
-        }
+    setSubmitting(true);
+    try {
+      const { data: colorData, error: colorError } = await supabase
+        .from('colors')
+        .select('user_id')
+        .eq('id', selectedColor.id)
+        .single();
 
-        if (colorData.user_id) {
-          alert('Tato barva je již obsazená');
-          return;
-        }
-
-        // Sign up with Supabase Auth directly
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: undefined,
-            data: {
-              username,
-              firstname: firstName,
-              lastname,
-              birthDate,
-              colorId: selectedColor.id,
-            },
-          },
-        });
-
-        if (error) {
-          // If email confirmation fails, continue anyway
-          if (error.message?.includes('email') || error.message?.includes('confirmation')) {
-            console.warn('Email confirmation failed, continuing registration');
-          } else {
-            throw error;
-          }
-        }
-
-        // Assign color to user
-        if (data.user) {
-          const { error: updateColorError } = await supabase
-            .from('colors')
-            .update({ user_id: data.user.id })
-            .eq('id', selectedColor.id);
-
-          if (updateColorError) {
-            alert('Nepodařilo se přiřadit barvu');
-            return;
-          }
-        }
-
-        // Sign in after successful registration
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (signInError) {
-          alert('Registrace proběhla, ale přihlášení selhalo. Zkus se přihlásit manuálně.');
-          router.replace('/(login)');
-          return;
-        }
-
-        router.replace('/(tabs)')
-      } catch (err: any) {
-        alert(err.message || 'Registrace selhala!');
+      if (colorError || !colorData) {
+        alert('Chyba při kontrole barvy');
+        return;
       }
+
+      if (colorData.user_id) {
+        alert('Tato barva je již obsazená');
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: undefined,
+          data: {
+            username,
+            firstname: firstName,
+            lastname,
+            birthDate,
+            colorId: selectedColor.id,
+          },
+        },
+      });
+
+      if (error) {
+        if (error.message?.includes('email') || error.message?.includes('confirmation')) {
+          console.warn('Email confirmation failed, continuing registration');
+        } else {
+          throw error;
+        }
+      }
+
+      if (data.user) {
+        const { error: updateColorError } = await supabase
+          .from('colors')
+          .update({ user_id: data.user.id })
+          .eq('id', selectedColor.id);
+
+        if (updateColorError) {
+          alert('Nepodařilo se přiřadit barvu');
+          return;
+        }
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        alert('Registrace proběhla, ale přihlášení selhalo. Zkus se přihlásit manuálně.');
+        router.replace('/(login)');
+        return;
+      }
+
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      alert(err.message || 'Registrace selhala!');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -461,7 +473,9 @@ export default function ModalScreen() {
               style={styles.button}
               labelStyle={{ color: buttonTextColor }}
               buttonColor={buttonColor}
-              onPress={handleRegister} // volání FastAPI
+              onPress={handleRegister}
+              loading={submitting}
+              disabled={submitting}
             >
               Registrovat se
             </Button>

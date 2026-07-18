@@ -45,6 +45,7 @@ export default function SettingsScreen() {
     const [editingField, setEditingField] = useState<EditableField>(null);
     const [editValue, setEditValue] = useState('');
     const [saving, setSaving] = useState(false);
+    const [loggingOut, setLoggingOut] = useState(false);
 
     const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
     const buttonTextColor = useThemeColor({ light: '#fff', dark: '#000' }, 'text')
@@ -194,10 +195,13 @@ export default function SettingsScreen() {
     };
 
     const handleLogout = async () => {
+        if (loggingOut) return;
+        setLoggingOut(true);
         try {
             await logout();
         } catch (e) {
             console.error(e);
+            setLoggingOut(false);
         }
     };
 
@@ -442,6 +446,8 @@ export default function SettingsScreen() {
                         labelStyle={{ color: buttonTextColor }}
                         buttonColor="red"
                         onPress={handleLogout}
+                        loading={loggingOut}
+                        disabled={loggingOut}
                     >
                         Odhlásit se
                     </Button>

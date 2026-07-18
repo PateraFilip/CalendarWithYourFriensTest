@@ -78,6 +78,7 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
         { id: '2', type: 'off', days: 1 }
     ]);
     const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
+    const [creating, setCreating] = useState(false);
 
     // --- SDÍLENÉ STAVY PRO MODALY ---
     const [dateModalVisible, setDateModalVisible] = useState(false);
@@ -174,11 +175,12 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
 
     // --- ULOŽENÍ ---
     const handleCreate = async () => {
-        if (!user?.id || !name.trim()) return;
+        if (!user?.id || !name.trim() || creating) return;
         const currentMode = getCurrentEventMode();
         const finalIsGroup = type;
         const finalPeopleCount = type ? peopleCount : 1;
 
+        setCreating(true);
         try {
             if (currentMode === 'once') {
                 if (!dateRange.startDate || !timeRange.start) return;
@@ -258,10 +260,13 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
             onSuccess?.();
         } catch (err) {
             console.error('❌ Chyba při vytváření události:', err);
+        } finally {
+            setCreating(false);
         }
     };
 
     const isDisabled = (() => {
+        if (creating) return true;
         if (!name.trim()) return true;
         const currentMode = getCurrentEventMode();
         if (currentMode === 'once') return !dateRange.startDate || !timeRange.start || !timeRange.end;
@@ -595,7 +600,7 @@ export function EventCreateForm({ pickedDate, onSuccess }: EventCreateFormProps)
                 </>
             )}
 
-            <Button mode="contained" onPress={handleCreate} disabled={isDisabled} buttonColor={buttonColor} labelStyle={{ color: buttonTextColor }} style={[styles.createButton, { zIndex: 1 }]}>
+            <Button mode="contained" onPress={handleCreate} loading={creating} disabled={isDisabled} buttonColor={buttonColor} labelStyle={{ color: buttonTextColor }} style={[styles.createButton, { zIndex: 1 }]}>
                 Vytvořit událost
             </Button>
 

@@ -33,6 +33,24 @@ export const submitMatch = async (data: SubmitMatchData) => {
   const { data: league } = await supabase.from('leagues').select('*').eq('id', data.league_id).single();
   if (!league) throw new Error('League not found');
 
+  // Zapisovatel musí být v league_players (i když RLS dovolí can_view) — zajisti membership
+  if (data.created_by) {
+    const { data: selfRow } = await supabase
+      .from('league_players')
+      .select('id')
+      .eq('league_id', data.league_id)
+      .eq('user_id', data.created_by)
+      .maybeSingle();
+    if (!selfRow) {
+      const { error: joinErr } = await supabase.from('league_players').insert({
+        league_id: data.league_id,
+        user_id: data.created_by,
+        rating: league.config?.track_elo ? 1500 : 0,
+      });
+      if (joinErr) throw joinErr;
+    }
+  }
+
   // Edit: smaž starý zápas, založ nový, pak plný přepočet
   if (data.replace_match_id) {
     const { error: delError } = await supabase
@@ -118,7 +136,10 @@ export const submitMatch = async (data: SubmitMatchData) => {
       }))
     );
     if (participantsToInsert.length) {
-      await supabase.from('league_match_participants').insert(participantsToInsert);
+      const { error: partErr } = await supabase
+        .from('league_match_participants')
+        .insert(participantsToInsert);
+      if (partErr) throw partErr;
     }
 
     const { recomputeLeagueStats } = await import('@/services/leagues/recompute_league');
@@ -191,14 +212,17 @@ export const submitMatch = async (data: SubmitMatchData) => {
   });
 
   if (participantsToInsert.length > 0) {
-    await supabase.from('league_match_participants').insert(participantsToInsert);
+    const { error: partErr } = await supabase
+      .from('league_match_participants')
+      .insert(participantsToInsert);
+    if (partErr) throw partErr;
   }
 
   for (const [userId, stats] of playerStatsMap.entries()) {
     if (!allUserIds.map(String).includes(userId)) continue;
     const prev = before.get(userId);
     if (!prev?.id && !stats.id) continue;
-    await supabase
+    const { error: updErr } = await supabase
       .from('league_players')
       .update({
         rating: stats.rating,
@@ -215,6 +239,7 @@ export const submitMatch = async (data: SubmitMatchData) => {
         score_diff: stats.score_diff,
       })
       .eq('id', stats.id || prev?.id);
+    if (updErr) throw updErr;
   }
 
   if (pairStatsMap.size > 0) {

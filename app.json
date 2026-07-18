@@ -63,7 +63,8 @@
           "imageWidth": 200
         }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/withFirebaseMessagingManifestFix.js"
     ],
     "experiments": {
       "typedRoutes": true,

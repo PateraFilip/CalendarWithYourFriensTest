@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ViewStyle,
   Keyboard,
-  TouchableWithoutFeedback,
   View,
   Dimensions,
   type KeyboardEvent,
@@ -106,26 +105,24 @@ export function KeyboardScreen({
 
   return (
     <View style={[styles.flex, style]}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView
-          ref={scrollRef}
-          style={styles.flex}
-          contentContainerStyle={[
-            { flexGrow: 1 },
-            contentContainerStyle,
-            {
-              paddingBottom: basePad + keyboardPad,
-            },
-            // Po props — při klávesnici necentrovat (login by jinak nechal inputy pod klávesnicí)
-            keyboardPad > 0 ? { justifyContent: 'flex-start' as const } : null,
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </ScrollView>
-      </TouchableWithoutFeedback>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.flex}
+        contentContainerStyle={[
+          { flexGrow: 1 },
+          contentContainerStyle,
+          {
+            paddingBottom: basePad + keyboardPad,
+          },
+          // Po props — při klávesnici necentrovat (login by jinak nechal inputy pod klávesnicí)
+          keyboardPad > 0 ? { justifyContent: 'flex-start' as const } : null,
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
     </View>
   );
 }

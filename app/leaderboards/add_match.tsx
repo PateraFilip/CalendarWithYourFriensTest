@@ -258,9 +258,14 @@ export default function AddMatchScreen() {
             Alert.alert("Úspěch", editingMatchId ? "Zápas byl upraven." : "Výsledek byl zapsán!", [
                 { text: "OK", onPress: () => router.back() }
             ]);
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            Alert.alert("Chyba", "Nepodařilo se uložit výsledek.");
+            const msg =
+              e?.message ||
+              e?.error_description ||
+              e?.details ||
+              'Nepodařilo se uložit výsledek.';
+            Alert.alert('Chyba', String(msg));
         } finally {
             setSubmitting(false);
         }

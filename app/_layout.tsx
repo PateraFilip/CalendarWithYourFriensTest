@@ -30,11 +30,15 @@ function RootLayoutNav() {
     useEffect(() => {
         if (sessionLoading) return;
 
-        const inAuthGroup = segments[0] === '(login)';
+        const root = segments[0] as string | undefined;
+        // register / reset_password jsou mimo (login), ale musí zůstat veřejné
+        const publicRoutes = new Set(['(login)', 'register', 'reset_password']);
+        const isPublic = !!root && publicRoutes.has(root);
 
-        if (!user && !inAuthGroup) {
+        if (!user && !isPublic) {
             router.replace('/(login)');
-        } else if (user && inAuthGroup) {
+        } else if (user && root === '(login)') {
+            // Po ověření recovery OTP zůstává uživatel na reset_password (veřejná route)
             router.replace('/(tabs)');
         }
 
@@ -59,11 +63,11 @@ function RootLayoutNav() {
             <Stack.Screen name="(login)" />
             <Stack.Screen
                 name="register"
-                options={{ presentation: 'modal', title: 'Registrace' }}
+                options={{ title: 'Registrace' }}
             />
             <Stack.Screen
                 name="reset_password"
-                options={{ presentation: 'modal', title: 'Obnova hesla' }}
+                options={{ title: 'Obnova hesla' }}
             />
         </Stack>
     )

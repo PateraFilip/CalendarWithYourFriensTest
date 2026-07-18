@@ -190,6 +190,7 @@ export default function EventDetail() {
     const [locationResults, setLocationResults] = useState<any[]>([])
 
     const [isSearchingLocation, setIsSearchingLocation] = useState(false)
+    const [actionBusy, setActionBusy] = useState(false)
 
     const [peopleCount, setPeopleCount] = useState(eventObj?.pocet_lidi || 2)
 
@@ -931,6 +932,8 @@ export default function EventDetail() {
     }
 
     const handleSave = async () => {
+      if (actionBusy) return
+      setActionBusy(true)
       try {
         const { start, end } = getSaveDates()
 
@@ -1686,6 +1689,8 @@ export default function EventDetail() {
       } catch (e: any) {
         console.error('handleSave error:', e)
         Alert.alert('Chyba při ukládání', e?.message || 'Změny se nepodařilo uložit.')
+      } finally {
+        setActionBusy(false)
       }
     }
 
@@ -1967,7 +1972,8 @@ export default function EventDetail() {
     )
 
     const handleJoinEvent = async () => {
-        if (!user) return
+        if (!user || actionBusy) return
+        setActionBusy(true)
         try {
             const isRecurringOrMulti =
                 !!eventObj.pravidelnost || !!eventObj.group_id
@@ -1982,11 +1988,14 @@ export default function EventDetail() {
             loadUserEvent()
         } catch (e) {
             console.error(e)
+        } finally {
+            setActionBusy(false)
         }
     }
 
     const handleCancelEvent = async () => {
-        if (!user) return
+        if (!user || actionBusy) return
+        setActionBusy(true)
         try {
             const isRecurringOrMulti =
                 !!eventObj.pravidelnost || !!eventObj.group_id
@@ -2033,6 +2042,8 @@ export default function EventDetail() {
             loadUserEvent()
         } catch (e) {
             console.error(e)
+        } finally {
+            setActionBusy(false)
         }
     }
 
@@ -2457,6 +2468,8 @@ export default function EventDetail() {
                                     buttonColor="#f44336"
                                     textColor="#fff"
                                     onPress={handleCancelEvent}
+                                    loading={actionBusy}
+                                    disabled={actionBusy}
                                     style={{
                                         borderRadius: 8,
                                         paddingVertical: 4,
@@ -2470,7 +2483,8 @@ export default function EventDetail() {
                                     buttonColor={buttonColor}
                                     textColor={buttonTextColor}
                                     onPress={handleJoinEvent}
-                                    disabled={isFull}
+                                    loading={actionBusy}
+                                    disabled={isFull || actionBusy}
                                     style={{
                                         borderRadius: 8,
                                         paddingVertical: 4,
@@ -4127,6 +4141,8 @@ export default function EventDetail() {
                                     <Button
                                         mode="contained"
                                         onPress={handleSave}
+                                        loading={actionBusy}
+                                        disabled={actionBusy}
                                         style={{ paddingVertical: 4 }}
                                     >
                                         Uložit změny
@@ -4134,6 +4150,7 @@ export default function EventDetail() {
                                     <Button
                                         mode="text"
                                         onPress={() => setModalVisible(false)}
+                                        disabled={actionBusy}
                                         style={{ marginTop: 4 }}
                                     >
                                         Zavřít

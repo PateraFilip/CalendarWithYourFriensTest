@@ -5,9 +5,9 @@ import { KeyboardScreen } from '@/components/KeyboardScreen'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useAuth } from '@/hooks/useAuth'
 import { loadStorage } from '@/lib/storage'
-import { Link, useRouter } from 'expo-router'
+import { useRouter } from 'expo-router'
 import React, { useEffect, useState } from 'react'
-import { Platform, StyleSheet, Switch, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, Switch, View } from 'react-native'
 import { Button, TextInput, useTheme } from 'react-native-paper'
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
@@ -191,6 +191,8 @@ export default function Login() {
                         labelStyle={{ color: buttonTextColor }}
                         buttonColor={buttonColor}
                         onPress={handleLogin}
+                        loading={loading}
+                        disabled={loading}
                     >
                         Přihlásit se
                     </Button>
@@ -201,35 +203,32 @@ export default function Login() {
                             labelStyle={{ color: buttonColor }}
                             onPress={handleBiometricLogin}
                             icon="fingerprint"
+                            disabled={loading}
                         >
                             Přihlásit otiskem / Face ID
                         </Button>
                     )}
 
-                    <View style={{ width: '100%' }}>
-                        <Link
-                            href="/reset_password"
-                            style={{
-                                color: buttonColor,
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                            }}
-                        >
+                    <Pressable
+                        onPress={() => router.push('/reset_password')}
+                        disabled={loading}
+                        style={{ width: '100%', paddingVertical: 8 }}
+                        hitSlop={12}
+                    >
+                        <ThemedText style={{ color: buttonColor, fontWeight: 'bold' }}>
                             Zapomenuté heslo
-                        </Link>
-                    </View>
-                    <View style={{ width: '100%' }}>
-                        <Link
-                            href="/register"
-                            style={{
-                                color: buttonColor,
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                            }}
-                        >
+                        </ThemedText>
+                    </Pressable>
+                    <Pressable
+                        onPress={() => router.push('/register')}
+                        disabled={loading}
+                        style={{ width: '100%', paddingVertical: 8 }}
+                        hitSlop={12}
+                    >
+                        <ThemedText style={{ color: buttonColor, fontWeight: 'bold' }}>
                             Registrovat se
-                        </Link>
-                    </View>
+                        </ThemedText>
+                    </Pressable>
 
                     {!isNative && (
                         <Button
@@ -238,6 +237,7 @@ export default function Login() {
                             labelStyle={{ color: buttonColor }}
                             textColor={buttonColor}
                             icon="android"
+                            disabled={loading}
                             onPress={() => {
                                 if (typeof window !== 'undefined') {
                                     window.location.href = '/downloads/CalendarWithFriends.apk';
