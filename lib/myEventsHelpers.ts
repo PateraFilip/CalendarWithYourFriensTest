@@ -151,8 +151,10 @@ export function getMyUpcomingEvents(
     userIds: string[],
     joinedEventIds: number[],
     daysAhead = 30,
+    daysBehind = 0,
 ): CalendarEvent[] {
     const now = new Date();
+    const rangeStart = dayjs(now).subtract(Math.max(0, daysBehind), 'day').startOf('day');
     const endRange = dayjs(now).add(daysAhead, 'day').toDate();
     const result: CalendarEvent[] = [];
 
@@ -160,13 +162,14 @@ export function getMyUpcomingEvents(
         const isMine = userIds.includes(String(e.user_id));
         const isJoinedGroup = joinedEventIds.includes(e.id);
         if (!isMine && !isJoinedGroup) return;
-        // Zobrazit i proběhlé události dneška
+        // V okně [dnes−daysBehind … dnes+daysAhead]; dnešek i když už skončilo
         const isToday = dayjs(e.start).isSame(now, 'day');
-        if (!isToday && (e.end < now || e.start > endRange)) return;
+        if (!isToday && (e.end < rangeStart.toDate() || e.start > endRange)) return;
         result.push(e);
     });
 
-    for (let d = 0; d <= daysAhead; d++) {
+    const behind = Math.max(0, daysBehind);
+    for (let d = -behind; d <= daysAhead; d++) {
         const date = dayjs(now).add(d, 'day').toDate();
         const expanded = expandWeeklyForDate(
             weeklyEvents.filter(w => userIds.includes(String(w.user_id))),
@@ -175,13 +178,12 @@ export function getMyUpcomingEvents(
         );
         expanded.forEach(e => {
             const isToday = dayjs(e.start).isSame(now, 'day');
-            // Zobrazit i proběhlé události dneška
-            if (isToday || e.end >= now) result.push(e);
+            if (isToday || e.end >= rangeStart.toDate()) result.push(e);
         });
     }
 
     const unique = new Map<string, CalendarEvent>();
-    const todayStart = dayjs().startOf('day').valueOf();
+    const windowStart = rangeStart.valueOf();
     
     result.forEach(e => {
         const parts = splitEventByDays(e);
@@ -189,11 +191,8 @@ export function getMyUpcomingEvents(
             const partStartMs = part.start.getTime();
             const partEndMs = part.end.getTime();
             
-            // Chceme zobrazit pouze ty části události, které:
-            // 1) Jsou dnes nebo v budoucnu
-            // NEBO
-            // 2) Stále běží (partEndMs >= now)
-            if (partStartMs >= todayStart || partEndMs >= now.getTime()) {
+            // Část v historii / dnes / budoucnosti (nebo ještě běží)
+            if (partEndMs >= windowStart || partStartMs >= windowStart) {
                 const key = `${part.id}-${partStartMs}`;
                 unique.set(key, part);
             }

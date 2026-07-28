@@ -1,116 +1,127 @@
-import { ThemedSafeView } from '@/components/ThemedSafeView';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { KeyboardScreen } from '@/components/KeyboardScreen';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import { supabase } from '@/lib/supabaseClient';
-import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
-import { Button, TextInput, useTheme } from 'react-native-paper';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { AuthBrandMark } from '@/components/AuthBrandMark'
+import { Brand, BrandSurfaces } from '@/constants/brand'
+import { ThemedSafeView } from '@/components/ThemedSafeView'
+import { ThemedText } from '@/components/themed-text'
+import { KeyboardScreen } from '@/components/KeyboardScreen'
+import { useColorScheme } from '@/hooks/use-color-scheme'
+import { supabase } from '@/lib/supabaseClient'
+import { Stack, useRouter } from 'expo-router'
+import React, { useEffect, useRef, useState } from 'react'
+import { Platform, Pressable, StyleSheet, TextInput as RNTextInput, View } from 'react-native'
+import { Button, TextInput, useTheme } from 'react-native-paper'
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 
-type Step = 'email' | 'code' | 'password';
+type Step = 'email' | 'code' | 'password'
 
-const OTP_MIN = 6;
-const OTP_MAX = 8;
+const OTP_MIN = 6
+const OTP_MAX = 8
 
-export default function ModalScreen() {
-  const theme = useTheme();
-  const router = useRouter();
-  const codeInputRef = useRef<RNTextInput>(null);
+export default function ResetPasswordScreen() {
+  const theme = useTheme()
+  const router = useRouter()
+  const scheme = useColorScheme() ?? 'light'
+  const surfaces = BrandSurfaces[scheme]
+  const accent = scheme === 'dark' ? Brand.primaryMuted : Brand.primary
+  const onButton = scheme === 'dark' ? '#0B1220' : Brand.onPrimary
+  const codeInputRef = useRef<RNTextInput>(null)
 
-  const [step, setStep] = useState<Step>('email');
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newPasswordControl, setNewPasswordControl] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [info, setInfo] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>('email')
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordControl, setNewPasswordControl] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [info, setInfo] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errors, setErrors] = useState<{
-    email: boolean;
-    code: boolean;
-    newPassword: boolean;
-    newPasswordControl: boolean;
+    email: boolean
+    code: boolean
+    newPassword: boolean
+    newPasswordControl: boolean
   }>({
     email: false,
     code: false,
     newPassword: false,
     newPasswordControl: false,
-  });
+  })
 
-  const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
-  const buttonTextColor = useThemeColor(
-    { light: '#fff', dark: '#000' },
-    'text'
-  );
+  const stepTitle =
+    step === 'email'
+      ? 'Zapomenuté heslo'
+      : step === 'code'
+        ? 'Ověření kódu'
+        : 'Nové heslo'
+  const stepTagline =
+    step === 'email'
+      ? 'Pošleme ti kód na e-mail'
+      : step === 'code'
+        ? 'Zadej kód z e-mailu'
+        : 'Zvol si nové heslo'
 
-  // Po přechodu na krok s kódem fokusni pole (iOS Safari po alertu jinak často „nejde kliknout“)
   useEffect(() => {
-    if (step !== 'code') return;
+    if (step !== 'code') return
     const t = setTimeout(() => {
-      codeInputRef.current?.focus();
-    }, 150);
-    return () => clearTimeout(t);
-  }, [step]);
+      codeInputRef.current?.focus()
+    }, 150)
+    return () => clearTimeout(t)
+  }, [step])
 
   const handleSendCode = async () => {
-    const emailError = email.trim() === '';
-    setErrors((e) => ({ ...e, email: emailError }));
-    setErrorMsg(null);
-    setInfo(null);
-    if (emailError || busy) return;
+    const emailError = email.trim() === ''
+    setErrors((e) => ({ ...e, email: emailError }))
+    setErrorMsg(null)
+    setInfo(null)
+    if (emailError || busy) return
 
-    setBusy(true);
+    setBusy(true)
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim())
       if (error) {
-        setErrorMsg(error.message || 'Nepodařilo se odeslat kód');
-        return;
+        setErrorMsg(error.message || 'Nepodařilo se odeslat kód')
+        return
       }
-      // Bez window.alert — na iOS Safari po alertu často nejde fokusnout další input
-      setInfo('Kód jsme poslali na e-mail. Zadej ho níže (obvykle 6 číslic).');
-      setCode('');
-      setStep('code');
+      setInfo('Kód jsme poslali na e-mail. Zadej ho níže (obvykle 6 číslic).')
+      setCode('')
+      setStep('code')
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   const handleVerifyCode = async () => {
-    const trimmed = code.trim();
+    const trimmed = code.trim()
     const codeError =
-      trimmed === '' || trimmed.length < OTP_MIN || trimmed.length > OTP_MAX;
-    setErrors((e) => ({ ...e, code: codeError }));
-    setErrorMsg(null);
+      trimmed === '' || trimmed.length < OTP_MIN || trimmed.length > OTP_MAX
+    setErrors((e) => ({ ...e, code: codeError }))
+    setErrorMsg(null)
     if (codeError) {
-      setErrorMsg(`Zadej kód z e-mailu (${OTP_MIN}–${OTP_MAX} číslic).`);
-      return;
+      setErrorMsg(`Zadej kód z e-mailu (${OTP_MIN}–${OTP_MAX} číslic).`)
+      return
     }
-    if (busy) return;
+    if (busy) return
 
-    setBusy(true);
+    setBusy(true)
     try {
       const { error } = await supabase.auth.verifyOtp({
         email: email.trim(),
         token: trimmed,
         type: 'recovery',
-      });
+      })
 
       if (error) {
-        setErrorMsg(error.message || 'Neplatný kód');
-        return;
+        setErrorMsg(error.message || 'Neplatný kód')
+        return
       }
-      setInfo(null);
-      setStep('password');
+      setInfo(null)
+      setStep('password')
     } catch (err) {
-      console.error(err);
-      setErrorMsg('Chyba při ověřování kódu');
+      console.error(err)
+      setErrorMsg('Chyba při ověřování kódu')
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   const handleResetPassword = async () => {
     const newErrors = {
@@ -118,66 +129,79 @@ export default function ModalScreen() {
       code: false,
       newPassword: newPassword.trim() === '',
       newPasswordControl: newPasswordControl.trim() === '',
-    };
-    setErrorMsg(null);
+    }
+    setErrorMsg(null)
     if (
       !newErrors.newPassword &&
       !newErrors.newPasswordControl &&
       newPassword !== newPasswordControl
     ) {
-      newErrors.newPassword = true;
-      newErrors.newPasswordControl = true;
-      setErrorMsg('Hesla se neshodují');
+      newErrors.newPassword = true
+      newErrors.newPasswordControl = true
+      setErrorMsg('Hesla se neshodují')
     }
-    setErrors(newErrors);
-    if (newErrors.newPassword || newErrors.newPasswordControl || busy) return;
+    setErrors(newErrors)
+    if (newErrors.newPassword || newErrors.newPasswordControl || busy) return
 
-    setBusy(true);
+    setBusy(true)
     try {
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
-      });
+      })
 
       if (error) {
-        setErrorMsg(error.message || 'Chyba při změně hesla');
-        return;
+        setErrorMsg(error.message || 'Chyba při změně hesla')
+        return
       }
 
-      setInfo('Heslo bylo změněno. Přihlas se znovu.');
-      await supabase.auth.signOut();
-      router.replace('/(login)');
+      setInfo('Heslo bylo změněno. Přihlas se znovu.')
+      await supabase.auth.signOut()
+      router.replace('/(login)')
     } catch (err) {
-      console.error(err);
-      setErrorMsg('Chyba připojení');
+      console.error(err)
+      setErrorMsg('Chyba připojení')
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Reset hesla',
-        }}
-      />
-      <ThemedSafeView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ThemedSafeView
+        style={[styles.container, { backgroundColor: surfaces.background }]}
+        edges={['top', 'bottom']}
+      >
+        <Pressable
+          onPress={() => router.replace('/(login)')}
+          hitSlop={12}
+          style={styles.backRow}
+          disabled={busy}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={22} color={accent} />
+          <ThemedText numberOfLines={1} style={[styles.backText, { color: accent }]}>
+            Přihlášení
+          </ThemedText>
+        </Pressable>
+
         <KeyboardScreen
           scroll
-          style={{ width: '100%' }}
-          contentContainerStyle={{
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingVertical: 32,
-            flexGrow: 1,
-          }}
+          gap={14}
+          style={{ width: '100%', flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
         >
-          <ThemedView style={styles.box}>
+          <AuthBrandMark title={stepTitle} tagline={stepTagline} compact />
+
+          <View style={styles.form}>
             {!!info && (
-              <ThemedText style={styles.infoText}>{info}</ThemedText>
+              <ThemedText style={[styles.infoText, { color: Brand.success }]}>
+                {info}
+              </ThemedText>
             )}
             {!!errorMsg && (
-              <ThemedText style={styles.errorText}>{errorMsg}</ThemedText>
+              <ThemedText style={[styles.errorText, { color: Brand.danger }]}>
+                {errorMsg}
+              </ThemedText>
             )}
 
             {step === 'email' && (
@@ -186,13 +210,14 @@ export default function ModalScreen() {
                   label="E-mail"
                   value={email}
                   onChangeText={(text) => {
-                    setEmail(text);
-                    if (errors.email)
-                      setErrors((e) => ({ ...e, email: false }));
+                    setEmail(text)
+                    if (errors.email) setErrors((e) => ({ ...e, email: false }))
                   }}
                   mode="outlined"
-                  activeOutlineColor={buttonColor}
-                  style={styles.input}
+                  activeOutlineColor={accent}
+                  outlineColor={surfaces.border}
+                  textColor={surfaces.text}
+                  style={[styles.input, { backgroundColor: surfaces.surfaceElevated }]}
                   error={errors.email}
                   autoCapitalize="none"
                   keyboardType="email-address"
@@ -202,11 +227,9 @@ export default function ModalScreen() {
                     <TextInput.Icon
                       icon={() => (
                         <MaterialCommunityIcons
-                          name="at"
+                          name="email-outline"
                           size={20}
-                          color={
-                            errors.email ? theme.colors.error : buttonColor
-                          }
+                          color={errors.email ? theme.colors.error : accent}
                         />
                       )}
                     />
@@ -215,8 +238,9 @@ export default function ModalScreen() {
                 <Button
                   mode="contained"
                   style={styles.button}
-                  labelStyle={{ color: buttonTextColor }}
-                  buttonColor={buttonColor}
+                  contentStyle={styles.buttonContent}
+                  labelStyle={[styles.buttonLabel, { color: onButton }]}
+                  buttonColor={accent}
                   onPress={handleSendCode}
                   loading={busy}
                   disabled={busy}
@@ -228,31 +252,27 @@ export default function ModalScreen() {
 
             {step === 'code' && (
               <>
-                {/*
-                  Na webu (hlavně iOS Safari) Paper TextInput + number-pad + ikona
-                  často blokuje fokus. Prostý RN TextInput je spolehlivější.
-                */}
                 {Platform.OS === 'web' ? (
                   <View style={styles.webField}>
-                    <ThemedText style={styles.webLabel}>
+                    <ThemedText
+                      style={[styles.webLabel, { color: surfaces.textSecondary }]}
+                    >
                       Kód z e-mailu
                     </ThemedText>
                     <RNTextInput
                       ref={codeInputRef}
                       value={code}
                       onChangeText={(text) => {
-                        setCode(text.replace(/\D/g, '').slice(0, OTP_MAX));
-                        if (errors.code)
-                          setErrors((e) => ({ ...e, code: false }));
-                        setErrorMsg(null);
+                        setCode(text.replace(/\D/g, '').slice(0, OTP_MAX))
+                        if (errors.code) setErrors((e) => ({ ...e, code: false }))
+                        setErrorMsg(null)
                       }}
                       style={[
                         styles.webInput,
                         {
-                          borderColor: errors.code
-                            ? theme.colors.error
-                            : buttonColor,
-                          color: buttonColor,
+                          borderColor: errors.code ? theme.colors.error : surfaces.border,
+                          color: surfaces.text,
+                          backgroundColor: surfaces.surfaceElevated,
                         },
                       ]}
                       keyboardType="number-pad"
@@ -262,7 +282,7 @@ export default function ModalScreen() {
                       maxLength={OTP_MAX}
                       editable={!busy}
                       placeholder="123456"
-                      placeholderTextColor="#888"
+                      placeholderTextColor={surfaces.textSecondary}
                       autoFocus
                     />
                   </View>
@@ -272,14 +292,15 @@ export default function ModalScreen() {
                     label="Kód z e-mailu (6–8 číslic)"
                     value={code}
                     onChangeText={(text) => {
-                      setCode(text.replace(/\D/g, '').slice(0, OTP_MAX));
-                      if (errors.code)
-                        setErrors((e) => ({ ...e, code: false }));
-                      setErrorMsg(null);
+                      setCode(text.replace(/\D/g, '').slice(0, OTP_MAX))
+                      if (errors.code) setErrors((e) => ({ ...e, code: false }))
+                      setErrorMsg(null)
                     }}
                     mode="outlined"
-                    activeOutlineColor={buttonColor}
-                    style={styles.input}
+                    activeOutlineColor={accent}
+                    outlineColor={surfaces.border}
+                    textColor={surfaces.text}
+                    style={[styles.input, { backgroundColor: surfaces.surfaceElevated }]}
                     error={errors.code}
                     keyboardType="number-pad"
                     autoComplete="sms-otp"
@@ -292,8 +313,9 @@ export default function ModalScreen() {
                 <Button
                   mode="contained"
                   style={styles.button}
-                  labelStyle={{ color: buttonTextColor }}
-                  buttonColor={buttonColor}
+                  contentStyle={styles.buttonContent}
+                  labelStyle={[styles.buttonLabel, { color: onButton }]}
+                  buttonColor={accent}
                   onPress={handleVerifyCode}
                   loading={busy}
                   disabled={busy}
@@ -303,11 +325,11 @@ export default function ModalScreen() {
                 <Button
                   mode="text"
                   style={styles.button}
-                  labelStyle={{ color: buttonColor }}
+                  labelStyle={{ color: accent }}
                   onPress={() => {
-                    setStep('email');
-                    setErrorMsg(null);
-                    setInfo(null);
+                    setStep('email')
+                    setErrorMsg(null)
+                    setInfo(null)
                   }}
                   disabled={busy}
                 >
@@ -322,14 +344,16 @@ export default function ModalScreen() {
                   label="Nové heslo"
                   value={newPassword}
                   onChangeText={(text) => {
-                    setNewPassword(text);
+                    setNewPassword(text)
                     if (errors.newPassword)
-                      setErrors((e) => ({ ...e, newPassword: false }));
+                      setErrors((e) => ({ ...e, newPassword: false }))
                   }}
                   mode="outlined"
-                  activeOutlineColor={buttonColor}
-                  secureTextEntry
-                  style={styles.input}
+                  activeOutlineColor={accent}
+                  outlineColor={surfaces.border}
+                  textColor={surfaces.text}
+                  secureTextEntry={!showPassword}
+                  style={[styles.input, { backgroundColor: surfaces.surfaceElevated }]}
                   error={errors.newPassword}
                   editable={!busy}
                   autoComplete="new-password"
@@ -340,12 +364,17 @@ export default function ModalScreen() {
                           name="lock-outline"
                           size={20}
                           color={
-                            errors.newPassword
-                              ? theme.colors.error
-                              : buttonColor
+                            errors.newPassword ? theme.colors.error : accent
                           }
                         />
                       )}
+                    />
+                  }
+                  right={
+                    <TextInput.Icon
+                      icon={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      onPress={() => setShowPassword((v) => !v)}
+                      forceTextInputFocus={false}
                     />
                   }
                 />
@@ -354,14 +383,16 @@ export default function ModalScreen() {
                   label="Nové heslo znovu"
                   value={newPasswordControl}
                   onChangeText={(text) => {
-                    setNewPasswordControl(text);
+                    setNewPasswordControl(text)
                     if (errors.newPasswordControl)
-                      setErrors((e) => ({ ...e, newPasswordControl: false }));
+                      setErrors((e) => ({ ...e, newPasswordControl: false }))
                   }}
                   mode="outlined"
-                  activeOutlineColor={buttonColor}
-                  secureTextEntry
-                  style={styles.input}
+                  activeOutlineColor={accent}
+                  outlineColor={surfaces.border}
+                  textColor={surfaces.text}
+                  secureTextEntry={!showPassword}
+                  style={[styles.input, { backgroundColor: surfaces.surfaceElevated }]}
                   error={errors.newPasswordControl}
                   editable={!busy}
                   autoComplete="new-password"
@@ -374,7 +405,7 @@ export default function ModalScreen() {
                           color={
                             errors.newPasswordControl
                               ? theme.colors.error
-                              : buttonColor
+                              : accent
                           }
                         />
                       )}
@@ -384,8 +415,9 @@ export default function ModalScreen() {
                 <Button
                   mode="contained"
                   style={styles.button}
-                  labelStyle={{ color: buttonTextColor }}
-                  buttonColor={buttonColor}
+                  contentStyle={styles.buttonContent}
+                  labelStyle={[styles.buttonLabel, { color: onButton }]}
+                  buttonColor={accent}
                   onPress={handleResetPassword}
                   loading={busy}
                   disabled={busy}
@@ -395,11 +427,11 @@ export default function ModalScreen() {
                 <Button
                   mode="text"
                   style={styles.button}
-                  labelStyle={{ color: buttonColor }}
+                  labelStyle={{ color: accent }}
                   onPress={() => {
-                    setStep('email');
-                    setErrorMsg(null);
-                    setInfo(null);
+                    setStep('email')
+                    setErrorMsg(null)
+                    setInfo(null)
                   }}
                   disabled={busy}
                 >
@@ -407,47 +439,67 @@ export default function ModalScreen() {
                 </Button>
               </>
             )}
-          </ThemedView>
+          </View>
         </KeyboardScreen>
       </ThemedSafeView>
     </>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    paddingBottom: 32,
+    paddingTop: 8,
+  },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
+    flexShrink: 0,
+  },
+  backText: {
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  form: {
+    width: '100%',
+    maxWidth: 400,
+    gap: 14,
   },
   input: {
     width: '100%',
-    backgroundColor: 'transparent',
   },
   button: {
-    borderRadius: 6,
+    borderRadius: 14,
     width: '100%',
+    marginTop: 4,
   },
-  box: {
-    width: '85%',
-    maxWidth: 420,
-    borderRadius: 16,
-    padding: 20,
-    gap: 20,
-    alignItems: 'center',
-    borderWidth: 0,
-    elevation: 1,
+  buttonContent: {
+    paddingVertical: 6,
+  },
+  buttonLabel: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   infoText: {
     width: '100%',
-    color: '#2e7d32',
     fontSize: 14,
     lineHeight: 20,
   },
   errorText: {
     width: '100%',
-    color: '#c62828',
     fontSize: 14,
     lineHeight: 20,
   },
@@ -457,17 +509,15 @@ const styles = StyleSheet.create({
   },
   webLabel: {
     fontSize: 13,
-    opacity: 0.75,
   },
   webInput: {
     width: '100%',
     borderWidth: 1.5,
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 22,
     letterSpacing: 4,
     textAlign: 'center',
-    backgroundColor: 'transparent',
   },
-});
+})

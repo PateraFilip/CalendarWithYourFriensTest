@@ -11,11 +11,11 @@ import React, {
 import dayjs from 'dayjs';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchEvents } from '@/services/events/get_events';
-import { fetchEventsException } from '@/services/events/get_event_exceptions';
+import { fetchEventsBundle } from '@/services/events/get_events';
 import { fetchUserEvents } from '@/services/events/getUserEvents';
 import { fetchColors } from '@/services/users/get_colors';
 import { fetchMyFriendships, type Friendship } from '@/services/friends/friendships';
+import { fetchInvitedSeriesIds } from '@/services/events/invites';
 import {
   fetchMyNotifications,
   type UserNotification,
@@ -64,8 +64,12 @@ type AppDataContextType = {
   /** Načti / obnov; showSpinner jen když ještě není ready */
   ensureLoaded: (opts?: { force?: boolean }) => Promise<void>;
   refreshTimeline: (force?: boolean) => Promise<void>;
+  /** Doplň starší události před aktuální `eventsRange.from` (osa — scroll nahoru). */
+  extendEventsBackward: (days?: number) => Promise<{ extended: boolean; from: string | null }>;
   refreshNotifications: () => Promise<void>;
   refreshChatRooms: () => Promise<void>;
+  /** Obnov jen barvy (po změně v nastavení) */
+  refreshColors: () => Promise<void>;
   setNotifications: React.Dispatch<React.SetStateAction<UserNotification[]>>;
 };
 
@@ -213,6 +217,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const inflightRef = useRef<Promise<void> | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFetchedRef = useRef<number | null>(null);
+  const eventsRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const friendshipsRef = useRef<Friendship[]>([]);
+  const invitedSeriesIdsRef = useRef<number[]>([]);
+  const extendInflightRef = useRef<Promise<{ extended: boolean; from: string | null }> | null>(null);
 
   const joinedEventIds = useMemo(
     () =>
@@ -245,15 +253,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           const priorityFrom = monthStart.subtract(14, 'day');
           const priorityTo = monthEnd.add(14, 'day');
 
-          const [priorityEvents, userEv, col, fr, notif] = await Promise.all([
-            fetchEvents(userId, monthStart.toDate(), monthEnd.toDate(), {
-              paddingDays: 14,
-            }),
+          const [userEv, col, fr, notif, invitedSeriesIds] = await Promise.all([
             fetchUserEvents(),
             fetchColors(),
             fetchMyFriendships(userId),
             fetchMyNotifications(userId),
+            fetchInvitedSeriesIds(userId),
           ]);
+
+          if (gen !== loadGeneration.current) return;
+
+          const priorityBundle = await fetchEventsBundle(
+            userId,
+            monthStart.toDate(),
+            monthEnd.toDate(),
+            {
+              paddingDays: 14,
+              friendships: fr,
+              invitedSeriesIds,
+            }
+          );
 
           if (gen !== loadGeneration.current) return;
 
@@ -262,31 +281,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             String(f.user_id) === userId ? String(f.friend_id) : String(f.user_id)
           );
 
-          const seriesIdsPriority = [
-            ...new Set((priorityEvents as CalendarEvent[]).map((e) => e.id)),
-          ];
-          let priorityExceptions: EventException[] = [];
-          try {
-            priorityExceptions = (await fetchEventsException(
-              seriesIdsPriority
-            )) as EventException[];
-          } catch {
-            /* exceptions můžou doběhnout ve fázi 2 */
-          }
-
-          if (gen !== loadGeneration.current) return;
-
-          setEvents(priorityEvents as CalendarEvent[]);
-          setEventExceptions(priorityExceptions);
+          // Phase 1: events už mají výjimky aplikované; bundle.exceptions pro UI
+          setEvents(priorityBundle.events as CalendarEvent[]);
+          setEventExceptions(priorityBundle.exceptions as EventException[]);
           setUserEvents(userEv);
           setColors(col);
           setFriendships(fr);
           setFriendIds(fIds);
+          friendshipsRef.current = fr;
+          invitedSeriesIdsRef.current = invitedSeriesIds;
           setNotifications(notif);
           setEventsRange({
             from: priorityFrom.format('YYYY-MM-DD'),
             to: priorityTo.format('YYYY-MM-DD'),
           });
+          eventsRangeRef.current = {
+            from: priorityFrom.format('YYYY-MM-DD'),
+            to: priorityTo.format('YYYY-MM-DD'),
+          };
           setTimelineReady(false);
 
           const nowPriority = Date.now();
@@ -296,34 +308,40 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           setBooting(false);
           // refreshing necháme true do konce fáze 2 (jen indikátor na pozadí)
 
-          // ── Fáze 2: zbytek roku + chaty na pozadí ──
+          // ── Fáze 2: ~měsíc historie + rok dopředu + chaty na pozadí ──
           const rangeStart = dayjs().subtract(30, 'day');
           const rangeEnd = dayjs().add(TIMELINE_DAYS, 'day');
 
-          const [fullEvents, allExceptions, usersRes, messagedRes] =
-            await Promise.all([
-              fetchEvents(userId, rangeStart.toDate(), rangeEnd.toDate(), {
-                paddingDays: 0,
-              }),
-              fetchEventsException(),
-              supabase.from('users').select('id, username, jmeno, prijmeni'),
-              supabase
-                .from('event_messages')
-                .select(
-                  'series_id, instance_date, event_series!inner(nazev, recurrence_rule, group_id, zakladatel_id, valid_from, is_group)'
-                )
-                .eq('user_id', userId),
-            ]);
+          const [fullBundle, usersRes, messagedRes] = await Promise.all([
+            fetchEventsBundle(userId, rangeStart.toDate(), rangeEnd.toDate(), {
+              paddingDays: 0,
+              friendships: fr,
+              invitedSeriesIds,
+            }),
+            supabase
+              .from('users')
+              .select('id, username, jmeno, prijmeni, email, datum_narozeni'),
+            supabase
+              .from('event_messages')
+              .select(
+                'series_id, instance_date, event_series!inner(nazev, recurrence_rule, group_id, zakladatel_id, valid_from, is_group)'
+              )
+              .eq('user_id', userId),
+          ]);
 
           if (gen !== loadGeneration.current) return;
 
-          setEvents(fullEvents as CalendarEvent[]);
-          setEventExceptions(allExceptions as EventException[]);
+          setEvents(fullBundle.events as CalendarEvent[]);
+          setEventExceptions(fullBundle.exceptions as EventException[]);
           setUsers(usersRes.data || []);
           setEventsRange({
             from: rangeStart.format('YYYY-MM-DD'),
             to: rangeEnd.format('YYYY-MM-DD'),
           });
+          eventsRangeRef.current = {
+            from: rangeStart.format('YYYY-MM-DD'),
+            to: rangeEnd.format('YYYY-MM-DD'),
+          };
           setTimelineReady(true);
 
           const seriesFromMessages = Array.from(
@@ -350,8 +368,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           if (gen !== loadGeneration.current) return;
 
           const rooms = buildChatRoomsFromTimeline({
-            events: fullEvents as CalendarEvent[],
-            exceptions: allExceptions as EventException[],
+            events: fullBundle.events as CalendarEvent[],
+            exceptions: fullBundle.exceptions as EventException[],
             userEvents: userEv,
             friendIds: fIds,
             currentUserId: userId,
@@ -406,11 +424,95 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [loadAll]
   );
 
+  const extendEventsBackward = useCallback(
+    async (days = 30) => {
+      if (!userId) return { extended: false, from: null };
+      if (extendInflightRef.current) return extendInflightRef.current;
+
+      const run = (async () => {
+        const range = eventsRangeRef.current;
+        if (!range?.from) return { extended: false, from: null };
+
+        const chunk = Math.max(1, Math.min(days, 90));
+        const newFrom = dayjs(range.from).subtract(chunk, 'day');
+        const newTo = dayjs(range.from).subtract(1, 'day');
+        if (!newTo.isValid() || newTo.isBefore(newFrom)) {
+          return { extended: false, from: range.from };
+        }
+
+        try {
+          let invited = invitedSeriesIdsRef.current;
+          if (!invited.length) {
+            invited = await fetchInvitedSeriesIds(userId);
+            invitedSeriesIdsRef.current = invited;
+          }
+
+          const bundle = await fetchEventsBundle(
+            userId,
+            newFrom.toDate(),
+            newTo.toDate(),
+            {
+              paddingDays: 0,
+              friendships: friendshipsRef.current,
+              invitedSeriesIds: invited,
+            }
+          );
+
+          setEvents((prev) => {
+            const byKey = new Map<string, CalendarEvent>();
+            for (const e of prev) {
+              byKey.set(`${e.id}-${dayjs(e.start).valueOf()}`, e);
+            }
+            for (const e of bundle.events as CalendarEvent[]) {
+              byKey.set(`${e.id}-${dayjs(e.start).valueOf()}`, e);
+            }
+            return Array.from(byKey.values());
+          });
+
+          setEventExceptions((prev) => {
+            const byId = new Map<number, EventException>();
+            for (const ex of prev) byId.set(ex.id, ex);
+            for (const ex of bundle.exceptions as EventException[]) {
+              byId.set(ex.id, ex);
+            }
+            return Array.from(byId.values());
+          });
+
+          const nextRange = {
+            from: newFrom.format('YYYY-MM-DD'),
+            to: range.to,
+          };
+          eventsRangeRef.current = nextRange;
+          setEventsRange(nextRange);
+          return { extended: true, from: nextRange.from };
+        } catch (e) {
+          console.error('[AppData] extendEventsBackward:', e);
+          return { extended: false, from: range.from };
+        } finally {
+          extendInflightRef.current = null;
+        }
+      })();
+
+      extendInflightRef.current = run;
+      return run;
+    },
+    [userId]
+  );
+
   const refreshNotifications = useCallback(async () => {
     if (!userId) return;
     const notif = await fetchMyNotifications(userId);
     setNotifications(notif);
   }, [userId]);
+
+  const refreshColors = useCallback(async () => {
+    try {
+      const col = await fetchColors();
+      setColors(col);
+    } catch (e) {
+      console.error('[AppData] refreshColors:', e);
+    }
+  }, []);
 
   const refreshChatRooms = useCallback(async () => {
     await loadAll(true);
@@ -426,6 +528,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       lastFetchedRef.current = null;
       setLastFetchedAt(null);
       setEventsRange(null);
+      eventsRangeRef.current = null;
+      friendshipsRef.current = [];
+      invitedSeriesIdsRef.current = [];
       setEvents([]);
       setEventExceptions([]);
       setUserEvents([]);
@@ -458,6 +563,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_users' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'series_exceptions' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'colors' }, () => {
+        void refreshColors();
+      })
       .on(
         'postgres_changes',
         {
@@ -481,7 +590,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       supabase.removeChannel(channel);
     };
-  }, [userId, loadAll, refreshNotifications]);
+  }, [userId, loadAll, refreshNotifications, refreshColors]);
 
   const value = useMemo(
     () => ({
@@ -504,8 +613,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       availableChatRooms,
       ensureLoaded,
       refreshTimeline,
+      extendEventsBackward,
       refreshNotifications,
       refreshChatRooms,
+      refreshColors,
       setNotifications,
     }),
     [
@@ -528,8 +639,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       availableChatRooms,
       ensureLoaded,
       refreshTimeline,
+      extendEventsBackward,
       refreshNotifications,
       refreshChatRooms,
+      refreshColors,
+      setNotifications,
     ]
   );
 

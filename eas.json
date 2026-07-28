@@ -1,16 +1,15 @@
 {
-    "cli": {
-        "version": ">= 16.24.1",
-        "appVersionSource": "remote"
-    },
-    "build": {
-        "apk": {
-            "android": {
-                "buildType": "apk"
-            }
-        }
-    },
-    "submit": {
-        "production": {}
+  "cli": {
+    "version": ">= 16.24.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a -Pandroid.injected.build.abi=arm64-v8a"
+      }
     }
+  }
 }

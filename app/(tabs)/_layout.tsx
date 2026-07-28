@@ -1,106 +1,29 @@
 import { HapticTab } from '@/components/haptic-tab'
 import { IconSymbol } from '@/components/ui/icon-symbol'
+import { Brand } from '@/constants/brand'
 import { Colors } from '@/constants/theme'
-import { NewEventProvider, useNewEvent } from '@/contexts/NewEventContext'
+import { NewEventProvider } from '@/contexts/NewEventContext'
 import { useUnreadMessages } from '@/contexts/UnreadMessagesContext'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 import { useAuth } from '@/hooks/useAuth'
-import { Tabs, useRouter, usePathname } from 'expo-router'
-import React, { useEffect, useState } from 'react'
-import { FAB, Portal, Provider } from 'react-native-paper'
-
-function FabButton() {
-    const { openNewEvent } = useNewEvent();
-    const router = useRouter();
-    const pathname = usePathname();
-    const [fabVisible, setFabVisible] = useState(true);
-
-    // Skrýt FAB pokud jsme v chatu
-    if (pathname.includes('/chats') || pathname.includes('/chat') || pathname.includes('/leaderboards')) {
-        return null;
-    }
-
-    return (
-        <>
-            {fabVisible && (
-                <>
-                    <FAB
-                        icon="cog"
-                        style={{
-                            position: 'absolute',
-                            margin: 16,
-                            marginRight: 5,
-                            right: 0,
-                            bottom: 170,
-                            backgroundColor: '#666',
-                            borderRadius: 30,
-                        }}
-                        color="white"
-                        onPress={() => router.push('/(tabs)/settings')}
-                    />
-                    <FAB
-                        icon="plus"
-                        style={{
-                            position: 'absolute',
-                            margin: 16,
-                            marginRight: 5,
-                            right: 0,
-                            bottom: 110,
-                            backgroundColor: '#FF00AA',
-                            borderRadius: 30,
-                        }}
-                        color="white"
-                        onPress={() => {
-                            if (pathname.includes('/tabulky')) {
-                                router.push('/leaderboards/create');
-                            } else {
-                                openNewEvent();
-                            }
-                        }}
-                    />
-                    <FAB
-                        icon="eye-off"
-                        size="small"
-                        style={{
-                            position: 'absolute',
-                            margin: 16,
-                            marginRight: 5,
-                            right: 0,
-                            bottom: 70,
-                            backgroundColor: '#666',
-                            borderRadius: 30,
-                        }}
-                        color="white"
-                        onPress={() => setFabVisible(false)}
-                    />
-                </>
-            )}
-            {!fabVisible && (
-                <FAB
-                    icon="eye"
-                    size="small"
-                    style={{
-                        position: 'absolute',
-                        margin: 16,
-                        marginRight: 5,
-                        right: 0,
-                        bottom: 70,
-                        backgroundColor: '#666',
-                        borderRadius: 30,
-                    }}
-                    color="white"
-                    onPress={() => setFabVisible(true)}
-                />
-            )}
-        </>
-    );
-}
+import { Tabs, useRouter } from 'expo-router'
+import React, { useEffect } from 'react'
+import { MD3DarkTheme, MD3LightTheme, Portal, Provider } from 'react-native-paper'
 
 export default function TabLayout() {
     const colorScheme = useColorScheme()
     const { user } = useAuth()
     const router = useRouter()
     const { totalUnread } = useUnreadMessages()
+    const scheme = colorScheme ?? 'light'
+    const paperTheme = {
+        ...(scheme === 'dark' ? MD3DarkTheme : MD3LightTheme),
+        colors: {
+            ...(scheme === 'dark' ? MD3DarkTheme.colors : MD3LightTheme.colors),
+            primary: Brand.primary,
+            secondary: Brand.primaryMuted,
+        },
+    }
 
     useEffect(() => {
         if (!user) {
@@ -109,12 +32,17 @@ export default function TabLayout() {
     }, [user]);
 
     return (
-        <Provider>
+        <Provider theme={paperTheme}>
             <Portal.Host>
                 <NewEventProvider>
                     <Tabs
                         screenOptions={{
-                            tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+                            tabBarActiveTintColor: Colors[scheme].tabIconSelected,
+                            tabBarInactiveTintColor: Colors[scheme].tabIconDefault,
+                            tabBarStyle: {
+                                backgroundColor: Colors[scheme].surface,
+                                borderTopColor: Colors[scheme].border,
+                            },
                             headerShown: false,
                             tabBarButton: HapticTab,
                             tabBarHideOnKeyboard: true,
@@ -132,20 +60,7 @@ export default function TabLayout() {
                         <Tabs.Screen
                             name="myEvents"
                             options={{
-                                title: 'Moje osa',
-                                tabBarIcon: ({ color }) => (
-                                    <IconSymbol size={28} name="timeline.fill" color={color} />
-                                ),
-                            }}
-                        />
-                        <Tabs.Screen
-                            name="chats"
-                            options={{
-                                title: 'Oznámení',
-                                tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
-                                tabBarIcon: ({ color }) => (
-                                    <IconSymbol size={28} name="paperplane.fill" color={color} />
-                                ),
+                                href: null,
                             }}
                         />
                         <Tabs.Screen
@@ -157,7 +72,16 @@ export default function TabLayout() {
                                 ),
                             }}
                         />
-
+                        <Tabs.Screen
+                            name="chats"
+                            options={{
+                                title: 'Oznámení',
+                                tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
+                                tabBarIcon: ({ color }) => (
+                                    <IconSymbol size={28} name="bell.fill" color={color} />
+                                ),
+                            }}
+                        />
                         <Tabs.Screen
                             name="explore"
                             options={{
@@ -168,16 +92,19 @@ export default function TabLayout() {
                             }}
                         />
                         <Tabs.Screen
+                            name="settings"
+                            options={{
+                                title: 'Nastavení',
+                                tabBarIcon: ({ color }) => (
+                                    <IconSymbol size={28} name="gearshape.fill" color={color} />
+                                ),
+                            }}
+                        />
+                        <Tabs.Screen
                             name="newEvent"
                             options={{ href: null }}
                         />
-                        <Tabs.Screen
-                            name="settings"
-                            options={{ href: null }}
-                        />
                     </Tabs>
-
-                    <FabButton />
                 </NewEventProvider>
             </Portal.Host>
         </Provider>

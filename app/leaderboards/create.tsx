@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { LeagueCover } from '@/components/LeagueCover';
+import { KeyboardScreen } from '@/components/KeyboardScreen';
+import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Brand, BrandSurfaces } from '@/constants/brand';
 import { useAuth } from '@/hooks/useAuth';
-import { router } from 'expo-router';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createLeague } from '@/services/leagues/leagues';
-import { TextInput, Button, Checkbox } from 'react-native-paper';
+import {
+  pickLeagueImage,
+  updateLeagueImageUrl,
+  uploadLeagueCover,
+  type PickedLeagueImage,
+} from '@/services/leagues/league_image';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { router, Stack } from 'expo-router';
+import React, { useState } from 'react';
+import { Image, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Button, TextInput } from 'react-native-paper';
 
 type ConfigKey =
   | 'track_elo'
@@ -21,33 +32,68 @@ type ConfigKey =
   | 'track_last_played'
   | 'lower_is_better';
 
+type Surfaces = (typeof BrandSurfaces)['light'];
+
+function SectionLabel({
+  children,
+  color,
+}: {
+  children: string;
+  color: string;
+}) {
+  return <ThemedText style={[styles.sectionLabel, { color }]}>{children}</ThemedText>;
+}
+
 function OptionRow({
   label,
   help,
   checked,
   onPress,
+  surfaces,
+  accent,
+  last,
 }: {
   label: string;
   help: string;
   checked: boolean;
   onPress: () => void;
+  surfaces: Surfaces;
+  accent: string;
+  last?: boolean;
 }) {
   return (
-    <TouchableOpacity style={styles.checkboxRow} onPress={onPress}>
-      <Checkbox status={checked ? 'checked' : 'unchecked'} color="#FF00AA" />
-      <View style={{ flex: 1 }}>
-        <ThemedText>{label}</ThemedText>
-        <ThemedText style={styles.help}>{help}</ThemedText>
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.optionRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: surfaces.border,
+        },
+      ]}
+    >
+      <View style={styles.optionText}>
+        <ThemedText style={[styles.optionTitle, { color: surfaces.text }]}>
+          {label}
+        </ThemedText>
+        <ThemedText style={[styles.optionHelp, { color: surfaces.textSecondary }]}>
+          {help}
+        </ThemedText>
       </View>
-    </TouchableOpacity>
+      <Switch value={checked} onValueChange={() => onPress()} color={accent} />
+    </Pressable>
   );
 }
 
 export default function CreateLeaderboardScreen() {
   const { user } = useAuth();
+  const scheme = useColorScheme() ?? 'light';
+  const surfaces = BrandSurfaces[scheme];
+  const accent = scheme === 'dark' ? Brand.primaryMuted : Brand.primary;
+  const onAccent = scheme === 'dark' ? '#0B1220' : Brand.onPrimary;
+
   const [name, setName] = useState('');
   const [teamSize, setTeamSize] = useState<number>(1);
-
   const [config, setConfig] = useState({
     track_elo: false,
     track_average: false,
@@ -62,17 +108,21 @@ export default function CreateLeaderboardScreen() {
     track_last_played: false,
     lower_is_better: false,
   });
-
   const [loading, setLoading] = useState(false);
+  const [cover, setCover] = useState<PickedLeagueImage | null>(null);
 
   const toggle = (key: ConfigKey, extras?: Partial<typeof config>) => {
     setConfig((prev) => ({ ...prev, [key]: !prev[key], ...extras }));
   };
 
+  const handlePickCover = async () => {
+    const picked = await pickLeagueImage();
+    if (picked) setCover(picked);
+  };
+
   const handleCreate = async () => {
     if (!user || !name.trim()) return;
     setLoading(true);
-
     try {
       const league = await createLeague({
         name: name.trim(),
@@ -82,6 +132,19 @@ export default function CreateLeaderboardScreen() {
         config,
         created_by: String(user.id),
       });
+
+      if (cover) {
+        try {
+          const url = await uploadLeagueCover(String(user.id), league.id, cover);
+          await updateLeagueImageUrl(league.id, url);
+        } catch (imgErr) {
+          console.error('Cover upload failed:', imgErr);
+          alert(
+            'Tabulka vznikla, ale obrázek se nepodařilo nahrát. Můžeš ho doplnit v detailu.'
+          );
+        }
+      }
+
       router.replace(`/leaderboards/${league.id}`);
     } catch (e) {
       console.error('Create error:', e);
@@ -91,189 +154,340 @@ export default function CreateLeaderboardScreen() {
     }
   };
 
+  const teamOptions = [
+    { value: 1, label: '1v1' },
+    { value: 2, label: '2v2' },
+    { value: 3, label: '3v3' },
+    { value: 4, label: '4v4' },
+    { value: 5, label: '5v5' },
+    { value: 0, label: 'FFA' },
+  ];
+
   return (
-    <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
-        <ThemedText style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>
-          Nová vlastní tabulka
+    <ThemedSafeView style={[styles.container, { backgroundColor: surfaces.background }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          style={styles.backBtn}
+          accessibilityLabel="Zpět"
+        >
+          <MaterialCommunityIcons name="arrow-left" size={24} color={surfaces.text} />
+        </Pressable>
+        <ThemedText style={[styles.topTitle, { color: surfaces.text }]}>
+          Nová tabulka
         </ThemedText>
-        <ThemedText style={{ color: '#888', marginBottom: 20, fontSize: 13 }}>
-          Tabulku uvidíš ty, tvoji přátelé a přátelé přátel. Zapsat výsledek může kdokoli, kdo ji vidí.
+        <View style={{ width: 40 }} />
+      </View>
+
+      <KeyboardScreen scroll contentContainerStyle={styles.scroll}>
+        <ThemedText style={[styles.subtitle, { color: surfaces.textSecondary }]}>
+          Uvidíš ji ty, přátelé a přátelé přátel. Výsledek může zapsat kdokoli, kdo ji
+          vidí.
         </ThemedText>
 
-        <TextInput
-          label="Název tabulky (např. Naše nedělní liga)"
-          value={name}
-          onChangeText={setName}
-          mode="outlined"
-          style={{ marginBottom: 20 }}
-        />
+        <Pressable
+          onPress={handlePickCover}
+          style={[styles.coverCard, { backgroundColor: surfaces.surface }]}
+        >
+          {cover ? (
+            <Image source={{ uri: cover.uri }} style={styles.coverPreview} />
+          ) : (
+            <LeagueCover size={96} mine />
+          )}
+          <View style={styles.coverMeta}>
+            <ThemedText style={[styles.coverTitle, { color: surfaces.text }]}>
+              Obrázek tabulky
+            </ThemedText>
+            <ThemedText style={{ color: accent, fontWeight: '600' }}>
+              {cover ? 'Změnit fotku' : 'Vybrat z galerie'}
+            </ThemedText>
+            {cover && (
+              <Pressable onPress={() => setCover(null)} hitSlop={8}>
+                <ThemedText style={{ color: Brand.danger, marginTop: 4 }}>
+                  Odebrat
+                </ThemedText>
+              </Pressable>
+            )}
+          </View>
+          <MaterialCommunityIcons
+            name="camera-plus-outline"
+            size={22}
+            color={surfaces.textSecondary}
+          />
+        </Pressable>
 
-        <ThemedText style={{ fontSize: 16, marginBottom: 10, fontWeight: 'bold' }}>Velikost týmu</ThemedText>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-          {[1, 2, 3, 4, 5].map((size) => (
-            <Button
-              key={size}
-              mode={teamSize === size ? 'contained' : 'outlined'}
-              onPress={() => setTeamSize(size)}
-            >
-              {size}v{size}
-            </Button>
-          ))}
-          <Button mode={teamSize === 0 ? 'contained' : 'outlined'} onPress={() => setTeamSize(0)}>
-            Všichni proti všem
-          </Button>
+        <SectionLabel color={surfaces.textSecondary}>Základ</SectionLabel>
+        <View style={[styles.group, { backgroundColor: surfaces.surface }]}>
+          <TextInput
+            label="Název tabulky"
+            placeholder="např. Naše nedělní liga"
+            value={name}
+            onChangeText={setName}
+            mode="outlined"
+            activeOutlineColor={accent}
+            outlineColor={surfaces.border}
+            textColor={surfaces.text}
+            style={[styles.nameInput, { backgroundColor: surfaces.surfaceElevated }]}
+          />
         </View>
 
-        <ThemedText style={{ fontSize: 16, marginBottom: 10, fontWeight: 'bold' }}>
-          Statistiky a řazení
-        </ThemedText>
+        <SectionLabel color={surfaces.textSecondary}>Formát</SectionLabel>
+        <View style={[styles.group, styles.chipGroup, { backgroundColor: surfaces.surface }]}>
+          <View style={styles.chipRow}>
+            {teamOptions.map((opt) => {
+              const selected = teamSize === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setTeamSize(opt.value)}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: selected
+                        ? Brand.primarySoft
+                        : surfaces.surfaceElevated,
+                      borderColor: selected ? accent : surfaces.border,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.chipLabel,
+                      { color: selected ? accent : surfaces.text },
+                    ]}
+                  >
+                    {opt.label}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+          <ThemedText style={[styles.chipHint, { color: surfaces.textSecondary }]}>
+            {teamSize === 0
+              ? 'Všichni proti všem (FFA)'
+              : `Týmy po ${teamSize} hráči`}
+          </ThemedText>
+        </View>
 
-        <OptionRow
-          label="Výhry, remízy a prohry"
-          help="Sloupec V–R–P: kolikrát hráč vyhrál, remízoval a prohrál."
-          checked={config.track_wins_losses}
-          onPress={() => toggle('track_wins_losses', { track_positions: false })}
-        />
-
-        {teamSize === 0 && (
+        <SectionLabel color={surfaces.textSecondary}>Statistiky</SectionLabel>
+        <View style={[styles.group, { backgroundColor: surfaces.surface }]}>
           <OptionRow
-            label="Pódiová umístění (1.–2.–3.)"
-            help="Počet prvních, druhých a třetích míst (typicky FFA turnaje)."
-            checked={config.track_positions}
-            onPress={() => toggle('track_positions', { track_wins_losses: false })}
+            label="Výhry, remízy a prohry"
+            help="Sloupec V–R–P"
+            checked={config.track_wins_losses}
+            onPress={() => toggle('track_wins_losses', { track_positions: false })}
+            surfaces={surfaces}
+            accent={accent}
           />
-        )}
-
-        <OptionRow
-          label="% výher"
-          help="Podíl výher ze všech zápasů hráče (0–100 %)."
-          checked={config.track_winrate}
-          onPress={() => toggle('track_winrate')}
-        />
-
-        <OptionRow
-          label="Forma (posledních 5)"
-          help="Řetězec W/L/D z posledních pěti zápasů (např. WWLWD)."
-          checked={config.track_form}
-          onPress={() => toggle('track_form')}
-        />
-
-        <OptionRow
-          label="ELO rating"
-          help="Skill rating (start 1500). Po zápase se mění podle soupeře; u setů bere v úvahu sety i gamy."
-          checked={config.track_elo}
-          onPress={() => toggle('track_elo')}
-        />
-
-        <ThemedText style={{ fontSize: 13, color: '#888', marginTop: 12, marginBottom: 4 }}>
-          Způsob skóre (vyber jedno)
-        </ThemedText>
-
-        <OptionRow
-          label="Přesné skóre (góly / sety)"
-          help="Ukládá skóre pro i proti soupeři. Umožní zápis po setech (padel, tenis…)."
-          checked={config.track_score}
-          onPress={() =>
-            setConfig((prev) => ({
-              ...prev,
-              track_score: !prev.track_score,
-              track_average: false,
-              track_score_diff: !prev.track_score ? prev.track_score_diff : false,
-              track_set_stats: !prev.track_score ? prev.track_set_stats : false,
-              track_best_score: false,
-            }))
-          }
-        />
-
-        <OptionRow
-          label="Průměr bodů na zápas"
-          help="Součet bodů ÷ počet zápasů (bowling, šipky). Bez soupeřova skóre."
-          checked={config.track_average}
-          onPress={() =>
-            setConfig((prev) => ({
-              ...prev,
-              track_average: !prev.track_average,
-              track_score: false,
-              track_score_diff: false,
-              track_set_stats: false,
-              track_best_score: !prev.track_average ? true : prev.track_best_score,
-            }))
-          }
-        />
-
-        {config.track_score && (
-          <>
+          {teamSize === 0 && (
             <OptionRow
-              label="Rozdíl skóre (+ / −)"
-              help="Součet (skóre pro − skóre proti) přes všechny zápasy."
-              checked={config.track_score_diff}
-              onPress={() => toggle('track_score_diff')}
+              label="Pódiová umístění (1.–2.–3.)"
+              help="Typicky FFA turnaje"
+              checked={config.track_positions}
+              onPress={() => toggle('track_positions', { track_wins_losses: false })}
+              surfaces={surfaces}
+              accent={accent}
             />
+          )}
+          <OptionRow
+            label="% výher"
+            help="Podíl výher ze všech zápasů"
+            checked={config.track_winrate}
+            onPress={() => toggle('track_winrate')}
+            surfaces={surfaces}
+            accent={accent}
+          />
+          <OptionRow
+            label="Forma (posledních 5)"
+            help="např. WWLWD"
+            checked={config.track_form}
+            onPress={() => toggle('track_form')}
+            surfaces={surfaces}
+            accent={accent}
+          />
+          <OptionRow
+            label="ELO rating"
+            help="Skill rating, start 1500"
+            checked={config.track_elo}
+            onPress={() => toggle('track_elo')}
+            surfaces={surfaces}
+            accent={accent}
+            last
+          />
+        </View>
+
+        <SectionLabel color={surfaces.textSecondary}>Skóre</SectionLabel>
+        <View style={[styles.group, { backgroundColor: surfaces.surface }]}>
+          <OptionRow
+            label="Přesné skóre (góly / sety)"
+            help="Skóre pro i proti; zápis po setech"
+            checked={config.track_score}
+            onPress={() =>
+              setConfig((prev) => ({
+                ...prev,
+                track_score: !prev.track_score,
+                track_average: false,
+                track_score_diff: !prev.track_score ? prev.track_score_diff : false,
+                track_set_stats: !prev.track_score ? prev.track_set_stats : false,
+                track_best_score: false,
+              }))
+            }
+            surfaces={surfaces}
+            accent={accent}
+          />
+          <OptionRow
+            label="Průměr bodů na zápas"
+            help="Bowling, šipky… bez soupeřova skóre"
+            checked={config.track_average}
+            onPress={() =>
+              setConfig((prev) => ({
+                ...prev,
+                track_average: !prev.track_average,
+                track_score: false,
+                track_score_diff: false,
+                track_set_stats: false,
+                track_best_score: !prev.track_average ? true : prev.track_best_score,
+              }))
+            }
+            surfaces={surfaces}
+            accent={accent}
+            last={!config.track_score && !config.track_average}
+          />
+          {config.track_score && (
+            <>
+              <OptionRow
+                label="Rozdíl skóre (+ / −)"
+                help="Součet (pro − proti)"
+                checked={config.track_score_diff}
+                onPress={() => toggle('track_score_diff')}
+                surfaces={surfaces}
+                accent={accent}
+              />
+              <OptionRow
+                label="Zapisovat sety"
+                help="Padel, tenis — výchozí zápis po setech + statistiky setů"
+                checked={config.track_set_stats}
+                onPress={() => toggle('track_set_stats')}
+                surfaces={surfaces}
+                accent={accent}
+                last={!config.track_average}
+              />
+            </>
+          )}
+          {config.track_average && (
             <OptionRow
-              label="Sety a gamy"
-              help="Součty vyhraných/prohraných setů a gamů z zápasů zapsaných po setech."
-              checked={config.track_set_stats}
-              onPress={() => toggle('track_set_stats')}
+              label="Nejlepší výkon"
+              help="Nejvyšší / nejnižší skóre v zápase"
+              checked={config.track_best_score}
+              onPress={() => toggle('track_best_score')}
+              surfaces={surfaces}
+              accent={accent}
+              last
             />
-          </>
-        )}
+          )}
+        </View>
 
-        {config.track_average && (
+        <SectionLabel color={surfaces.textSecondary}>Další</SectionLabel>
+        <View style={[styles.group, { backgroundColor: surfaces.surface }]}>
           <OptionRow
-            label="Nejlepší výkon"
-            help="Nejvyšší (nebo nejnižší, pokud „menší vyhrává“) skóre v jednom zápase."
-            checked={config.track_best_score}
-            onPress={() => toggle('track_best_score')}
+            label="Poslední zápas"
+            help="Datum posledního zápasu hráče"
+            checked={config.track_last_played}
+            onPress={() => toggle('track_last_played')}
+            surfaces={surfaces}
+            accent={accent}
+            last={!(config.track_score || config.track_average)}
           />
-        )}
-
-        <OptionRow
-          label="Poslední zápas"
-          help="Datum posledního odehraného zápasu hráče."
-          checked={config.track_last_played}
-          onPress={() => toggle('track_last_played')}
-        />
-
-        {(config.track_score || config.track_average) && (
-          <OptionRow
-            label="Menší skóre vyhrává"
-            help="Pro golf, běh atd. — nižší číslo = lepší výsledek."
-            checked={config.lower_is_better}
-            onPress={() => toggle('lower_is_better')}
-          />
-        )}
+          {(config.track_score || config.track_average) && (
+            <OptionRow
+              label="Menší skóre vyhrává"
+              help="Golf, běh…"
+              checked={config.lower_is_better}
+              onPress={() => toggle('lower_is_better')}
+              surfaces={surfaces}
+              accent={accent}
+              last
+            />
+          )}
+        </View>
 
         <Button
           mode="contained"
           onPress={handleCreate}
           loading={loading}
           disabled={!name.trim() || loading}
-          style={{ marginTop: 30, paddingVertical: 5 }}
-          buttonColor="#FF00AA"
+          style={styles.createBtn}
+          contentStyle={styles.createBtnContent}
+          buttonColor={accent}
+          textColor={onAccent}
+          labelStyle={{ fontWeight: '700', fontSize: 16 }}
+          icon="trophy"
         >
           Založit tabulku
         </Button>
-
-        <Button mode="text" onPress={() => router.back()} style={{ marginTop: 10 }} textColor="#888">
-          Zrušit
-        </Button>
-      </ScrollView>
-    </ThemedView>
+      </KeyboardScreen>
+    </ThemedSafeView>
   );
 }
 
 const styles = StyleSheet.create({
-  checkboxRow: {
+  container: { flex: 1 },
+  topBar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
-    gap: 4,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    minHeight: 48,
   },
-  help: {
+  backBtn: { padding: 8, width: 40 },
+  topTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700' },
+  scroll: { paddingHorizontal: 16, paddingBottom: 40 },
+  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
+  coverCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  coverPreview: { width: 96, height: 96, borderRadius: 48 },
+  coverMeta: { flex: 1, gap: 2 },
+  coverTitle: { fontSize: 16, fontWeight: '600' },
+  sectionLabel: {
     fontSize: 12,
-    color: '#888',
-    marginTop: 2,
-    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: 18,
+    marginBottom: 8,
+    marginLeft: 4,
   },
+  group: { borderRadius: 16, overflow: 'hidden' },
+  nameInput: { margin: 12 },
+  chipGroup: { padding: 12, gap: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  chipLabel: { fontSize: 14, fontWeight: '700' },
+  chipHint: { fontSize: 12, marginTop: 4 },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  optionText: { flex: 1, gap: 2 },
+  optionTitle: { fontSize: 15, fontWeight: '600' },
+  optionHelp: { fontSize: 12, lineHeight: 16 },
+  createBtn: { marginTop: 28, borderRadius: 14 },
+  createBtnContent: { paddingVertical: 6 },
 });

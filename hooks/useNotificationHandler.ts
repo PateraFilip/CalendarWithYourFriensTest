@@ -119,7 +119,7 @@ export function useNotificationHandler() {
           });
         } else if (data?.eventDay) {
           router.push({
-            pathname: '/(tabs)/explore',
+            pathname: '/(tabs)/',
             params: { calendar: '0', day: data.eventDay as string },
           });
         }

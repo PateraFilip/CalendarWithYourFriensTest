@@ -147,7 +147,8 @@ CREATE TABLE IF NOT EXISTS leagues (
   is_global    BOOLEAN NOT NULL DEFAULT FALSE,
   created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ
+  updated_at   TIMESTAMPTZ,
+  image_url    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS league_players (

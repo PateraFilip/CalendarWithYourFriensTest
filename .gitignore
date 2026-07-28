@@ -17,6 +17,7 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.keystore
 
 # Metro
 .metro-health-check*
@@ -30,9 +31,22 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env / secrets (nikdy necommittovat)
 .env
+.env.*
+!.env.example
+!supabase/scripts/.env.migration.example
+.env.migration
+**/service-account*.json
+**/firebase-adminsdk*.json
+**/FIREBASE_SERVICE_ACCOUNT*
+
+# Firebase Android client config obsahuje API klíče.
+# Pro privátní repo můžeš soubor v gitu nechat (EAS ho potřebuje).
+# Pro veřejné repo odkomentuj a dej soubor přes EAS File secret:
+# google-services.json
+# app/google-services.json
+# GoogleService-Info.plist
 
 # debug / local dumps (may contain secrets)
 *.log
@@ -41,6 +55,7 @@ check_triggers.js
 call_check_webhooks.js
 supabase_migrate.js
 check_schema.ts
+supabase/migration-dump/
 
 # typescript
 *.tsbuildinfo
@@ -53,4 +68,5 @@ app-example
 
 # APK > 100 MB — GitHub odmítne push; hostuj přes GitHub Releases (ne v gitu)
 *.apk
+*.aab
 public/downloads/*.apk

@@ -1,6 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { EmptyState } from './EmptyState';
 import { ThemedText } from './themed-text';
+import { Brand } from '@/constants/brand';
 import { router, useFocusEffect } from 'expo-router';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import dayjs from 'dayjs';
@@ -50,10 +52,10 @@ export default function EventChatsList(_props: EventChatsListProps) {
     const owner = users.find((u) => String(u.id) === String(item.user_id));
     const ownerName = owner ? owner.username : 'Neznámý';
     const userColorInfo = colors.find((c) => String(c.user_id) === String(item.user_id));
-    const userColor = userColorInfo ? userColorInfo.background_color : '#FF00AA';
+    const userColor = userColorInfo ? userColorInfo.background_color : Brand.primary;
     const isGroup = item.is_group;
-    const itemBorderColor = isGroup ? '#FF00AA' : userColor;
-    const itemBgColor = isGroup ? 'rgba(255,0,170,0.08)' : `${userColor}1A`;
+    const itemBorderColor = isGroup ? Brand.groupEvent : userColor;
+    const itemBgColor = isGroup ? Brand.primarySoft : `${userColor}1A`;
 
     return (
       <TouchableOpacity
@@ -97,7 +99,7 @@ export default function EventChatsList(_props: EventChatsListProps) {
           style={{
             fontSize: 12,
             opacity: 0.8,
-            color: isGroup ? '#FF00AA' : userColor,
+            color: isGroup ? Brand.groupEvent : userColor,
             fontWeight: 'bold',
           }}
         >
@@ -117,7 +119,7 @@ export default function EventChatsList(_props: EventChatsListProps) {
   if (booting && !ready) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color={Brand.primary} />
       </View>
     );
   }
@@ -137,9 +139,13 @@ export default function EventChatsList(_props: EventChatsListProps) {
         </ThemedText>
       )}
       {chatRooms.length === 0 ? (
-        <View style={[styles.container, styles.centered]}>
-          <ThemedText style={{ opacity: 0.6 }}>Zatím nemáš žádné aktivní chaty.</ThemedText>
-        </View>
+        <EmptyState
+          icon="message-outline"
+          title="Zatím žádné chaty"
+          subtitle="Otevři chat k události přes tlačítko níže, nebo počkej na první zprávu."
+          actionLabel="+ Zahájit chat"
+          onAction={() => setIsModalVisible(true)}
+        />
       ) : (
         <FlatList
           data={chatRooms}
@@ -201,7 +207,7 @@ export default function EventChatsList(_props: EventChatsListProps) {
               style={[styles.closeButton, { borderColor }]}
               onPress={() => setIsModalVisible(false)}
             >
-              <ThemedText style={{ color: '#FF00AA' }}>Zavřít</ThemedText>
+              <ThemedText style={{ color: Brand.primary }}>Zavřít</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -220,7 +226,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 24,
-    backgroundColor: '#FF00AA',
+    backgroundColor: Brand.primary,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 30,
@@ -230,7 +236,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 3,
   },
-  fabText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  fabText: { color: Brand.onPrimary, fontWeight: 'bold', fontSize: 16 },
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -251,10 +257,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#FF00AA',
+    borderColor: Brand.primary,
   },
-  filterChipActive: { backgroundColor: '#FF00AA' },
-  filterChipText: { fontSize: 13, color: '#FF00AA' },
+  filterChipActive: { backgroundColor: Brand.primary },
+  filterChipText: { fontSize: 13, color: Brand.primary },
   closeButton: {
     marginTop: 16,
     paddingVertical: 10,

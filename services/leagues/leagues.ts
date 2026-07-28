@@ -11,6 +11,7 @@ export interface League {
   created_by: string | null;
   created_at: string;
   updated_at?: string;
+  image_url?: string | null;
 }
 
 export interface LeaguePlayer {
@@ -147,6 +148,31 @@ export const createLeague = async (leagueData: {
 
   return data as League;
 };
+
+export async function updateLeagueConfig(
+  leagueId: number,
+  partialConfig: Record<string, unknown>
+): Promise<League> {
+  const { data: current, error: fetchError } = await supabase
+    .from('leagues')
+    .select('config')
+    .eq('id', leagueId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const nextConfig = { ...(current?.config || {}), ...partialConfig };
+
+  const { data, error } = await supabase
+    .from('leagues')
+    .update({ config: nextConfig })
+    .eq('id', leagueId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as League;
+}
 
 const joinLeague = async (leagueId: number, userId: string, trackElo?: boolean) => {
   const { data: existing } = await supabase

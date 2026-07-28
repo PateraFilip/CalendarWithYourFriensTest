@@ -1,9 +1,11 @@
+import { EmptyState } from '@/components/EmptyState';
 import React, { useCallback } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import dayjs from 'dayjs';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Brand } from '@/constants/brand';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { markNotificationRead, markAllNotificationsRead } from '@/services/notifications/notifications';
 import { useAppData } from '@/contexts/AppDataContext';
@@ -76,12 +78,13 @@ export default function NotificationsInbox({ currentUserId }: NotificationsInbox
 
   if (notifications.length === 0) {
     return (
-      <ThemedView style={styles.center}>
-        <ThemedText style={{ opacity: 0.6 }}>Zatím žádná oznámení</ThemedText>
-        <Pressable onPress={() => refreshNotifications()} style={{ marginTop: 12 }}>
-          <ThemedText style={{ color: '#FF00AA' }}>Obnovit</ThemedText>
-        </Pressable>
-      </ThemedView>
+      <EmptyState
+        icon="bell-outline"
+        title="Zatím žádná oznámení"
+        subtitle="Jakmile se něco nového objeví, dáme ti vědět."
+        actionLabel="Obnovit"
+        onAction={() => refreshNotifications()}
+      />
     );
   }
 
@@ -123,13 +126,15 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   list: { padding: 12, paddingBottom: 32 },
   row: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
     padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 10,
   },
   unread: {
     borderLeftWidth: 3,
-    borderLeftColor: '#FF00AA',
+    borderLeftColor: Brand.primary,
   },
 });

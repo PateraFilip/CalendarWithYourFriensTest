@@ -3,9 +3,40 @@ import { wallTimeToLocalDate } from '@/lib/eventDates';
 import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import { fetchInvitedSeriesIds } from '@/services/events/invites';
-import { fetchMyFriendships } from '@/services/friends/friendships';
+import {
+  fetchMyFriendships,
+  type Friendship,
+} from '@/services/friends/friendships';
 
 const DAY_SHORT = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+
+export type MappedEventException = {
+  id: number;
+  start: Date;
+  end: Date;
+  event_id: number;
+  typ: string;
+  puvodni_start: Date;
+  puvodni_end: Date;
+};
+
+function mapRawExceptions(exceptions: any[]): MappedEventException[] {
+  return (exceptions || []).map((e: any) => {
+    const startTime = e.cas_od ?? '00:00';
+    const endTime = e.cas_do ?? '23:59';
+    const startTimeOriginal = e.puvodni_cas_od ?? '00:00';
+    const endTimeOriginal = e.puvodni_cas_do ?? '23:59';
+    return {
+      id: e.id,
+      start: new Date(`${e.den_od}T${startTime}`),
+      end: new Date(`${e.den_do ?? e.den_od}T${endTime}`),
+      event_id: e.series_id ?? e.event_id,
+      typ: e.typ,
+      puvodni_start: new Date(`${e.puvodni_den}T${startTimeOriginal}`),
+      puvodni_end: new Date(`${e.puvodni_den}T${endTimeOriginal}`),
+    };
+  });
+}
 
 function mapRawToEvent(e: {
   id?: number;
@@ -125,6 +156,10 @@ function buildEventFromSeries(
 export type FetchEventsOptions = {
   /** Padding kolem start/end (default 60). Pro rychlý první paint použij menší hodnotu. */
   paddingDays?: number;
+  /** Už načtená friendship data — přeskočí fetchMyFriendships. */
+  friendships?: Friendship[];
+  /** Už načtené pozvané série — přeskočí fetchInvitedSeriesIds. */
+  invitedSeriesIds?: number[];
 };
 
 async function fetchEventsFromSupabase(
@@ -132,7 +167,7 @@ async function fetchEventsFromSupabase(
   startDate?: Date,
   endDate?: Date,
   options?: FetchEventsOptions
-): Promise<any[]> {
+): Promise<{ events: any[]; exceptions: MappedEventException[] }> {
   const padding = options?.paddingDays ?? 60;
   const from = startDate
     ? dayjs(startDate).subtract(padding, 'day')
@@ -144,12 +179,18 @@ async function fetchEventsFromSupabase(
   // Vlastní + osobní přátel + skupinové, kam jsem pozván
   const userIdStr = userId.toString();
   const [invitedSeriesIds, friendships] = await Promise.all([
-    fetchInvitedSeriesIds(userIdStr),
-    fetchMyFriendships(userIdStr),
+    options?.invitedSeriesIds
+      ? Promise.resolve(options.invitedSeriesIds)
+      : fetchInvitedSeriesIds(userIdStr),
+    options?.friendships
+      ? Promise.resolve(options.friendships)
+      : fetchMyFriendships(userIdStr),
   ]);
   const friendIds = friendships
     .filter((f) => f.status === 'accepted')
-    .map((f) => (String(f.user_id) === userIdStr ? String(f.friend_id) : String(f.user_id)));
+    .map((f) =>
+      String(f.user_id) === userIdStr ? String(f.friend_id) : String(f.user_id)
+    );
 
   const { data: ownSeries, error: ownError } = await supabase
     .from('event_series')
@@ -158,7 +199,7 @@ async function fetchEventsFromSupabase(
 
   if (ownError) {
     console.error('event_series own:', ownError.message);
-    return [];
+    return { events: [], exceptions: [] };
   }
 
   let friendsPersonalSeries: any[] = [];
@@ -377,7 +418,10 @@ async function fetchEventsFromSupabase(
     }
   }
 
-  return dedupeCalendarEvents(result);
+  return {
+    events: dedupeCalendarEvents(result),
+    exceptions: mapRawExceptions(exceptions),
+  };
 }
 
 export const fetchEvents = async (
@@ -386,5 +430,21 @@ export const fetchEvents = async (
   endDate?: Date,
   options?: FetchEventsOptions
 ): Promise<any[]> => {
+  const { events } = await fetchEventsFromSupabase(
+    userId,
+    startDate,
+    endDate,
+    options
+  );
+  return events;
+};
+
+/** Události + mapované výjimky z jednoho průchodu (bez druhého DB round-tripu). */
+export const fetchEventsBundle = async (
+  userId: string | number,
+  startDate?: Date,
+  endDate?: Date,
+  options?: FetchEventsOptions
+): Promise<{ events: any[]; exceptions: MappedEventException[] }> => {
   return fetchEventsFromSupabase(userId, startDate, endDate, options);
 };

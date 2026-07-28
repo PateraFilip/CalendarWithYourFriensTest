@@ -19,6 +19,7 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'calendar.fill': 'calendar-month',
+  'bell.fill': 'notifications',
   'person.fill': 'person',
   'plus.circle.fill': 'event',
   'list.bullet.rectangle.fill': 'format-list-numbered',
@@ -27,6 +28,7 @@ const MAPPING = {
   'person.2.fill': 'people',
   'gearshape.fill': 'settings',
   'filter.fill': 'filter-alt',
+  'line.3.horizontal': 'menu',
 } as const satisfies Record<string, string>;
 
 

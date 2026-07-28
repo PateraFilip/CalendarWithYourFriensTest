@@ -1,3 +1,4 @@
+import { Brand, BrandSurfaces } from '@/constants/brand'
 import { createPatternEvent } from '@/services/events/create_event'
 
 import { createException } from '@/services/events/create_exception'
@@ -32,17 +33,20 @@ import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
 
 import { useThemeColor } from '@/hooks/use-theme-color'
+import { useColorScheme } from '@/hooks/use-color-scheme'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppDataOptional } from '@/contexts/AppDataContext'
 
 import { getSafeDates } from '@/lib/eventDates'
 import { supabase } from '@/lib/supabaseClient'
 
 import dayjs from 'dayjs'
+import 'dayjs/locale/cs'
 
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 
-import { ArrowLeft } from 'lucide-react-native'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 
 import React, { useEffect, useState } from 'react'
 
@@ -54,25 +58,38 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
+    TextInput as RNTextInput,
     View,
 } from 'react-native'
 
 import EventMap from '@/components/EventMap'
+import { FormChip, WhenRow } from '@/components/formUi'
+import { LocationAutocomplete } from '@/components/LocationAutocomplete'
+import { SelectablePeopleList } from '@/components/SelectablePeopleList'
 
 import {
     Button,
     Dialog,
     IconButton,
     Modal,
-    TextInput as PaperTextInput,
     Portal,
-    TextInput,
-    Switch,
 } from 'react-native-paper'
 
 import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates'
 
 LogBox.ignoreLogs(['VirtualizedLists should never be nested'])
+
+function userInitials(u?: {
+    jmeno?: string | null
+    prijmeni?: string | null
+    username?: string | null
+} | null): string {
+    if (!u) return '?'
+    const a = (u.jmeno || '').trim().charAt(0)
+    const b = (u.prijmeni || '').trim().charAt(0)
+    if (a || b) return `${a}${b}`.toUpperCase()
+    return (u.username || '?').slice(0, 2).toUpperCase()
+}
 
 interface User {
     id: number
@@ -124,11 +141,21 @@ export default function EventDetail() {
     const [userEvents, setUserEvents] = useState<UserEvent[]>([])
 
     const { user } = useAuth()
+    const appData = useAppDataOptional()
 
-    const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
+    const scheme = useColorScheme() ?? 'light'
+    const surfaces = BrandSurfaces[scheme]
 
-    const buttonTextColor = useThemeColor(
-        { light: '#fff', dark: '#000' },
+    const buttonColor = Brand.primary
+
+    const buttonTextColor = Brand.onPrimary
+
+    const chipInactive = useThemeColor(
+        { light: '#3c4043', dark: '#E8EAED' },
+        'text'
+    )
+    const chipInactiveBorder = useThemeColor(
+        { light: '#80868b', dark: '#BDC1C6' },
         'text'
     )
 
@@ -142,15 +169,9 @@ export default function EventDetail() {
         'background'
     )
 
-    const borderColorTheme = useThemeColor(
-        { light: '#e5e5ea', dark: '#38383a' },
-        'border'
-    )
+    const borderColorTheme = surfaces.border
 
-    const secondaryTextColor = useThemeColor(
-        { light: '#666', dark: '#aaa' },
-        'text'
-    )
+    const secondaryTextColor = surfaces.textSecondary
 
     const [isModalVisible, setModalVisible] = useState(false)
 
@@ -187,9 +208,6 @@ export default function EventDetail() {
         eventObj?.longitude || null
     )
 
-    const [locationResults, setLocationResults] = useState<any[]>([])
-
-    const [isSearchingLocation, setIsSearchingLocation] = useState(false)
     const [actionBusy, setActionBusy] = useState(false)
 
     const [peopleCount, setPeopleCount] = useState(eventObj?.pocet_lidi || 2)
@@ -546,39 +564,6 @@ export default function EventDetail() {
         }
     }
 
-    useEffect(() => {
-        const delayDebounceFn = setTimeout(async () => {
-            if (poloha.length > 2) {
-                setIsSearchingLocation(true)
-
-                try {
-                    const response = await fetch(
-                        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(poloha)}&format=json&addressdetails=1&limit=5&countrycodes=cz,sk`,
-                        {
-                            headers: {
-                                'User-Agent':
-                                    'share calendar with you friends/1.0',
-                                Accept: 'application/json',
-                            },
-                        }
-                    )
-
-                    if (response.ok) {
-                        const data = await response.json()
-                        setLocationResults(data)
-                    }
-                } catch (err) {
-                } finally {
-                    setIsSearchingLocation(false)
-                }
-            } else {
-                setLocationResults([])
-            }
-        }, 600)
-
-        return () => clearTimeout(delayDebounceFn)
-    }, [poloha])
-
     if (isLoadingEvent)
         return (
             <ThemedSafeView
@@ -599,9 +584,46 @@ export default function EventDetail() {
             </ThemedSafeView>
         )
 
-    const formatDate = (d: string | Date) => dayjs(d).format('DD. MM. YYYY')
+    const formatDate = (d: string | Date) => dayjs(d).format('D. M. YYYY')
 
-    const formatTime = (d: string | Date) => dayjs(d).format('HH:mm')
+    const formatTime = (d?: string | Date | null) =>
+        d ? dayjs(d).format('H:mm') : '—'
+
+    const formatWhen = (date?: Date | null, time?: Date | null) => {
+        if (!date && !time) return 'Vyber datum a čas'
+        const d = date || time
+        const t = time || date
+        if (!d || !t) return 'Vyber datum a čas'
+        return `${dayjs(d)
+            .format('ddd D. M.')
+            .replace(/\.$/, '')
+            .replace(/^./, (c) => c.toUpperCase())} · ${dayjs(t).format('H:mm')}`
+    }
+
+    const founderId = String(
+        eventObj.user_id ?? eventObj.zakladatel_id ?? user?.id ?? ''
+    )
+    const founderColor =
+        colors.find((c) => String(c.user_id) === founderId)
+            ?.background_color || Brand.primary
+    const accentColor = isGroupEvent ? Brand.groupEvent : founderColor
+
+    const editModalTitle =
+        editField === 'title'
+            ? 'Název'
+            : editField === 'location'
+              ? 'Místo'
+              : editField === 'capacity'
+                ? 'Typ, kapacita a lidé'
+                : editField === 'participants'
+                  ? 'Účastníci'
+                  : editField === 'datetime'
+                    ? !eventObj.pravidelnost && !eventObj.group_id
+                        ? 'Datum a čas'
+                        : editAllInstances
+                          ? 'Úprava řady / cyklu'
+                          : 'Výjimka pro den'
+                    : 'Úprava'
 
     const increase = () => setPeopleCount((prev) => prev + 1)
 
@@ -644,6 +666,61 @@ export default function EventDetail() {
 
     // --- JEDNOTNÁ FUNKCE PRO KLIKNUTÍ NA JAKOUKOLIV TUŽKU ---
 
+    const loadPeopleForEdit = () => {
+        const isRecurring = !!eventObj.pravidelnost
+
+        if (!editAllInstances && isRecurring) {
+            const instanceDateStr = dayjs(
+                eventObj.instance_date || eventObj.start
+            ).format('YYYY-MM-DD')
+            const clearedMarker = userEvents.find(
+                (u) =>
+                    u.event_id === eventObj.id &&
+                    u.instance_date === `CLEARED-${instanceDateStr}`
+            )
+            const instanceSpecificEvents = userEvents.filter(
+                (u) =>
+                    u.event_id === eventObj.id &&
+                    u.instance_date === instanceDateStr
+            )
+
+            if (clearedMarker) {
+                setSelectedParticipants([])
+            } else if (instanceSpecificEvents.length > 0) {
+                setSelectedParticipants(
+                    instanceSpecificEvents.map((ue) => Number(ue.user_id))
+                )
+            } else {
+                setSelectedParticipants(
+                    userEvents
+                        .filter(
+                            (u) =>
+                                u.event_id === eventObj.id && !u.instance_date
+                        )
+                        .map((ue) => Number(ue.user_id))
+                )
+            }
+        } else {
+            setSelectedParticipants(
+                userEvents
+                    .filter(
+                        (u) => u.event_id === eventObj.id && !u.instance_date
+                    )
+                    .map((ue) => Number(ue.user_id))
+            )
+        }
+
+        fetchEventInviteIds(eventObj.id)
+            .then(async (invites) => {
+                if (invites.length > 0) {
+                    setSelectedInvites(invites)
+                } else if (user?.id) {
+                    setSelectedInvites(await getDefaultInviteIds(user.id))
+                }
+            })
+            .catch(console.error)
+    }
+
     const handleEditClick = (
         field: 'title' | 'datetime' | 'capacity' | 'participants' | 'location'
     ) => {
@@ -664,50 +741,11 @@ export default function EventDetail() {
         if (field === 'capacity') {
             setPeopleCount(eventObj.pocet_lidi || 2)
             setIsGroupEvent(!!eventObj.is_group)
+            loadPeopleForEdit()
         }
 
         if (field === 'participants') {
-            const isRecurring = !!eventObj.pravidelnost;
-
-            if (!editAllInstances && isRecurring) {
-                const instanceDateStr = dayjs(
-                    eventObj.instance_date || eventObj.start
-                ).format('YYYY-MM-DD')
-                const clearedMarker = userEvents.find(
-                    (u) => u.event_id === eventObj.id && u.instance_date === `CLEARED-${instanceDateStr}`
-                )
-                const instanceSpecificEvents = userEvents.filter(
-                    (u) => u.event_id === eventObj.id && u.instance_date === instanceDateStr
-                )
-
-                if (clearedMarker) {
-                    setSelectedParticipants([])
-                } else if (instanceSpecificEvents.length > 0) {
-                    setSelectedParticipants(
-                        instanceSpecificEvents.map((ue) => ue.user_id)
-                    )
-                } else {
-                    setSelectedParticipants(
-                        userEvents
-                            .filter((u) => u.event_id === eventObj.id && !u.instance_date)
-                            .map((ue) => ue.user_id)
-                    )
-                }
-            } else {
-                setSelectedParticipants(
-                    userEvents
-                        .filter((u) => u.event_id === eventObj.id && !u.instance_date)
-                        .map((ue) => ue.user_id)
-                )
-            }
-
-            fetchEventInviteIds(eventObj.id).then(async (invites) => {
-                if (invites.length > 0) {
-                    setSelectedInvites(invites)
-                } else if (user?.id) {
-                    setSelectedInvites(await getDefaultInviteIds(user.id))
-                }
-            }).catch(console.error)
+            loadPeopleForEdit()
         }
 
         // Pokud jde o cyklus/sérii nebo multi-date skupinu, vždy vyvoláme Dialog s rozcestníkem rozsahu změn
@@ -945,6 +983,10 @@ export default function EventDetail() {
                 : !!eventObj.is_group
         const isChangingToGroup = !eventObj.is_group && finalIsGroup
         const isChangingToPrivate = eventObj.is_group && !finalIsGroup
+        const saveParticipants =
+            editField === 'participants' ||
+            (editField === 'capacity' && finalIsGroup) ||
+            editField === 'all'
 
         const newStartDateStr = dayjs(start).format('YYYY-MM-DD')
 
@@ -1029,7 +1071,7 @@ export default function EventDetail() {
             }
 
             // Handle participants for single instance or one-time event
-            if (editField === 'participants') {
+            if (saveParticipants) {
                 const isRecurring = !!eventObj.pravidelnost
 
                 if (isRecurring) {
@@ -1200,7 +1242,7 @@ export default function EventDetail() {
                 }
 
                 // Handle participants for multi-date group (all instances)
-                if (editField === 'participants') {
+                if (saveParticipants) {
                     console.log(
                         'Saving participants for all instances (multi-date group):',
                         { eventId: eventObj.id, selectedParticipants }
@@ -1293,7 +1335,7 @@ export default function EventDetail() {
                 }
 
                 // Handle participants for multi-type series (all instances)
-                if (editField === 'participants') {
+                if (saveParticipants) {
                     console.log(
                         'Saving participants for all instances (multi-type series):',
                         { eventId: eventObj.id, selectedParticipants }
@@ -1428,7 +1470,7 @@ export default function EventDetail() {
                             updatePayload.valid_until ?? eventObj.valid_until,
                     })
 
-                    if (editField === 'participants') {
+                    if (saveParticipants) {
                         await supabase
                             .from('event_users')
                             .delete()
@@ -1505,7 +1547,7 @@ export default function EventDetail() {
         )
         let removed: string[] = []
         let added: string[] = []
-        if (editField === 'participants') {
+        if (saveParticipants) {
             const selectedIds = selectedParticipants.map(String)
             removed = previousParticipantIds.filter((id) => !selectedIds.includes(id))
             added = selectedIds.filter((id) => !previousParticipantIds.includes(id))
@@ -1528,10 +1570,9 @@ export default function EventDetail() {
             }
         }
 
-        const participantRecipients =
-            editField === 'participants'
-                ? selectedParticipants.map(String)
-                : previousParticipantIds
+        const participantRecipients = saveParticipants
+            ? selectedParticipants.map(String)
+            : previousParticipantIds
 
         if (finalIsGroup && user?.id) {
             if (dateChanged) {
@@ -1554,7 +1595,7 @@ export default function EventDetail() {
                 }).catch(console.error)
             }
 
-            if (editField === 'participants' && (added.length > 0 || removed.length > 0)) {
+            if (saveParticipants && (added.length > 0 || removed.length > 0)) {
                 const getNames = (ids: string[]) =>
                     ids
                         .map(
@@ -1683,7 +1724,40 @@ export default function EventDetail() {
         }
         // KONEC SYSTÉMOVÝCH ZPRÁV / OZNÁMENÍ
 
+        // Okamžitě propsat změny do detailu + kalendářové cache
+        setEventObj((prev: any) =>
+            prev
+                ? {
+                      ...prev,
+                      ...(payload.title !== undefined
+                          ? { title: payload.title, nazev: payload.title }
+                          : {}),
+                      ...(payload.poloha !== undefined
+                          ? { poloha: payload.poloha }
+                          : {}),
+                      ...(payload.latitude !== undefined
+                          ? { latitude: payload.latitude }
+                          : {}),
+                      ...(payload.longitude !== undefined
+                          ? { longitude: payload.longitude }
+                          : {}),
+                      ...(payload.peopleCount !== undefined
+                          ? { pocet_lidi: payload.peopleCount }
+                          : {}),
+                      ...(payload.is_group !== undefined
+                          ? { is_group: payload.is_group }
+                          : {}),
+                  }
+                : prev
+        )
+
         setModalVisible(false)
+
+        try {
+            await appData?.refreshTimeline?.(true)
+        } catch (e) {
+            console.error('refreshTimeline after save:', e)
+        }
 
         router.back()
       } catch (e: any) {
@@ -1924,10 +1998,12 @@ export default function EventDetail() {
         ])
     }
 
-    const updateSegmentDays = (id: string, val: string) => {
+    const bumpSegmentDays = (id: string, delta: number) => {
         setPatternSegments((prev) =>
             prev.map((s) =>
-                s.id === id ? { ...s, days: parseInt(val) || 0 } : s
+                s.id === id
+                    ? { ...s, days: Math.max(1, (s.days || 1) + delta) }
+                    : s
             )
         )
     }
@@ -1935,6 +2011,11 @@ export default function EventDetail() {
     const removeSegment = (id: string) => {
         setPatternSegments((prev) => prev.filter((s) => s.id !== id))
     }
+
+    const cycleDaysTotal = patternSegments.reduce(
+        (sum, s) => sum + (s.days || 0),
+        0
+    )
 
     const itemInstanceDate = dayjs(eventObj.start).format('YYYY-MM-DD')
 
@@ -2050,390 +2131,305 @@ export default function EventDetail() {
     const isRepeatingNonPattern =
         !eventObj.pravidelnost && relatedEvents.length > 1
 
+    const isOwner = String(eventObj.user_id) === String(user?.id)
+    const iconAccent = scheme === 'dark' ? Brand.primaryMuted : Brand.primary
+
+    const datePrimary = dayjs(eventObj.start).isSame(eventObj.end, 'day')
+        ? dayjs(eventObj.start).locale('cs').format('dddd D. MMMM YYYY')
+        : `${dayjs(eventObj.start).locale('cs').format('D. MMMM')} – ${dayjs(eventObj.end).locale('cs').format('D. MMMM YYYY')}`
+    const dateSecondary = dayjs(eventObj.start).isSame(eventObj.end, 'day')
+        ? `${formatTime(eventObj.start)} – ${formatTime(eventObj.end)}`
+        : `${formatTime(eventObj.start)} – ${formatTime(eventObj.end)}`
+
+    const polohaRaw = String(eventObj.poloha || '').trim()
+    const polohaParts = polohaRaw
+        ? polohaRaw.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : []
+    const locationPrimary = polohaParts[0] || 'Poloha není zadána'
+    const locationSecondary =
+        polohaParts.length > 1 ? polohaParts.slice(1).join(', ') : null
+
+    const AVATAR_VISIBLE = 7
+    const overflowCount = Math.max(0, relevantUserEvents.length - AVATAR_VISIBLE)
+    const visibleParticipants = relevantUserEvents.slice(0, AVATAR_VISIBLE)
+
+    const privateParticipants =
+        relevantUserEvents.length > 0
+            ? relevantUserEvents
+            : eventObj.user_id
+              ? [{ user_id: eventObj.user_id }]
+              : []
+
+    const sheetParticipants = eventObj.is_group
+        ? relevantUserEvents
+        : privateParticipants
+
+    const openEventChat = () => {
+        const isRecurringOrMulti = !!eventObj.pravidelnost || !!eventObj.group_id
+        const isInstance =
+            isRecurringOrMulti && (!!eventObj.instance_date || !!eventObj.den_od)
+        router.push({
+            pathname: '/events/[id]/chat',
+            params: {
+                id: eventObj.series_id || eventObj.id,
+                event_title: eventObj.title,
+                instance_date: isInstance
+                    ? String(eventObj.instance_date || eventObj.den_od)
+                    : undefined,
+            },
+        })
+    }
+
+    const InfoRow = ({
+        icon,
+        primary,
+        secondary,
+        onEdit,
+        children,
+    }: {
+        icon: React.ComponentProps<typeof MaterialCommunityIcons>['name']
+        primary: string
+        secondary?: string | null
+        onEdit?: () => void
+        children?: React.ReactNode
+    }) => (
+        <View style={styles.infoRow}>
+            <MaterialCommunityIcons name={icon} size={22} color={iconAccent} />
+            <View style={styles.infoTextCol}>
+                <View style={styles.infoPrimaryRow}>
+                    <ThemedText
+                        style={[styles.infoPrimary, { color: surfaces.text }]}
+                        numberOfLines={2}
+                    >
+                        {primary}
+                    </ThemedText>
+                    {isOwner && onEdit ? (
+                        <Pressable onPress={onEdit} hitSlop={10} style={styles.editHint}>
+                            <MaterialCommunityIcons
+                                name="pencil-outline"
+                                size={15}
+                                color={surfaces.textSecondary}
+                            />
+                        </Pressable>
+                    ) : null}
+                </View>
+                {!!secondary && (
+                    <ThemedText
+                        style={[styles.infoSecondary, { color: surfaces.textSecondary }]}
+                        numberOfLines={2}
+                    >
+                        {secondary}
+                    </ThemedText>
+                )}
+                {children}
+            </View>
+        </View>
+    )
+
+    const ParticipantAvatar = ({
+        userId,
+        onPress,
+    }: {
+        userId: string | number
+        onPress: () => void
+    }) => {
+        const participant = users.find((u) => String(u.id) === String(userId))
+        const colorObj = colors.find(
+            (c) => String(c.user_id) === String(userId)
+        )
+        const bg = colorObj?.background_color || '#5F6368'
+        const label = participant?.username || participant?.jmeno || '?'
+
+        return (
+            <Pressable onPress={onPress} style={styles.avatarItem}>
+                <View style={[styles.avatar, { backgroundColor: bg }]}>
+                    <ThemedText style={styles.avatarText}>
+                        {userInitials(participant)}
+                    </ThemedText>
+                </View>
+                <ThemedText
+                    style={[styles.avatarName, { color: surfaces.textSecondary }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                >
+                    {label}
+                </ThemedText>
+            </Pressable>
+        )
+    }
+
     return (
         <>
             <Stack.Screen options={{ headerShown: false }} />
 
-            <ThemedSafeView style={styles.container}>
-                <ThemedView
-                    style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        marginBottom: 12,
-                    }}
-                >
-                    <Pressable onPress={() => router.back()}>
-                        <ArrowLeft size={30} color={buttonColor} />
-                    </Pressable>
-                    <ThemedText type="subtitle" style={{ marginLeft: 20 }}>
-                        Detail události
-                    </ThemedText>
-                    {eventObj.user_id === user?.id && (
-                        <IconButton
-                            icon="trash-can"
-                            iconColor="red"
+            <ThemedSafeView
+                style={[styles.container, { backgroundColor: surfaces.background }]}
+            >
+                <View style={styles.topBar}>
+                    <Pressable
+                        onPress={() => router.back()}
+                        hitSlop={12}
+                        style={styles.iconBtn}
+                    >
+                        <MaterialCommunityIcons
+                            name="arrow-left"
                             size={24}
-                            style={{ marginLeft: 'auto', margin: 0 }}
-                            onPress={handleMainDeletePress}
+                            color={surfaces.text}
                         />
+                    </Pressable>
+                    <View style={{ flex: 1 }} />
+                    {isOwner && (
+                        <Pressable
+                            onPress={handleMainDeletePress}
+                            hitSlop={12}
+                            style={styles.iconBtn}
+                        >
+                            <MaterialCommunityIcons
+                                name="trash-can-outline"
+                                size={22}
+                                color={Brand.danger}
+                            />
+                        </Pressable>
                     )}
-                </ThemedView>
+                </View>
 
                 <ScrollView
-                    contentContainerStyle={{ paddingBottom: 32 }}
+                    contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
                 >
-                    <ThemedView style={styles.field}>
-                        <ThemedView
-                            style={{
-                                flexDirection: 'row',
-                                justifyContent: 'space-between',
-                                alignItems: 'flex-start',
-                            }}
+                    <View style={styles.titleRow}>
+                        <ThemedText
+                            style={[styles.heroTitle, { color: surfaces.text }]}
                         >
-                            <ThemedView style={{ flex: 1 }}>
-                                <ThemedView style={{ flexDirection: 'row', alignItems: 'center', height: 24 }}>
-                                    <ThemedText
-                                        style={[
-                                            styles.label,
-                                            { color: secondaryTextColor, marginBottom: 0, lineHeight: 24 },
-                                        ]}
-                                    >
-                                        Název události
-                                    </ThemedText>
+                            {eventObj.title}
+                        </ThemedText>
+                        {isOwner && (
+                            <Pressable
+                                onPress={() => handleEditClick('title')}
+                                hitSlop={10}
+                                style={styles.editHint}
+                            >
+                                <MaterialCommunityIcons
+                                    name="pencil-outline"
+                                    size={16}
+                                    color={surfaces.textSecondary}
+                                />
+                            </Pressable>
+                        )}
+                    </View>
 
-                                    {eventObj.user_id === user?.id && (
-                                        <IconButton
-                                            style={{ margin: 0, padding: 0, marginLeft: 0 }}
-                                            icon="pencil"
-                                            size={18}
-                                            onPress={() => handleEditClick('title')}
+                    <View style={styles.infoBlock}>
+                        <InfoRow
+                            icon="calendar-month-outline"
+                            primary={
+                                datePrimary.charAt(0).toUpperCase() +
+                                datePrimary.slice(1)
+                            }
+                            secondary={dateSecondary}
+                            onEdit={() => handleEditClick('datetime')}
+                        />
+
+                        <InfoRow
+                            icon="map-marker-outline"
+                            primary={locationPrimary}
+                            secondary={locationSecondary}
+                            onEdit={() => handleEditClick('location')}
+                        />
+
+                        {eventObj.is_group ? (
+                            <InfoRow
+                                icon="account-group-outline"
+                                primary="Účastníci"
+                                secondary={
+                                    eventObj.pocet_lidi
+                                        ? `${count} z ${eventObj.pocet_lidi} se zúčastní`
+                                        : `${count} se zúčastní`
+                                }
+                                onEdit={() => handleEditClick('capacity')}
+                            >
+                                <View style={styles.avatarRow}>
+                                    {visibleParticipants.map((ue) => (
+                                        <ParticipantAvatar
+                                            key={String(ue.user_id)}
+                                            userId={ue.user_id}
+                                            onPress={() =>
+                                                setParticipantModalVisible(true)
+                                            }
                                         />
-                                    )}
-                                </ThemedView>
-
-                                <ThemedView
-                                    style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'flex-start',
-                                        flexShrink: 1,
-                                        marginTop: 0,
-                                    }}
-                                >
-                                    <ThemedText
-                                        style={{ fontSize: 18, flexShrink: 1 }}
-                                    >
-                                        {eventObj.title}
-                                    </ThemedText>
-                                </ThemedView>
-                            </ThemedView>
-
-                            <ThemedView style={{ marginLeft: 16 }}>
-                                {(() => {
-                                    const founder = users.find(
-                                        (u) => u.id === eventObj.user_id
-                                    )
-                                    const colorObj = colors.find(
-                                        (c) =>
-                                            String(c.user_id) ===
-                                            String(eventObj.user_id)
-                                    )
-                                    const dotColor =
-                                        colorObj?.background_color || '#ccc'
-                                    return founder ? (
-                                        <ThemedView>
-                                            <ThemedView style={{ height: 24, justifyContent: 'center' }}>
+                                    ))}
+                                    {overflowCount > 0 && (
+                                        <Pressable
+                                            onPress={() =>
+                                                setParticipantModalVisible(true)
+                                            }
+                                            style={styles.avatarItem}
+                                        >
+                                            <View
+                                                style={[
+                                                    styles.avatar,
+                                                    styles.avatarOverflow,
+                                                    {
+                                                        backgroundColor:
+                                                            surfaces.surfaceElevated,
+                                                        borderColor: surfaces.border,
+                                                    },
+                                                ]}
+                                            >
                                                 <ThemedText
                                                     style={[
-                                                        styles.label,
-                                                        { color: secondaryTextColor, marginBottom: 0, lineHeight: 24 },
+                                                        styles.avatarText,
+                                                        { color: surfaces.text },
                                                     ]}
                                                 >
-                                                    Zakladatel
+                                                    +{overflowCount}
                                                 </ThemedText>
-                                            </ThemedView>
-                                            <ThemedView
-                                                style={{
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    marginTop: 0,
-                                                }}
-                                            >
-                                                <ThemedView
-                                                    style={{
-                                                        width: 8,
-                                                        height: 8,
-                                                        borderRadius: 4,
-                                                        backgroundColor:
-                                                            dotColor,
-                                                        marginRight: 6,
-                                                    }}
-                                                />
-                                                <ThemedText style={{ fontSize: 16 }}>
-                                                    {founder.username}
-                                                </ThemedText>
-                                            </ThemedView>
-                                        </ThemedView>
-                                    ) : null
-                                })()}
-                            </ThemedView>
-                        </ThemedView>
-                    </ThemedView>
-
-
-                    <ThemedView style={styles.field}>
-                        <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                            <ThemedText
-                                style={[
-                                    styles.label,
-                                    { color: secondaryTextColor, marginBottom: 0 },
-                                ]}
-                            >
-                                Datum a čas
-                            </ThemedText>
-                            {eventObj.user_id === user?.id && (
-                                <IconButton
-                                    style={{ margin: 0, padding: 0, marginLeft: 0 }}
-                                    icon="pencil"
-                                    size={18}
-                                    onPress={() => handleEditClick('datetime')}
-                                />
-                            )}
-                        </ThemedView>
-
-                        <ThemedView
-                            style={{
-                                flexDirection: 'row',
-                                justifyContent: 'space-between',
-                                marginTop: 0,
-                            }}
-                        >
-                            <ThemedText>
-                                {dayjs(eventObj.start).isSame(
-                                    eventObj.end,
-                                    'day'
-                                )
-                                    ? `${formatDate(eventObj.start)} ${formatTime(eventObj.start)} - ${formatTime(eventObj.end)}`
-                                    : `${formatDate(eventObj.start)} ${formatTime(eventObj.start)} - ${formatDate(eventObj.end)} ${formatTime(eventObj.end)}`}
-                            </ThemedText>
-                        </ThemedView>
-                    </ThemedView>
-
-                    {eventObj.is_group ? (
-                        <ThemedView style={styles.field}>
-                            <ThemedView
-                                style={{
-                                    flexDirection: 'row',
-                                    justifyContent: 'space-between',
-                                }}
-                            >
-                                <ThemedView
-                                    style={{ flex: 1, marginRight: 16 }}
-                                >
-                                    <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                                        <ThemedText
-                                            style={[
-                                                styles.label,
-                                                { color: secondaryTextColor, marginBottom: 0 },
-                                            ]}
-                                        >
-                                            Účastníci
-                                        </ThemedText>
-                                        {eventObj.user_id === user?.id && (
-                                            <IconButton
-                                                style={{ margin: 0, padding: 0, marginLeft: 0 }}
-                                                icon="pencil"
-                                                size={18}
-                                                onPress={() => handleEditClick('participants')}
-                                            />
-                                        )}
-                                    </ThemedView>
-                                    <ThemedView style={{ marginTop: 0 }}>
-                                        {relevantUserEvents.length > 0 ? (
-                                            <ThemedView
-                                                style={{
-                                                    flexDirection: 'row',
-                                                    flexWrap: 'wrap',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                {relevantUserEvents.map(
-                                                    (ue, idx) => {
-                                                        const participant =
-                                                            users.find(
-                                                                (u) =>
-                                                                    u.id ===
-                                                                    ue.user_id
-                                                            )
-                                                        const colorObj =
-                                                            colors.find(
-                                                                (c) =>
-                                                                    String(
-                                                                        c.user_id
-                                                                    ) ===
-                                                                    String(
-                                                                        ue.user_id
-                                                                    )
-                                                            )
-                                                        const dotColor =
-                                                            colorObj?.background_color ||
-                                                            '#ccc'
-                                                        const name = participant
-                                                            ? participant.username
-                                                            : `User ${ue.user_id}`
-                                                        return (
-                                                            <ThemedView
-                                                                key={ue.user_id}
-                                                                style={{
-                                                                    flexDirection:
-                                                                        'row',
-                                                                    alignItems:
-                                                                        'center',
-                                                                    marginRight: 8,
-                                                                    marginVertical: 2,
-                                                                }}
-                                                            >
-                                                                <View
-                                                                    style={{
-                                                                        width: 8,
-                                                                        height: 8,
-                                                                        borderRadius: 4,
-                                                                        backgroundColor:
-                                                                            dotColor,
-                                                                        marginRight: 4,
-                                                                    }}
-                                                                />
-                                                                <ThemedText>
-                                                                    {name}
-                                                                    {idx <
-                                                                        relevantUserEvents.length -
-                                                                        1
-                                                                        ? ','
-                                                                        : ''}
-                                                                </ThemedText>
-                                                            </ThemedView>
-                                                        )
-                                                    }
-                                                )}
-                                            </ThemedView>
-                                        ) : (
+                                            </View>
                                             <ThemedText
-                                                style={{
-                                                    color: secondaryTextColor,
-                                                }}
+                                                style={[
+                                                    styles.avatarName,
+                                                    { color: surfaces.textSecondary },
+                                                ]}
+                                                numberOfLines={1}
                                             >
-                                                Žádní účastníci
+                                                další
                                             </ThemedText>
-                                        )}
-                                    </ThemedView>
-                                </ThemedView>
-                                <ThemedView>
-                                    <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                                        <ThemedText
-                                            style={[
-                                                styles.label,
-                                                { color: secondaryTextColor, marginBottom: 0 },
-                                            ]}
-                                        >
-                                            Obsazenost
-                                        </ThemedText>
-                                        {eventObj.user_id === user?.id && (
-                                            <IconButton
-                                                style={{ margin: 0, padding: 0, marginLeft: 0 }}
-                                                icon="pencil"
-                                                size={18}
-                                                onPress={() => handleEditClick('capacity')}
-                                            />
-                                        )}
-                                    </ThemedView>
-                                    <ThemedView
-                                        style={{
-                                            flexDirection: 'row',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            marginTop: 0,
-                                        }}
-                                    >
-                                        <ThemedText>
-                                            {count} / {eventObj.pocet_lidi}
-                                        </ThemedText>
-                                    </ThemedView>
-                                </ThemedView>
-                            </ThemedView>
-                        </ThemedView>
-                    ) : (
-                        <ThemedView style={styles.field}>
-                            <ThemedView style={{ flex: 1 }}>
-                                <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                                    <ThemedText
-                                        style={[
-                                            styles.label,
-                                            { color: secondaryTextColor, marginBottom: 0 },
-                                        ]}
-                                    >
-                                        Obsazenost
-                                    </ThemedText>
-                                    {eventObj.user_id === user?.id && (
-                                        <IconButton
-                                            style={{ margin: 0, padding: 0, marginLeft: 0 }}
-                                            icon="pencil"
-                                            size={18}
-                                            onPress={() => handleEditClick('capacity')}
-                                        />
+                                        </Pressable>
                                     )}
-                                </ThemedView>
-                                <ThemedView
-                                    style={{
-                                        flexDirection: 'row',
-                                        justifyContent: 'space-between',
-                                        marginTop: 0,
-                                    }}
-                                >
-                                    <ThemedText>1 / 1</ThemedText>
-                                </ThemedView>
-                            </ThemedView>
-                        </ThemedView>
-                    )}
-
-                    <ThemedView style={styles.field}>
-                        <ThemedView style={{ flex: 1 }}>
-                            <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                                <ThemedText
-                                    style={[
-                                        styles.label,
-                                        { color: secondaryTextColor, marginBottom: 0 },
-                                    ]}
-                                >
-                                    Poloha
-                                </ThemedText>
-                                {eventObj.user_id === user?.id && (
-                                    <IconButton
-                                        style={{ margin: 0, padding: 0, marginLeft: 0 }}
-                                        icon="pencil"
-                                        size={18}
-                                        onPress={() => handleEditClick('location')}
-                                    />
-                                )}
-                            </ThemedView>
-
-                            <ThemedView style={{ marginTop: 0 }}>
-                                <ThemedText>
-                                    {eventObj.poloha || 'Není zadána'}
-                                </ThemedText>
-                            </ThemedView>
-                        </ThemedView>
-                    </ThemedView>
+                                </View>
+                            </InfoRow>
+                        ) : (
+                            <InfoRow
+                                icon="account-outline"
+                                primary={
+                                    privateParticipants.length > 1
+                                        ? 'Účastníci'
+                                        : 'Účastník'
+                                }
+                                onEdit={() => handleEditClick('capacity')}
+                            >
+                                <View style={styles.avatarRow}>
+                                    {privateParticipants.map((ue: any) => (
+                                        <ParticipantAvatar
+                                            key={String(ue.user_id)}
+                                            userId={ue.user_id}
+                                            onPress={() =>
+                                                setParticipantModalVisible(true)
+                                            }
+                                        />
+                                    ))}
+                                </View>
+                            </InfoRow>
+                        )}
+                    </View>
 
                     {eventObj.latitude && eventObj.longitude && (
-                        <>
-                            <ThemedView
-                                style={{
-                                    marginTop: 8,
-                                    borderRadius: 12,
-                                    overflow: 'hidden',
-                                    borderWidth: 1,
-                                    borderColor: borderColorTheme,
-                                }}
+                        <View style={styles.mapBlock}>
+                            <View
+                                style={[
+                                    styles.mapWrap,
+                                    { borderColor: surfaces.border },
+                                ]}
                             >
                                 <EventMap
                                     latitude={Number(eventObj.latitude)}
@@ -2441,92 +2437,229 @@ export default function EventDetail() {
                                     title={eventObj.title}
                                     description={eventObj.poloha}
                                 />
-                            </ThemedView>
-                            <Button
-                                icon="map-marker"
-                                mode="text"
+                            </View>
+                            <Pressable
                                 onPress={() =>
                                     Linking.openURL(
                                         `https://www.google.com/maps/search/?api=1&query=${eventObj.latitude},${eventObj.longitude}`
                                     )
                                 }
-                                style={{
-                                    marginTop: 4,
-                                    alignSelf: 'flex-start',
-                                }}
+                                style={styles.mapsLink}
                             >
-                                Otevřít v Google Maps
-                            </Button>
-                        </>
+                                <MaterialCommunityIcons
+                                    name="open-in-new"
+                                    size={16}
+                                    color={Brand.primary}
+                                />
+                                <ThemedText
+                                    style={{
+                                        color: Brand.primary,
+                                        fontWeight: '600',
+                                        fontSize: 14,
+                                    }}
+                                >
+                                    Otevřít v Mapách
+                                </ThemedText>
+                            </Pressable>
+                        </View>
                     )}
 
-                    <View style={{ marginTop: 24, gap: 12 }}>
+                    <View style={styles.actions}>
                         {eventObj.is_group &&
                             (userJoined ? (
                                 <Button
                                     mode="contained"
-                                    buttonColor="#f44336"
+                                    icon="account-remove-outline"
+                                    buttonColor={Brand.danger}
                                     textColor="#fff"
                                     onPress={handleCancelEvent}
                                     loading={actionBusy}
                                     disabled={actionBusy}
-                                    style={{
-                                        borderRadius: 8,
-                                        paddingVertical: 4,
-                                    }}
+                                    style={styles.primaryBtn}
+                                    contentStyle={styles.primaryBtnContent}
+                                    labelStyle={styles.btnLabel}
                                 >
                                     Zrušit účast
                                 </Button>
                             ) : (
                                 <Button
                                     mode="contained"
-                                    buttonColor={buttonColor}
-                                    textColor={buttonTextColor}
+                                    icon="account-plus-outline"
+                                    buttonColor={Brand.primary}
+                                    textColor={Brand.onPrimary}
                                     onPress={handleJoinEvent}
                                     loading={actionBusy}
                                     disabled={isFull || actionBusy}
-                                    style={{
-                                        borderRadius: 8,
-                                        paddingVertical: 4,
-                                    }}
+                                    style={styles.primaryBtn}
+                                    contentStyle={styles.primaryBtnContent}
+                                    labelStyle={styles.btnLabel}
                                 >
                                     {isFull ? 'Plno' : 'Zúčastnit se'}
                                 </Button>
                             ))}
+
                         <Button
-                            mode="contained"
-                            icon="chat"
-                            onPress={() => {
-                                const isRecurringOrMulti =
-                                    !!eventObj.pravidelnost ||
-                                    !!eventObj.group_id
-                                const isInstance =
-                                    isRecurringOrMulti &&
-                                    (!!eventObj.instance_date ||
-                                        !!eventObj.den_od)
-                                router.push({
-                                    pathname: '/events/[id]/chat',
-                                    params: {
-                                        id: eventObj.series_id || eventObj.id,
-                                        event_title: eventObj.title,
-                                        instance_date: isInstance
-                                            ? String(
-                                                eventObj.instance_date ||
-                                                eventObj.den_od
-                                            )
-                                            : undefined,
-                                    },
-                                })
-                            }}
-                            buttonColor={buttonColor}
-                            textColor={buttonTextColor}
-                            style={{ borderRadius: 8, paddingVertical: 4 }}
+                            mode="outlined"
+                            icon="chat-outline"
+                            textColor={Brand.primary}
+                            onPress={openEventChat}
+                            style={[
+                                styles.secondaryBtn,
+                                { borderColor: Brand.primary },
+                            ]}
+                            contentStyle={styles.primaryBtnContent}
+                            labelStyle={styles.btnLabel}
                         >
-                            Přejít do chatu události
+                            Otevřít chat
                         </Button>
                     </View>
                 </ScrollView>
             </ThemedSafeView>
+
+            <Portal>
+                <Modal
+                    visible={participantModalVisible}
+                    onDismiss={() => setParticipantModalVisible(false)}
+                    contentContainerStyle={[
+                        styles.participantsSheet,
+                        { backgroundColor: surfaces.surface },
+                    ]}
+                >
+                    <View style={styles.participantsSheetHeader}>
+                        <ThemedText
+                            style={[styles.participantsSheetTitle, { color: surfaces.text }]}
+                        >
+                            Účastníci
+                        </ThemedText>
+                        <Pressable
+                            onPress={() => setParticipantModalVisible(false)}
+                            hitSlop={12}
+                        >
+                            <MaterialCommunityIcons
+                                name="close"
+                                size={22}
+                                color={surfaces.textSecondary}
+                            />
+                        </Pressable>
+                    </View>
+
+                    {sheetParticipants.length === 0 ? (
+                        <ThemedText
+                            style={{
+                                color: surfaces.textSecondary,
+                                textAlign: 'center',
+                                paddingVertical: 24,
+                            }}
+                        >
+                            Zatím nikdo.
+                        </ThemedText>
+                    ) : (
+                        <ScrollView style={{ maxHeight: 420 }}>
+                            {sheetParticipants.map((ue: any) => {
+                                const p = users.find(
+                                    (u) => String(u.id) === String(ue.user_id)
+                                )
+                                const colorObj = colors.find(
+                                    (c) =>
+                                        String(c.user_id) === String(ue.user_id)
+                                )
+                                const bg =
+                                    colorObj?.background_color || '#5F6368'
+                                const fullName = [p?.jmeno, p?.prijmeni]
+                                    .filter(Boolean)
+                                    .join(' ')
+                                const isFounder =
+                                    String(ue.user_id) ===
+                                    String(eventObj.user_id)
+                                const isMe =
+                                    String(ue.user_id) === String(user?.id)
+                                const birthday = p?.datum_narozeni
+                                    ? dayjs(p.datum_narozeni)
+                                          .locale('cs')
+                                          .format('D. MMMM YYYY')
+                                    : null
+
+                                return (
+                                    <View
+                                        key={String(ue.user_id)}
+                                        style={[
+                                            styles.participantDetailRow,
+                                            { borderBottomColor: surfaces.border },
+                                        ]}
+                                    >
+                                        <View
+                                            style={[
+                                                styles.avatarLg,
+                                                { backgroundColor: bg },
+                                            ]}
+                                        >
+                                            <ThemedText style={styles.avatarLgText}>
+                                                {userInitials(p)}
+                                            </ThemedText>
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                                            <ThemedText
+                                                style={[
+                                                    styles.participantDetailName,
+                                                    { color: surfaces.text },
+                                                ]}
+                                                numberOfLines={1}
+                                            >
+                                                {p?.username || 'Neznámý'}
+                                                {isMe ? ' · ty' : ''}
+                                            </ThemedText>
+                                            {!!fullName && (
+                                                <ThemedText
+                                                    style={{
+                                                        color: surfaces.textSecondary,
+                                                        fontSize: 13,
+                                                    }}
+                                                    numberOfLines={1}
+                                                >
+                                                    {fullName}
+                                                </ThemedText>
+                                            )}
+                                            {!!p?.email && (
+                                                <ThemedText
+                                                    style={{
+                                                        color: surfaces.textSecondary,
+                                                        fontSize: 12,
+                                                    }}
+                                                    numberOfLines={1}
+                                                >
+                                                    {p.email}
+                                                </ThemedText>
+                                            )}
+                                            {!!birthday && (
+                                                <ThemedText
+                                                    style={{
+                                                        color: surfaces.textSecondary,
+                                                        fontSize: 12,
+                                                    }}
+                                                >
+                                                    Narozeniny: {birthday}
+                                                </ThemedText>
+                                            )}
+                                            {isFounder && (
+                                                <ThemedText
+                                                    style={{
+                                                        color: Brand.primary,
+                                                        fontSize: 12,
+                                                        fontWeight: '700',
+                                                        marginTop: 2,
+                                                    }}
+                                                >
+                                                    Zakladatel
+                                                </ThemedText>
+                                            )}
+                                        </View>
+                                    </View>
+                                )
+                            })}
+                        </ScrollView>
+                    )}
+                </Modal>
+            </Portal>
 
             {/* DIALOG: ROZCESTNÍK ROZSAHU ÚPRAV */}
             <Portal>
@@ -2704,157 +2837,378 @@ export default function EventDetail() {
                             { backgroundColor: modalBackgroundColor },
                         ]}
                     >
+                        <View
+                            style={[
+                                styles.editModalHeader,
+                                { borderBottomColor: borderColorTheme },
+                            ]}
+                        >
+                            <View style={{ flex: 1 }}>
+                                <ThemedText style={styles.editModalTitle}>
+                                    {editModalTitle}
+                                </ThemedText>
+                                {(eventObj.pravidelnost || eventObj.group_id) &&
+                                    editField === 'datetime' && (
+                                        <ThemedText
+                                            style={{
+                                                color: secondaryTextColor,
+                                                fontSize: 12,
+                                                marginTop: 2,
+                                            }}
+                                        >
+                                            {editAllInstances
+                                                ? 'Celá řada / cyklus'
+                                                : 'Konkrétní instance'}
+                                        </ThemedText>
+                                    )}
+                            </View>
+                            <Pressable
+                                onPress={() => setModalVisible(false)}
+                                hitSlop={10}
+                                style={styles.editModalClose}
+                            >
+                                <MaterialCommunityIcons
+                                    name="close"
+                                    size={22}
+                                    color={secondaryTextColor}
+                                />
+                            </Pressable>
+                        </View>
+
                         <ScrollView
                             keyboardShouldPersistTaps="handled"
                             nestedScrollEnabled={true}
                             style={{ flexShrink: 1 }}
+                            contentContainerStyle={{ paddingBottom: 8 }}
                         >
-                            <ThemedText style={styles.modalTitle}>
-                                {!eventObj.pravidelnost && !eventObj.group_id
-                                    ? 'Úprava události'
-                                    : editAllInstances
-                                        ? 'Úprava celé řady / cyklus'
-                                        : 'Úprava konkrétní instance'}
-                            </ThemedText>
-
                             {editField === 'title' && (
-                                <PaperTextInput
-                                    label="Název"
+                                <RNTextInput
                                     value={title}
                                     onChangeText={setTitle}
-                                    mode="outlined"
-                                    style={styles.field}
+                                    placeholder="Název události"
+                                    placeholderTextColor={secondaryTextColor}
+                                    style={[
+                                        styles.titleInput,
+                                        {
+                                            color: surfaces.text,
+                                            borderBottomColor: borderColorTheme,
+                                        },
+                                    ]}
+                                    autoFocus
                                 />
                             )}
 
                             {editField === 'location' && (
-                                <ThemedView style={styles.field}>
-                                    <PaperTextInput
-                                        placeholder="Nová poloha..."
-                                        value={poloha}
-                                        onChangeText={(text) => {
-                                            setPoloha(text)
-                                            setLatitude(null)
-                                            setLongitude(null)
-                                        }}
-                                        mode="outlined"
-                                        right={
-                                            isSearchingLocation ? (
-                                                <TextInput.Icon
-                                                    icon={() => (
-                                                        <ActivityIndicator
-                                                            size="small"
-                                                            color={buttonColor}
-                                                        />
-                                                    )}
-                                                />
-                                            ) : (
-                                                <TextInput.Icon icon="map-marker-outline" />
-                                            )
-                                        }
-                                    />
-
-                                    {locationResults.length > 0 && (
-                                        <ScrollView
-                                            style={{
-                                                marginTop: 8,
-                                                maxHeight: 200,
-                                                borderWidth: 1,
-                                                borderColor: borderColorTheme,
-                                                borderRadius: 8,
-                                            }}
-                                        >
-                                            {locationResults.map(
-                                                (result, idx) => (
-                                                    <Pressable
-                                                        key={idx}
-                                                        onPress={() => {
-                                                            setPoloha(
-                                                                result.display_name
-                                                            )
-                                                            setLatitude(
-                                                                parseFloat(
-                                                                    result.lat
-                                                                )
-                                                            )
-                                                            setLongitude(
-                                                                parseFloat(
-                                                                    result.lon
-                                                                )
-                                                            )
-                                                            setLocationResults(
-                                                                []
-                                                            )
-                                                        }}
-                                                        style={{
-                                                            padding: 12,
-                                                            borderBottomWidth:
-                                                                idx <
-                                                                    locationResults.length -
-                                                                    1
-                                                                    ? 1
-                                                                    : 0,
-                                                            borderBottomColor:
-                                                                borderColorTheme,
-                                                            backgroundColor:
-                                                                modalBackgroundColor,
-                                                        }}
-                                                    >
-                                                        <ThemedText
-                                                            style={{
-                                                                fontSize: 14,
-                                                                color: secondaryTextColor,
-                                                            }}
-                                                        >
-                                                            {
-                                                                result.display_name
-                                                            }
-                                                        </ThemedText>
-                                                    </Pressable>
-                                                )
-                                            )}
-                                        </ScrollView>
-                                    )}
-                                </ThemedView>
+                                <LocationAutocomplete
+                                    poloha={poloha}
+                                    setPoloha={setPoloha}
+                                    latitude={latitude}
+                                    setLatitude={setLatitude}
+                                    setLongitude={setLongitude}
+                                    accentColor={accentColor}
+                                    borderColorTheme={borderColorTheme}
+                                />
                             )}
 
                             {editField === 'capacity' && (
-                                <ThemedView>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                                        <ThemedText>Skupinová událost</ThemedText>
-                                        <Switch
-                                            value={isGroupEvent}
-                                            onValueChange={setIsGroupEvent}
-                                            color={buttonColor}
+                                <ThemedView style={{ gap: 12 }}>
+                                    <View style={styles.chipRow}>
+                                        <FormChip
+                                            label="Soukromá"
+                                            active={!isGroupEvent}
+                                            onPress={() => setIsGroupEvent(false)}
+                                            activeColor={founderColor}
+                                            inactiveColor={chipInactive}
+                                            inactiveBorder={chipInactiveBorder}
+                                        />
+                                        <FormChip
+                                            label="Skupinová"
+                                            active={isGroupEvent}
+                                            onPress={() => {
+                                                setIsGroupEvent(true)
+                                                if (
+                                                    selectedInvites.length ===
+                                                        0 &&
+                                                    user?.id
+                                                ) {
+                                                    getDefaultInviteIds(user.id)
+                                                        .then(setSelectedInvites)
+                                                        .catch(console.error)
+                                                }
+                                                if (
+                                                    user?.id &&
+                                                    !selectedParticipants
+                                                        .map(String)
+                                                        .includes(
+                                                            String(user.id)
+                                                        )
+                                                ) {
+                                                    setSelectedParticipants(
+                                                        (prev) =>
+                                                            [
+                                                                Number(user.id),
+                                                                ...prev,
+                                                            ].slice(
+                                                                0,
+                                                                Math.max(
+                                                                    peopleCount,
+                                                                    1
+                                                                )
+                                                            )
+                                                    )
+                                                }
+                                            }}
+                                            activeColor={Brand.groupEvent}
+                                            inactiveColor={chipInactive}
+                                            inactiveBorder={chipInactiveBorder}
                                         />
                                     </View>
-                                    <ThemedText style={[styles.label, { color: secondaryTextColor, marginBottom: 8 }]}>
-                                        Maximální počet lidí
-                                    </ThemedText>
-                                    <ThemedView style={styles.counterRow}>
-                                    <IconButton
-                                        icon="minus"
-                                        mode="contained"
-                                        onPress={decrease}
-                                        iconColor={buttonTextColor}
-                                        containerColor={buttonColor}
-                                    />
+                                    {isGroupEvent && (
+                                        <>
+                                            <ThemedText
+                                                style={[
+                                                    styles.label,
+                                                    {
+                                                        color: secondaryTextColor,
+                                                        marginBottom: 4,
+                                                    },
+                                                ]}
+                                            >
+                                                Kapacita (včetně tebe)
+                                            </ThemedText>
+                                            <View style={styles.counterRow}>
+                                                <IconButton
+                                                    icon="minus"
+                                                    mode="contained"
+                                                    onPress={decrease}
+                                                    iconColor={buttonTextColor}
+                                                    containerColor={accentColor}
+                                                />
+                                                <ThemedText
+                                                    style={styles.counterValue}
+                                                >
+                                                    {peopleCount}
+                                                </ThemedText>
+                                                <IconButton
+                                                    icon="plus"
+                                                    mode="contained"
+                                                    onPress={increase}
+                                                    iconColor={buttonTextColor}
+                                                    containerColor={accentColor}
+                                                />
+                                            </View>
 
-                                    <PaperTextInput
-                                        value={String(peopleCount)}
-                                        mode="outlined"
-                                        style={styles.counterInput}
-                                        editable={false}
-                                    />
+                                            <ThemedText
+                                                style={[
+                                                    styles.label,
+                                                    {
+                                                        color: secondaryTextColor,
+                                                        marginTop: 8,
+                                                        marginBottom: 8,
+                                                    },
+                                                ]}
+                                            >
+                                                Kdo událost vidí (pozvaní)
+                                            </ThemedText>
+                                            <View
+                                                style={{
+                                                    flexDirection: 'row',
+                                                    justifyContent: 'flex-end',
+                                                    marginBottom: 4,
+                                                }}
+                                            >
+                                                <Pressable
+                                                    onPress={async () => {
+                                                        if (
+                                                            selectedInvites.length >
+                                                            0
+                                                        ) {
+                                                            setSelectedInvites(
+                                                                []
+                                                            )
+                                                        } else if (user?.id) {
+                                                            setSelectedInvites(
+                                                                await getDefaultInviteIds(
+                                                                    user.id
+                                                                )
+                                                            )
+                                                        }
+                                                    }}
+                                                    hitSlop={8}
+                                                    style={{
+                                                        paddingVertical: 4,
+                                                    }}
+                                                >
+                                                    <ThemedText
+                                                        style={{
+                                                            color: accentColor,
+                                                            fontWeight: '700',
+                                                            fontSize: 13,
+                                                        }}
+                                                    >
+                                                        {selectedInvites.length >
+                                                        0
+                                                            ? 'Zrušit pozvánky'
+                                                            : 'Pozvat všechny přátele'}
+                                                    </ThemedText>
+                                                </Pressable>
+                                            </View>
+                                            <ScrollView
+                                                style={{ maxHeight: 220, marginBottom: 12 }}
+                                                nestedScrollEnabled
+                                                showsVerticalScrollIndicator={false}
+                                            >
+                                                <SelectablePeopleList
+                                                    users={friendUsers.length ? friendUsers : users}
+                                                    selectedIds={selectedInvites}
+                                                    colors={colors}
+                                                    onToggle={(id) => {
+                                                        const invited = selectedInvites
+                                                            .map(String)
+                                                            .includes(String(id))
+                                                        if (invited) {
+                                                            setSelectedInvites(
+                                                                selectedInvites.filter(
+                                                                    (x) => String(x) !== String(id)
+                                                                )
+                                                            )
+                                                            setSelectedParticipants(
+                                                                selectedParticipants.filter(
+                                                                    (x) => String(x) !== String(id)
+                                                                )
+                                                            )
+                                                        } else {
+                                                            setSelectedInvites([...selectedInvites, id])
+                                                        }
+                                                    }}
+                                                />
+                                            </ScrollView>
 
-                                    <IconButton
-                                        icon="plus"
-                                        mode="contained"
-                                        onPress={increase}
-                                        iconColor={buttonTextColor}
-                                        containerColor={buttonColor}
-                                    />
-                                    </ThemedView>
+                                            <ThemedText
+                                                style={[
+                                                    styles.label,
+                                                    {
+                                                        color: secondaryTextColor,
+                                                        marginBottom: 8,
+                                                    },
+                                                ]}
+                                            >
+                                                Přihlášení k účasti
+                                            </ThemedText>
+                                            <View
+                                                style={{
+                                                    flexDirection: 'row',
+                                                    justifyContent: 'flex-end',
+                                                    marginBottom: 4,
+                                                }}
+                                            >
+                                                <Pressable
+                                                    onPress={() => {
+                                                        if (
+                                                            selectedParticipants.length >
+                                                            1
+                                                        ) {
+                                                            setSelectedParticipants(
+                                                                user?.id
+                                                                    ? [
+                                                                          Number(
+                                                                              user.id
+                                                                          ),
+                                                                      ]
+                                                                    : []
+                                                            )
+                                                        } else {
+                                                            const inviteSet =
+                                                                new Set(
+                                                                    selectedInvites.map(
+                                                                        String
+                                                                    )
+                                                                )
+                                                            const me = user?.id
+                                                                ? [
+                                                                      Number(
+                                                                          user.id
+                                                                      ),
+                                                                  ]
+                                                                : []
+                                                            const others = (
+                                                                friendUsers.length
+                                                                    ? friendUsers
+                                                                    : users
+                                                            )
+                                                                .map(
+                                                                    (u) => u.id
+                                                                )
+                                                                .filter(
+                                                                    (id) =>
+                                                                        inviteSet.has(
+                                                                            String(
+                                                                                id
+                                                                            )
+                                                                        ) &&
+                                                                        String(
+                                                                            id
+                                                                        ) !==
+                                                                            String(
+                                                                                user?.id
+                                                                            )
+                                                                )
+                                                            setSelectedParticipants(
+                                                                [
+                                                                    ...me,
+                                                                    ...others,
+                                                                ].slice(
+                                                                    0,
+                                                                    peopleCount
+                                                                )
+                                                            )
+                                                        }
+                                                    }}
+                                                    hitSlop={8}
+                                                    style={{
+                                                        paddingVertical: 4,
+                                                    }}
+                                                >
+                                                    <ThemedText
+                                                        style={{
+                                                            color: accentColor,
+                                                            fontWeight: '700',
+                                                            fontSize: 13,
+                                                        }}
+                                                    >
+                                                        {selectedParticipants.length >
+                                                        1
+                                                            ? 'Zrušit výběr'
+                                                            : 'Vybrat z pozvaných'}
+                                                    </ThemedText>
+                                                </Pressable>
+                                            </View>
+                                            <ScrollView
+                                                style={{ maxHeight: 240 }}
+                                                nestedScrollEnabled
+                                                showsVerticalScrollIndicator={false}
+                                            >
+                                                <SelectablePeopleList
+                                                    users={users}
+                                                    selectedIds={selectedParticipants}
+                                                    colors={colors}
+                                                    limitReached={selectedParticipants.length >= peopleCount}
+                                                    onToggle={(id) => {
+                                                        const selected = selectedParticipants
+                                                            .map(String)
+                                                            .includes(String(id))
+                                                        if (selected) {
+                                                            setSelectedParticipants((prev) =>
+                                                                prev.filter((x) => String(x) !== String(id))
+                                                            )
+                                                        } else if (selectedParticipants.length < peopleCount) {
+                                                            setSelectedParticipants((prev) => [...prev, id as any])
+                                                        }
+                                                    }}
+                                                />
+                                            </ScrollView>
+                                        </>
+                                    )}
                                 </ThemedView>
                             )}
 
@@ -2869,53 +3223,74 @@ export default function EventDetail() {
                                             },
                                         ]}
                                     >
-                                        Pozvaní (vidí událost, výchozí všichni přátelé)
+                                        Pozvaní (vidí událost, výchozí všichni
+                                        přátelé)
                                     </ThemedText>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
-                                        <Button
-                                            mode="text"
-                                            compact
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            justifyContent: 'flex-end',
+                                            marginBottom: 4,
+                                        }}
+                                    >
+                                        <Pressable
                                             onPress={async () => {
-                                                if (selectedInvites.length > 0) {
+                                                if (
+                                                    selectedInvites.length > 0
+                                                ) {
                                                     setSelectedInvites([])
                                                 } else if (user?.id) {
-                                                    setSelectedInvites(await getDefaultInviteIds(user.id))
+                                                    setSelectedInvites(
+                                                        await getDefaultInviteIds(
+                                                            user.id
+                                                        )
+                                                    )
                                                 }
                                             }}
+                                            hitSlop={8}
+                                            style={{ paddingVertical: 4 }}
                                         >
-                                            {selectedInvites.length > 0 ? 'Zrušit pozvánky' : 'Pozvat všechny přátele'}
-                                        </Button>
+                                            <ThemedText
+                                                style={{
+                                                    color: accentColor,
+                                                    fontWeight: '700',
+                                                    fontSize: 13,
+                                                }}
+                                            >
+                                                {selectedInvites.length > 0
+                                                    ? 'Zrušit pozvánky'
+                                                    : 'Pozvat všechny přátele'}
+                                            </ThemedText>
+                                        </Pressable>
                                     </View>
-                                    <ScrollView style={{ maxHeight: 180, paddingRight: 8, marginBottom: 16 }} persistentScrollbar>
-                                        {(friendUsers.length ? friendUsers : users).map((u) => {
-                                            const invited = selectedInvites.map(String).includes(String(u.id))
-                                            return (
-                                                <View
-                                                    key={`invite-${u.id}`}
-                                                    style={{
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        paddingVertical: 4,
-                                                        borderBottomWidth: 1,
-                                                        borderBottomColor: borderColorTheme,
-                                                    }}
-                                                >
-                                                    <ThemedText>{u.username}</ThemedText>
-                                                    <IconButton
-                                                        icon={invited ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                                                        onPress={() => {
-                                                            if (invited) {
-                                                                setSelectedInvites(selectedInvites.filter((id) => String(id) !== String(u.id)))
-                                                                setSelectedParticipants(selectedParticipants.filter((id) => String(id) !== String(u.id)))
-                                                            } else {
-                                                                setSelectedInvites([...selectedInvites, u.id])
-                                                            }
-                                                        }}
-                                                    />
-                                                </View>
-                                            )
-                                        })}
+                                    <ScrollView
+                                        style={{ maxHeight: 220, marginBottom: 16 }}
+                                        showsVerticalScrollIndicator={false}
+                                    >
+                                        <SelectablePeopleList
+                                            users={friendUsers.length ? friendUsers : users}
+                                            selectedIds={selectedInvites}
+                                            colors={colors}
+                                            onToggle={(id) => {
+                                                const invited = selectedInvites
+                                                    .map(String)
+                                                    .includes(String(id))
+                                                if (invited) {
+                                                    setSelectedInvites(
+                                                        selectedInvites.filter(
+                                                            (x) => String(x) !== String(id)
+                                                        )
+                                                    )
+                                                    setSelectedParticipants(
+                                                        selectedParticipants.filter(
+                                                            (x) => String(x) !== String(id)
+                                                        )
+                                                    )
+                                                } else {
+                                                    setSelectedInvites([...selectedInvites, id])
+                                                }
+                                            }}
+                                        />
                                     </ScrollView>
 
                                     <ThemedText
@@ -2930,237 +3305,111 @@ export default function EventDetail() {
                                         Přihlášení k účasti
                                     </ThemedText>
 
-                                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
-                                        <Button
-                                            mode="text"
-                                            compact
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            justifyContent: 'flex-end',
+                                            marginBottom: 4,
+                                        }}
+                                    >
+                                        <Pressable
                                             onPress={() => {
-                                                if (selectedParticipants.length > 1) {
-                                                    setSelectedParticipants(user?.id ? [user.id] : []);
+                                                if (
+                                                    selectedParticipants.length >
+                                                    1
+                                                ) {
+                                                    setSelectedParticipants(
+                                                        user?.id
+                                                            ? [Number(user.id)]
+                                                            : []
+                                                    )
                                                 } else {
-                                                    const inviteSet = new Set(selectedInvites.map(String));
-                                                    const me = user?.id ? [user.id] : [];
-                                                    const others = (friendUsers.length ? friendUsers : users)
-                                                        .map(u => u.id)
-                                                        .filter(id => inviteSet.has(String(id)) && String(id) !== String(user?.id));
-                                                    const toSelect = [...me, ...others].slice(0, peopleCount);
-                                                    setSelectedParticipants(toSelect);
+                                                    const inviteSet = new Set(
+                                                        selectedInvites.map(
+                                                            String
+                                                        )
+                                                    )
+                                                    const me = user?.id
+                                                        ? [Number(user.id)]
+                                                        : []
+                                                    const others = (
+                                                        friendUsers.length
+                                                            ? friendUsers
+                                                            : users
+                                                    )
+                                                        .map((u) => u.id)
+                                                        .filter(
+                                                            (id) =>
+                                                                inviteSet.has(
+                                                                    String(id)
+                                                                ) &&
+                                                                String(id) !==
+                                                                    String(
+                                                                        user?.id
+                                                                    )
+                                                        )
+                                                    const toSelect = [
+                                                        ...me,
+                                                        ...others,
+                                                    ].slice(0, peopleCount)
+                                                    setSelectedParticipants(
+                                                        toSelect
+                                                    )
                                                 }
                                             }}
+                                            hitSlop={8}
+                                            style={{ paddingVertical: 4 }}
                                         >
-                                            {selectedParticipants.length > 1 ? 'Zrušit výběr' : 'Vybrat z pozvaných'}
-                                        </Button>
+                                            <ThemedText
+                                                style={{
+                                                    color: accentColor,
+                                                    fontWeight: '700',
+                                                    fontSize: 13,
+                                                }}
+                                            >
+                                                {selectedParticipants.length > 1
+                                                    ? 'Zrušit výběr'
+                                                    : 'Vybrat z pozvaných'}
+                                            </ThemedText>
+                                        </Pressable>
                                     </View>
-                                    <ScrollView style={{ maxHeight: 300, paddingRight: 8 }} persistentScrollbar={true}>
-                                        {editAllInstances &&
+                                    <ScrollView
+                                        style={{ maxHeight: 320 }}
+                                        showsVerticalScrollIndicator={false}
+                                    >
+                                        <ThemedText
+                                            style={{
+                                                marginBottom: 10,
+                                                color: secondaryTextColor,
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                            }}
+                                        >
+                                            {editAllInstances &&
                                             (eventObj.pravidelnost ||
-                                                eventObj.group_id) ? (
-                                            <>
-                                                <ThemedText
-                                                    style={{ marginBottom: 8 }}
-                                                >
-                                                    Účastníci pro všechny instance:
-                                                </ThemedText>
-
-                                                {users.map((u) => {
-                                                    const colorObj = colors.find(
-                                                        (c) =>
-                                                            String(c.user_id) ===
-                                                            String(u.id)
+                                                eventObj.group_id)
+                                                ? 'Účastníci pro všechny instance'
+                                                : 'Účastníci pro tuto instanci'}
+                                        </ThemedText>
+                                        <SelectablePeopleList
+                                            users={users}
+                                            selectedIds={selectedParticipants}
+                                            colors={colors}
+                                            limitReached={selectedParticipants.length >= peopleCount}
+                                            onToggle={(id) => {
+                                                const selected = selectedParticipants
+                                                    .map(String)
+                                                    .includes(String(id))
+                                                if (selected) {
+                                                    setSelectedParticipants((prev) =>
+                                                        prev.filter((x) => String(x) !== String(id))
                                                     )
-                                                    const dotColor =
-                                                        colorObj?.background_color ||
-                                                        '#ccc'
-                                                    return (
-                                                        <View
-                                                            key={u.id}
-                                                            style={{
-                                                                flexDirection:
-                                                                    'row',
-                                                                alignItems:
-                                                                    'center',
-                                                                justifyContent:
-                                                                    'space-between',
-                                                                paddingVertical: 4,
-                                                                borderBottomWidth: 1,
-                                                                borderBottomColor:
-                                                                    borderColorTheme,
-                                                            }}
-                                                        >
-                                                            <View
-                                                                style={{
-                                                                    flexDirection:
-                                                                        'row',
-                                                                    alignItems:
-                                                                        'center',
-                                                                }}
-                                                            >
-                                                                <View
-                                                                    style={{
-                                                                        width: 8,
-                                                                        height: 8,
-                                                                        borderRadius: 4,
-                                                                        backgroundColor:
-                                                                            dotColor,
-                                                                        marginRight: 8,
-                                                                    }}
-                                                                />
-                                                                <ThemedText>
-                                                                    {u.username}
-                                                                </ThemedText>
-                                                            </View>
-                                                            <IconButton
-                                                                icon={
-                                                                    selectedParticipants.includes(
-                                                                        u.id
-                                                                    )
-                                                                        ? 'checkbox-marked'
-                                                                        : 'checkbox-blank-outline'
-                                                                }
-                                                                size={20}
-                                                                onPress={() => {
-                                                                    if (
-                                                                        selectedParticipants.includes(
-                                                                            u.id
-                                                                        )
-                                                                    ) {
-                                                                        setSelectedParticipants(
-                                                                            (
-                                                                                prev
-                                                                            ) =>
-                                                                                prev.filter(
-                                                                                    (
-                                                                                        id
-                                                                                    ) =>
-                                                                                        id !==
-                                                                                        u.id
-                                                                                )
-                                                                        )
-                                                                    } else {
-                                                                        if (
-                                                                            selectedParticipants.length <
-                                                                            peopleCount
-                                                                        ) {
-                                                                            setSelectedParticipants(
-                                                                                (
-                                                                                    prev
-                                                                                ) => [
-                                                                                        ...prev,
-                                                                                        u.id,
-                                                                                    ]
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </View>
-                                                    )
-                                                })}
-                                            </>
-                                        ) : (
-                                            <>
-                                                <ThemedText
-                                                    style={{ marginBottom: 8 }}
-                                                >
-                                                    Účastníci pro tuto instanci:
-                                                </ThemedText>
-
-                                                {users.map((u) => {
-                                                    const colorObj = colors.find(
-                                                        (c) =>
-                                                            String(c.user_id) ===
-                                                            String(u.id)
-                                                    )
-                                                    const dotColor =
-                                                        colorObj?.background_color ||
-                                                        '#ccc'
-                                                    return (
-                                                        <View
-                                                            key={u.id}
-                                                            style={{
-                                                                flexDirection:
-                                                                    'row',
-                                                                alignItems:
-                                                                    'center',
-                                                                justifyContent:
-                                                                    'space-between',
-                                                                paddingVertical: 4,
-                                                                borderBottomWidth: 1,
-                                                                borderBottomColor:
-                                                                    borderColorTheme,
-                                                            }}
-                                                        >
-                                                            <View
-                                                                style={{
-                                                                    flexDirection:
-                                                                        'row',
-                                                                    alignItems:
-                                                                        'center',
-                                                                }}
-                                                            >
-                                                                <View
-                                                                    style={{
-                                                                        width: 8,
-                                                                        height: 8,
-                                                                        borderRadius: 4,
-                                                                        backgroundColor:
-                                                                            dotColor,
-                                                                        marginRight: 8,
-                                                                    }}
-                                                                />
-                                                                <ThemedText>
-                                                                    {u.username}
-                                                                </ThemedText>
-                                                            </View>
-                                                            <IconButton
-                                                                icon={
-                                                                    selectedParticipants.includes(
-                                                                        u.id
-                                                                    )
-                                                                        ? 'checkbox-marked'
-                                                                        : 'checkbox-blank-outline'
-                                                                }
-                                                                size={20}
-                                                                onPress={() => {
-                                                                    if (
-                                                                        selectedParticipants.includes(
-                                                                            u.id
-                                                                        )
-                                                                    ) {
-                                                                        setSelectedParticipants(
-                                                                            (
-                                                                                prev
-                                                                            ) =>
-                                                                                prev.filter(
-                                                                                    (
-                                                                                        id
-                                                                                    ) =>
-                                                                                        id !==
-                                                                                        u.id
-                                                                                )
-                                                                        )
-                                                                    } else {
-                                                                        if (
-                                                                            selectedParticipants.length <
-                                                                            peopleCount
-                                                                        ) {
-                                                                            setSelectedParticipants(
-                                                                                (
-                                                                                    prev
-                                                                                ) => [
-                                                                                        ...prev,
-                                                                                        u.id,
-                                                                                    ]
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </View>
-                                                    )
-                                                })}
-                                            </>
-                                        )}
+                                                } else if (selectedParticipants.length < peopleCount) {
+                                                    setSelectedParticipants((prev) => [...prev, id as any])
+                                                }
+                                            }}
+                                        />
+                                        })}
                                     </ScrollView>
                                 </ThemedView>
                             )}
@@ -3179,87 +3428,47 @@ export default function EventDetail() {
                                                 ]}
                                             >
                                                 {eventObj.pravidelnost ||
-                                                    eventObj.group_id
-                                                    ? 'Nastavit výjimku pro tento den:'
-                                                    : 'Datum události:'}
+                                                eventObj.group_id
+                                                    ? 'Výjimka pro tento den'
+                                                    : 'Kdy'}
                                             </ThemedText>
-
-                                            <Pressable
-                                                onPress={() =>
+                                            <WhenRow
+                                                label="Od"
+                                                value={formatWhen(
+                                                    dateRange.startDate,
+                                                    timeRange.start
+                                                )}
+                                                onPress={() => {
+                                                    setTimeContext('once')
+                                                    setTimeStep('start')
+                                                    setTimeModalVisible(true)
+                                                }}
+                                                onPressCalendar={() =>
                                                     setDateModalVisible(true)
                                                 }
-                                            >
-                                                <PaperTextInput
-                                                    value={
-                                                        dateRange.startDate &&
-                                                            dateRange.endDate &&
-                                                            dateRange.startDate.getTime() !==
-                                                            dateRange.endDate.getTime()
-                                                            ? `${formatDate(dateRange.startDate)} - ${formatDate(dateRange.endDate)}`
-                                                            : dateRange.startDate
-                                                                ? formatDate(
-                                                                    dateRange.startDate
-                                                                )
-                                                                : ''
-                                                    }
-                                                    label={
-                                                        eventObj.pravidelnost ||
-                                                            eventObj.group_id
-                                                            ? 'Datum výjimky'
-                                                            : 'Datum'
-                                                    }
-                                                    mode="outlined"
-                                                    editable={false}
-                                                />
-                                            </Pressable>
-
-                                            <View
-                                                style={{
-                                                    flexDirection: 'row',
-                                                    gap: 8,
-                                                    marginTop: 8,
+                                                barColor={accentColor}
+                                                secondary={secondaryTextColor}
+                                                borderColor={borderColorTheme}
+                                            />
+                                            <WhenRow
+                                                label="Do"
+                                                value={formatWhen(
+                                                    dateRange.endDate ||
+                                                        dateRange.startDate,
+                                                    timeRange.end
+                                                )}
+                                                onPress={() => {
+                                                    setTimeContext('once')
+                                                    setTimeStep('end')
+                                                    setTimeModalVisible(true)
                                                 }}
-                                            >
-                                                <Pressable
-                                                    style={{ flex: 1 }}
-                                                    onPress={() => {
-                                                        setTimeContext('once')
-                                                        setTimeStep('start')
-                                                        setTimeModalVisible(
-                                                            true
-                                                        )
-                                                    }}
-                                                >
-                                                    <PaperTextInput
-                                                        value={formatTime(
-                                                            timeRange.start
-                                                        )}
-                                                        label="Od"
-                                                        mode="outlined"
-                                                        editable={false}
-                                                    />
-                                                </Pressable>
-
-                                                <Pressable
-                                                    style={{ flex: 1 }}
-                                                    onPress={() => {
-                                                        setTimeContext('once')
-                                                        setTimeStep('end')
-                                                        setTimeModalVisible(
-                                                            true
-                                                        )
-                                                    }}
-                                                >
-                                                    <PaperTextInput
-                                                        value={formatTime(
-                                                            timeRange.end
-                                                        )}
-                                                        label="Do"
-                                                        mode="outlined"
-                                                        editable={false}
-                                                    />
-                                                </Pressable>
-                                            </View>
+                                                onPressCalendar={() =>
+                                                    setDateModalVisible(true)
+                                                }
+                                                barColor={accentColor}
+                                                secondary={secondaryTextColor}
+                                                borderColor={borderColorTheme}
+                                            />
                                         </ThemedView>
                                     ) : (
                                         <>
@@ -3267,229 +3476,479 @@ export default function EventDetail() {
                                                 <ThemedView
                                                     style={styles.field}
                                                 >
-                                                    <ThemedText
-                                                        style={[
-                                                            styles.label,
-                                                            {
-                                                                color: secondaryTextColor,
-                                                            },
-                                                        ]}
-                                                    >
-                                                        Nový vzor začne platit
-                                                        od data:
-                                                    </ThemedText>
-
-                                                    <Pressable
+                                                    <WhenRow
+                                                        label="Začátek cyklu"
+                                                        value={
+                                                            dateRange.startDate
+                                                                ? dayjs(
+                                                                      dateRange.startDate
+                                                                  )
+                                                                      .format(
+                                                                          'ddd D. M. YYYY'
+                                                                      )
+                                                                      .replace(
+                                                                          /\.$/,
+                                                                          ''
+                                                                      )
+                                                                      .replace(
+                                                                          /^./,
+                                                                          (c) =>
+                                                                              c.toUpperCase()
+                                                                      )
+                                                                : 'Vyber datum'
+                                                        }
                                                         onPress={() =>
                                                             setDateModalVisible(
                                                                 true
                                                             )
                                                         }
-                                                    >
-                                                        <PaperTextInput
-                                                            value={formatDate(
-                                                                dateRange.startDate
-                                                            )}
-                                                            label="Datum účinnosti nového cyklu"
-                                                            mode="outlined"
-                                                            editable={false}
-                                                            right={
-                                                                <TextInput.Icon
-                                                                    icon="calendar-outline"
-                                                                    onPress={() =>
-                                                                        setDateModalVisible(
-                                                                            true
-                                                                        )
-                                                                    }
-                                                                />
-                                                            }
-                                                            style={{
-                                                                backgroundColor:
-                                                                    'transparent',
-                                                            }}
-                                                        />
-                                                    </Pressable>
-
-                                                    <ThemedText
-                                                        style={[
-                                                            styles.label,
-                                                            {
-                                                                color: secondaryTextColor,
-                                                                marginTop: 12,
-                                                            },
-                                                        ]}
-                                                    >
-                                                        Opakovat do (nepovinné):
-                                                    </ThemedText>
-
-                                                    <Pressable
+                                                        barColor={accentColor}
+                                                        secondary={
+                                                            secondaryTextColor
+                                                        }
+                                                        borderColor={
+                                                            borderColorTheme
+                                                        }
+                                                    />
+                                                    <WhenRow
+                                                        label="Konec (volitelné)"
+                                                        value={
+                                                            validUntilDate
+                                                                ? dayjs(
+                                                                      validUntilDate
+                                                                  )
+                                                                      .format(
+                                                                          'ddd D. M. YYYY'
+                                                                      )
+                                                                      .replace(
+                                                                          /\.$/,
+                                                                          ''
+                                                                      )
+                                                                      .replace(
+                                                                          /^./,
+                                                                          (c) =>
+                                                                              c.toUpperCase()
+                                                                      )
+                                                                : 'Bez omezení'
+                                                        }
                                                         onPress={() =>
                                                             setEndDateModalVisible(
                                                                 true
                                                             )
                                                         }
-                                                    >
-                                                        <PaperTextInput
-                                                            value={
-                                                                validUntilDate
-                                                                    ? formatDate(
-                                                                        validUntilDate
-                                                                    )
-                                                                    : 'Bez omezení (opakovat navždy)'
-                                                            }
-                                                            mode="outlined"
-                                                            editable={false}
-                                                            style={{
-                                                                backgroundColor:
-                                                                    'transparent',
-                                                            }}
-                                                            right={
-                                                                validUntilDate ? (
-                                                                    <TextInput.Icon
-                                                                        icon="close"
-                                                                        onPress={() =>
-                                                                            setValidUntilDate(
-                                                                                undefined
-                                                                            )
-                                                                        }
-                                                                    />
-                                                                ) : (
-                                                                    <TextInput.Icon
-                                                                        icon="calendar-outline"
-                                                                        onPress={() =>
-                                                                            setEndDateModalVisible(
-                                                                                true
-                                                                            )
-                                                                        }
-                                                                    />
+                                                        barColor={accentColor}
+                                                        secondary={
+                                                            secondaryTextColor
+                                                        }
+                                                        borderColor={
+                                                            borderColorTheme
+                                                        }
+                                                    />
+                                                    {!!validUntilDate && (
+                                                        <Pressable
+                                                            onPress={() =>
+                                                                setValidUntilDate(
+                                                                    undefined
                                                                 )
                                                             }
-                                                        />
-                                                    </Pressable>
+                                                            style={{
+                                                                alignSelf:
+                                                                    'flex-end',
+                                                                paddingVertical: 4,
+                                                            }}
+                                                        >
+                                                            <ThemedText
+                                                                style={{
+                                                                    color: secondaryTextColor,
+                                                                    fontSize: 12,
+                                                                    fontWeight:
+                                                                        '600',
+                                                                }}
+                                                            >
+                                                                Zrušit konec
+                                                            </ThemedText>
+                                                        </Pressable>
+                                                    )}
 
-                                                    <ThemedText
-                                                        style={[
-                                                            styles.label,
-                                                            {
-                                                                color: secondaryTextColor,
-                                                                marginTop: 16,
-                                                                marginBottom: 8,
-                                                            },
-                                                        ]}
+                                                    <View
+                                                        style={
+                                                            styles.cycleHeader
+                                                        }
                                                     >
-                                                        Sestavení cyklu:
-                                                    </ThemedText>
+                                                        <ThemedText
+                                                            style={[
+                                                                styles.label,
+                                                                {
+                                                                    color: secondaryTextColor,
+                                                                    marginBottom: 0,
+                                                                },
+                                                            ]}
+                                                        >
+                                                            Sestavení cyklu
+                                                        </ThemedText>
+                                                        <ThemedText
+                                                            style={[
+                                                                styles.cycleTotal,
+                                                                {
+                                                                    color: accentColor,
+                                                                },
+                                                            ]}
+                                                        >
+                                                            {cycleDaysTotal}{' '}
+                                                            {cycleDaysTotal === 1
+                                                                ? 'den'
+                                                                : cycleDaysTotal <
+                                                                    5
+                                                                  ? 'dny'
+                                                                  : 'dní'}
+                                                        </ThemedText>
+                                                    </View>
 
-                                                    <View style={{ gap: 10 }}>
-                                                        {patternSegments.map(
-                                                            (segment, idx) => (
+                                                    {cycleDaysTotal > 0 && (
+                                                        <View
+                                                            style={
+                                                                styles.cycleStrip
+                                                            }
+                                                        >
+                                                            {patternSegments.map(
+                                                                (segment) => (
+                                                                    <View
+                                                                        key={`strip-${segment.id}`}
+                                                                        style={[
+                                                                            styles.cycleStripSeg,
+                                                                            {
+                                                                                flex: Math.max(
+                                                                                    segment.days,
+                                                                                    1
+                                                                                ),
+                                                                                backgroundColor:
+                                                                                    segment.type ===
+                                                                                    'work'
+                                                                                        ? accentColor
+                                                                                        : 'transparent',
+                                                                                borderColor:
+                                                                                    segment.type ===
+                                                                                    'work'
+                                                                                        ? accentColor
+                                                                                        : secondaryTextColor,
+                                                                                borderStyle:
+                                                                                    segment.type ===
+                                                                                    'work'
+                                                                                        ? 'solid'
+                                                                                        : 'dashed',
+                                                                            },
+                                                                        ]}
+                                                                    />
+                                                                )
+                                                            )}
+                                                        </View>
+                                                    )}
+
+                                                    <View
+                                                        style={
+                                                            styles.cycleLegend
+                                                        }
+                                                    >
+                                                        <View
+                                                            style={
+                                                                styles.cycleLegendItem
+                                                            }
+                                                        >
+                                                            <View
+                                                                style={[
+                                                                    styles.cycleLegendDot,
+                                                                    {
+                                                                        backgroundColor:
+                                                                            accentColor,
+                                                                    },
+                                                                ]}
+                                                            />
+                                                            <ThemedText
+                                                                style={[
+                                                                    styles.cycleLegendText,
+                                                                    {
+                                                                        color: secondaryTextColor,
+                                                                    },
+                                                                ]}
+                                                            >
+                                                                Událost
+                                                            </ThemedText>
+                                                        </View>
+                                                        <View
+                                                            style={
+                                                                styles.cycleLegendItem
+                                                            }
+                                                        >
+                                                            <View
+                                                                style={[
+                                                                    styles.cycleLegendDot,
+                                                                    {
+                                                                        backgroundColor:
+                                                                            'transparent',
+                                                                        borderWidth: 1.5,
+                                                                        borderColor:
+                                                                            secondaryTextColor,
+                                                                        borderStyle:
+                                                                            'dashed',
+                                                                    },
+                                                                ]}
+                                                            />
+                                                            <ThemedText
+                                                                style={[
+                                                                    styles.cycleLegendText,
+                                                                    {
+                                                                        color: secondaryTextColor,
+                                                                    },
+                                                                ]}
+                                                            >
+                                                                Pauza
+                                                            </ThemedText>
+                                                        </View>
+                                                    </View>
+
+                                                    {patternSegments.map(
+                                                        (segment, index) => {
+                                                            const isWork =
+                                                                segment.type ===
+                                                                'work'
+                                                            const segAccent =
+                                                                isWork
+                                                                    ? accentColor
+                                                                    : secondaryTextColor
+                                                            return (
                                                                 <View
                                                                     key={
                                                                         segment.id
                                                                     }
-                                                                    style={{
-                                                                        backgroundColor:
-                                                                            cardBackgroundColor,
-                                                                        padding: 12,
-                                                                        borderRadius: 8,
-                                                                        borderWidth: 1,
-                                                                        borderColor:
-                                                                            borderColorTheme,
-                                                                    }}
+                                                                    style={[
+                                                                        styles.segmentCard,
+                                                                        {
+                                                                            backgroundColor:
+                                                                                isWork
+                                                                                    ? `${accentColor}12`
+                                                                                    : cardBackgroundColor,
+                                                                            borderColor:
+                                                                                isWork
+                                                                                    ? `${accentColor}55`
+                                                                                    : borderColorTheme,
+                                                                        },
+                                                                    ]}
                                                                 >
                                                                     <View
-                                                                        style={{
-                                                                            flexDirection:
-                                                                                'row',
-                                                                            justifyContent:
-                                                                                'space-between',
-                                                                            alignItems:
-                                                                                'center',
-                                                                        }}
+                                                                        style={[
+                                                                            styles.segmentAccent,
+                                                                            isWork
+                                                                                ? {
+                                                                                      backgroundColor:
+                                                                                          accentColor,
+                                                                                  }
+                                                                                : {
+                                                                                      backgroundColor:
+                                                                                          'transparent',
+                                                                                      borderRightWidth: 2,
+                                                                                      borderRightColor:
+                                                                                          secondaryTextColor,
+                                                                                      borderStyle:
+                                                                                          'dashed',
+                                                                                  },
+                                                                        ]}
+                                                                    />
+                                                                    <View
+                                                                        style={
+                                                                            styles.segmentMain
+                                                                        }
                                                                     >
-                                                                        <ThemedText
-                                                                            style={{
-                                                                                fontWeight:
-                                                                                    '600',
-                                                                                color:
-                                                                                    segment.type ===
-                                                                                        'work'
-                                                                                        ? '#4CAF50'
-                                                                                        : '#FF9800',
-                                                                            }}
-                                                                        >
-                                                                            {segment.type ===
-                                                                                'work'
-                                                                                ? `${idx + 1}. Práce`
-                                                                                : `${idx + 1}. Pauza`}
-                                                                        </ThemedText>
-
                                                                         <View
-                                                                            style={{
-                                                                                flexDirection:
-                                                                                    'row',
-                                                                                alignItems:
-                                                                                    'center',
-                                                                                gap: 6,
-                                                                            }}
+                                                                            style={
+                                                                                styles.segmentHeader
+                                                                            }
                                                                         >
-                                                                            <ThemedText>
-                                                                                Dní:
-                                                                            </ThemedText>
-
-                                                                            <PaperTextInput
-                                                                                value={String(
-                                                                                    segment.days
-                                                                                )}
-                                                                                keyboardType="numeric"
-                                                                                onChangeText={(
-                                                                                    v
-                                                                                ) =>
-                                                                                    updateSegmentDays(
-                                                                                        segment.id,
-                                                                                        v
-                                                                                    )
-                                                                                }
-                                                                                mode="outlined"
-                                                                                style={{
-                                                                                    width: 45,
-                                                                                    height: 30,
-                                                                                    textAlign:
-                                                                                        'center',
-                                                                                    backgroundColor:
-                                                                                        'transparent',
-                                                                                }}
-                                                                            />
-
-                                                                            <IconButton
-                                                                                icon="close"
-                                                                                size={
-                                                                                    16
-                                                                                }
-                                                                                iconColor="red"
-                                                                                onPress={() =>
-                                                                                    removeSegment(
-                                                                                        segment.id
-                                                                                    )
-                                                                                }
-                                                                            />
-                                                                        </View>
-                                                                    </View>
-
-                                                                    {segment.type ===
-                                                                        'work' && (
                                                                             <View
-                                                                                style={{
-                                                                                    flexDirection:
-                                                                                        'row',
-                                                                                    gap: 8,
-                                                                                    marginTop: 8,
-                                                                                }}
+                                                                                style={
+                                                                                    styles.segmentTitleRow
+                                                                                }
+                                                                            >
+                                                                                <View
+                                                                                    style={[
+                                                                                        styles.segmentIconWrap,
+                                                                                        {
+                                                                                            backgroundColor:
+                                                                                                isWork
+                                                                                                    ? `${accentColor}22`
+                                                                                                    : `${secondaryTextColor}22`,
+                                                                                        },
+                                                                                    ]}
+                                                                                >
+                                                                                    <MaterialCommunityIcons
+                                                                                        name={
+                                                                                            isWork
+                                                                                                ? 'briefcase-outline'
+                                                                                                : 'coffee-outline'
+                                                                                        }
+                                                                                        size={
+                                                                                            18
+                                                                                        }
+                                                                                        color={
+                                                                                            segAccent
+                                                                                        }
+                                                                                    />
+                                                                                </View>
+                                                                                <View>
+                                                                                    <ThemedText
+                                                                                        style={[
+                                                                                            styles.segmentIndex,
+                                                                                            {
+                                                                                                color: secondaryTextColor,
+                                                                                            },
+                                                                                        ]}
+                                                                                    >
+                                                                                        Blok{' '}
+                                                                                        {index +
+                                                                                            1}
+                                                                                    </ThemedText>
+                                                                                    <ThemedText
+                                                                                        style={[
+                                                                                            styles.segmentTitle,
+                                                                                            {
+                                                                                                color: surfaces.text,
+                                                                                            },
+                                                                                        ]}
+                                                                                    >
+                                                                                        {isWork
+                                                                                            ? 'Událost'
+                                                                                            : 'Pauza'}
+                                                                                    </ThemedText>
+                                                                                </View>
+                                                                            </View>
+
+                                                                            <View
+                                                                                style={
+                                                                                    styles.segmentControls
+                                                                                }
+                                                                            >
+                                                                                <View
+                                                                                    style={[
+                                                                                        styles.daysStepper,
+                                                                                        {
+                                                                                            borderColor:
+                                                                                                borderColorTheme,
+                                                                                            backgroundColor:
+                                                                                                cardBackgroundColor,
+                                                                                        },
+                                                                                    ]}
+                                                                                >
+                                                                                    <Pressable
+                                                                                        onPress={() =>
+                                                                                            bumpSegmentDays(
+                                                                                                segment.id,
+                                                                                                -1
+                                                                                            )
+                                                                                        }
+                                                                                        hitSlop={
+                                                                                            6
+                                                                                        }
+                                                                                        style={
+                                                                                            styles.daysBtn
+                                                                                        }
+                                                                                    >
+                                                                                        <MaterialCommunityIcons
+                                                                                            name="minus"
+                                                                                            size={
+                                                                                                18
+                                                                                            }
+                                                                                            color={
+                                                                                                surfaces.text
+                                                                                            }
+                                                                                        />
+                                                                                    </Pressable>
+                                                                                    <ThemedText
+                                                                                        style={
+                                                                                            styles.daysValue
+                                                                                        }
+                                                                                    >
+                                                                                        {
+                                                                                            segment.days
+                                                                                        }
+                                                                                        <ThemedText
+                                                                                            style={{
+                                                                                                fontSize: 12,
+                                                                                                color: secondaryTextColor,
+                                                                                            }}
+                                                                                        >
+                                                                                            {' '}
+                                                                                            d
+                                                                                        </ThemedText>
+                                                                                    </ThemedText>
+                                                                                    <Pressable
+                                                                                        onPress={() =>
+                                                                                            bumpSegmentDays(
+                                                                                                segment.id,
+                                                                                                1
+                                                                                            )
+                                                                                        }
+                                                                                        hitSlop={
+                                                                                            6
+                                                                                        }
+                                                                                        style={
+                                                                                            styles.daysBtn
+                                                                                        }
+                                                                                    >
+                                                                                        <MaterialCommunityIcons
+                                                                                            name="plus"
+                                                                                            size={
+                                                                                                18
+                                                                                            }
+                                                                                            color={
+                                                                                                surfaces.text
+                                                                                            }
+                                                                                        />
+                                                                                    </Pressable>
+                                                                                </View>
+                                                                                {patternSegments.length >
+                                                                                    1 && (
+                                                                                    <Pressable
+                                                                                        onPress={() =>
+                                                                                            removeSegment(
+                                                                                                segment.id
+                                                                                            )
+                                                                                        }
+                                                                                        hitSlop={
+                                                                                            8
+                                                                                        }
+                                                                                        style={
+                                                                                            styles.segmentRemove
+                                                                                        }
+                                                                                    >
+                                                                                        <MaterialCommunityIcons
+                                                                                            name="close"
+                                                                                            size={
+                                                                                                18
+                                                                                            }
+                                                                                            color={
+                                                                                                Brand.danger
+                                                                                            }
+                                                                                        />
+                                                                                    </Pressable>
+                                                                                )}
+                                                                            </View>
+                                                                        </View>
+
+                                                                        {isWork && (
+                                                                            <View
+                                                                                style={
+                                                                                    styles.segmentTimes
+                                                                                }
                                                                             >
                                                                                 <Pressable
-                                                                                    style={{
-                                                                                        flex: 1,
-                                                                                    }}
+                                                                                    style={[
+                                                                                        styles.segmentTimeTap,
+                                                                                        {
+                                                                                            borderColor:
+                                                                                                borderColorTheme,
+                                                                                            backgroundColor:
+                                                                                                cardBackgroundColor,
+                                                                                        },
+                                                                                    ]}
                                                                                     onPress={() => {
                                                                                         setEditingSegmentId(
                                                                                             segment.id
@@ -3505,27 +3964,52 @@ export default function EventDetail() {
                                                                                         )
                                                                                     }}
                                                                                 >
-                                                                                    <PaperTextInput
-                                                                                        value={formatTime(
+                                                                                    <ThemedText
+                                                                                        style={{
+                                                                                            color: secondaryTextColor,
+                                                                                            fontSize: 11,
+                                                                                            fontWeight:
+                                                                                                '500',
+                                                                                        }}
+                                                                                    >
+                                                                                        Od
+                                                                                    </ThemedText>
+                                                                                    <ThemedText
+                                                                                        style={{
+                                                                                            fontWeight:
+                                                                                                '700',
+                                                                                            fontSize: 16,
+                                                                                            color: surfaces.text,
+                                                                                        }}
+                                                                                    >
+                                                                                        {formatTime(
                                                                                             segment.startTime
                                                                                         )}
-                                                                                        label="Od"
-                                                                                        mode="outlined"
-                                                                                        editable={
-                                                                                            false
-                                                                                        }
-                                                                                        style={{
-                                                                                            height: 35,
-                                                                                            backgroundColor:
-                                                                                                'transparent',
-                                                                                        }}
-                                                                                    />
+                                                                                    </ThemedText>
                                                                                 </Pressable>
-
-                                                                                <Pressable
+                                                                                <MaterialCommunityIcons
+                                                                                    name="arrow-right"
+                                                                                    size={
+                                                                                        16
+                                                                                    }
+                                                                                    color={
+                                                                                        secondaryTextColor
+                                                                                    }
                                                                                     style={{
-                                                                                        flex: 1,
+                                                                                        alignSelf:
+                                                                                            'center',
                                                                                     }}
+                                                                                />
+                                                                                <Pressable
+                                                                                    style={[
+                                                                                        styles.segmentTimeTap,
+                                                                                        {
+                                                                                            borderColor:
+                                                                                                borderColorTheme,
+                                                                                            backgroundColor:
+                                                                                                cardBackgroundColor,
+                                                                                        },
+                                                                                    ]}
                                                                                     onPress={() => {
                                                                                         setEditingSegmentId(
                                                                                             segment.id
@@ -3541,78 +4025,107 @@ export default function EventDetail() {
                                                                                         )
                                                                                     }}
                                                                                 >
-                                                                                    <PaperTextInput
-                                                                                        value={formatTime(
+                                                                                    <ThemedText
+                                                                                        style={{
+                                                                                            color: secondaryTextColor,
+                                                                                            fontSize: 11,
+                                                                                            fontWeight:
+                                                                                                '500',
+                                                                                        }}
+                                                                                    >
+                                                                                        Do
+                                                                                    </ThemedText>
+                                                                                    <ThemedText
+                                                                                        style={{
+                                                                                            fontWeight:
+                                                                                                '700',
+                                                                                            fontSize: 16,
+                                                                                            color: surfaces.text,
+                                                                                        }}
+                                                                                    >
+                                                                                        {formatTime(
                                                                                             segment.endTime
                                                                                         )}
-                                                                                        label="Do"
-                                                                                        mode="outlined"
-                                                                                        editable={
-                                                                                            false
-                                                                                        }
-                                                                                        style={{
-                                                                                            height: 35,
-                                                                                            backgroundColor:
-                                                                                                'transparent',
-                                                                                        }}
-                                                                                    />
+                                                                                    </ThemedText>
                                                                                 </Pressable>
                                                                             </View>
                                                                         )}
+                                                                    </View>
                                                                 </View>
                                                             )
-                                                        )}
-                                                    </View>
+                                                        }
+                                                    )}
 
                                                     <View
-                                                        style={{
-                                                            flexDirection:
-                                                                'row',
-                                                            gap: 8,
-                                                            marginTop: 12,
-                                                        }}
+                                                        style={
+                                                            styles.cycleAddRow
+                                                        }
                                                     >
-                                                        <Button
-                                                            mode="outlined"
-                                                            icon="briefcase-plus"
-                                                            compact
+                                                        <Pressable
                                                             onPress={() =>
                                                                 addSegment(
                                                                     'work'
                                                                 )
                                                             }
-                                                            style={{
-                                                                flex: 1,
-                                                                borderColor:
-                                                                    buttonColor,
-                                                            }}
-                                                            textColor={
-                                                                buttonColor
-                                                            }
+                                                            style={[
+                                                                styles.cycleAddBtn,
+                                                                {
+                                                                    borderColor:
+                                                                        accentColor,
+                                                                    backgroundColor: `${accentColor}14`,
+                                                                },
+                                                            ]}
                                                         >
-                                                            + Práci
-                                                        </Button>
-
-                                                        <Button
-                                                            mode="outlined"
-                                                            icon="beach"
-                                                            compact
+                                                            <MaterialCommunityIcons
+                                                                name="briefcase-plus-outline"
+                                                                size={18}
+                                                                color={
+                                                                    accentColor
+                                                                }
+                                                            />
+                                                            <ThemedText
+                                                                style={{
+                                                                    color: accentColor,
+                                                                    fontWeight:
+                                                                        '700',
+                                                                    fontSize: 13,
+                                                                }}
+                                                            >
+                                                                Událost
+                                                            </ThemedText>
+                                                        </Pressable>
+                                                        <Pressable
                                                             onPress={() =>
                                                                 addSegment(
                                                                     'off'
                                                                 )
                                                             }
-                                                            style={{
-                                                                flex: 1,
-                                                                borderColor:
-                                                                    buttonColor,
-                                                            }}
-                                                            textColor={
-                                                                buttonColor
-                                                            }
+                                                            style={[
+                                                                styles.cycleAddBtn,
+                                                                {
+                                                                    borderColor:
+                                                                        chipInactiveBorder,
+                                                                },
+                                                            ]}
                                                         >
-                                                            + Pauzu
-                                                        </Button>
+                                                            <MaterialCommunityIcons
+                                                                name="coffee-outline"
+                                                                size={18}
+                                                                color={
+                                                                    chipInactive
+                                                                }
+                                                            />
+                                                            <ThemedText
+                                                                style={{
+                                                                    color: chipInactive,
+                                                                    fontWeight:
+                                                                        '700',
+                                                                    fontSize: 13,
+                                                                }}
+                                                            >
+                                                                Pauza
+                                                            </ThemedText>
+                                                        </Pressable>
                                                     </View>
                                                 </ThemedView>
                                             ) : (
@@ -3639,125 +4152,128 @@ export default function EventDetail() {
                                                                 null ? (
                                                                 <ThemedView
                                                                     style={{
-                                                                        padding: 12,
-                                                                        backgroundColor:
-                                                                            cardBackgroundColor,
-                                                                        borderRadius: 8,
+                                                                        paddingVertical: 4,
                                                                     }}
                                                                 >
-                                                                    <Pressable
+                                                                    <WhenRow
+                                                                        label="Od"
+                                                                        value={formatWhen(
+                                                                            multiDateInstances[
+                                                                                editingMultiDateIndex
+                                                                            ]
+                                                                                ?.date,
+                                                                            multiDateInstances[
+                                                                                editingMultiDateIndex
+                                                                            ]
+                                                                                ?.startTime
+                                                                        )}
                                                                         onPress={() => {
-                                                                            setDateModalVisible(
+                                                                            setTimeContext(
+                                                                                'multi'
+                                                                            )
+                                                                            setTimeStep(
+                                                                                'start'
+                                                                            )
+                                                                            setTimeModalVisible(
                                                                                 true
                                                                             )
                                                                         }}
-                                                                    >
-                                                                        <PaperTextInput
-                                                                            value={formatDate(
-                                                                                multiDateInstances[
-                                                                                    editingMultiDateIndex
-                                                                                ]
-                                                                                    ?.date
-                                                                            )}
-                                                                            label="Datum"
-                                                                            mode="outlined"
-                                                                            editable={
-                                                                                false
-                                                                            }
-                                                                        />
-                                                                    </Pressable>
-                                                                    <View
-                                                                        style={{
-                                                                            flexDirection:
-                                                                                'row',
-                                                                            gap: 8,
-                                                                            marginTop: 8,
+                                                                        onPressCalendar={() =>
+                                                                            setDateModalVisible(
+                                                                                true
+                                                                            )
+                                                                        }
+                                                                        barColor={
+                                                                            accentColor
+                                                                        }
+                                                                        secondary={
+                                                                            secondaryTextColor
+                                                                        }
+                                                                        borderColor={
+                                                                            borderColorTheme
+                                                                        }
+                                                                    />
+                                                                    <WhenRow
+                                                                        label="Do"
+                                                                        value={formatWhen(
+                                                                            multiDateInstances[
+                                                                                editingMultiDateIndex
+                                                                            ]
+                                                                                ?.date,
+                                                                            multiDateInstances[
+                                                                                editingMultiDateIndex
+                                                                            ]
+                                                                                ?.endTime
+                                                                        )}
+                                                                        onPress={() => {
+                                                                            setTimeContext(
+                                                                                'multi'
+                                                                            )
+                                                                            setTimeStep(
+                                                                                'end'
+                                                                            )
+                                                                            setTimeModalVisible(
+                                                                                true
+                                                                            )
                                                                         }}
-                                                                    >
-                                                                        <Pressable
-                                                                            style={{
-                                                                                flex: 1,
-                                                                            }}
-                                                                            onPress={() => {
-                                                                                setTimeContext(
-                                                                                    'multi'
-                                                                                )
-                                                                                setTimeStep(
-                                                                                    'start'
-                                                                                )
-                                                                                setTimeModalVisible(
-                                                                                    true
-                                                                                )
-                                                                            }}
-                                                                        >
-                                                                            <PaperTextInput
-                                                                                value={formatTime(
-                                                                                    multiDateInstances[
-                                                                                        editingMultiDateIndex
-                                                                                    ]
-                                                                                        ?.startTime
-                                                                                )}
-                                                                                label="Od"
-                                                                                mode="outlined"
-                                                                                editable={
-                                                                                    false
-                                                                                }
-                                                                            />
-                                                                        </Pressable>
-                                                                        <Pressable
-                                                                            style={{
-                                                                                flex: 1,
-                                                                            }}
-                                                                            onPress={() => {
-                                                                                setTimeContext(
-                                                                                    'multi'
-                                                                                )
-                                                                                setTimeStep(
-                                                                                    'end'
-                                                                                )
-                                                                                setTimeModalVisible(
-                                                                                    true
-                                                                                )
-                                                                            }}
-                                                                        >
-                                                                            <PaperTextInput
-                                                                                value={formatTime(
-                                                                                    multiDateInstances[
-                                                                                        editingMultiDateIndex
-                                                                                    ]
-                                                                                        ?.endTime
-                                                                                )}
-                                                                                label="Do"
-                                                                                mode="outlined"
-                                                                                editable={
-                                                                                    false
-                                                                                }
-                                                                            />
-                                                                        </Pressable>
-                                                                    </View>
-                                                                    <Button
-                                                                        mode="contained"
+                                                                        onPressCalendar={() =>
+                                                                            setDateModalVisible(
+                                                                                true
+                                                                            )
+                                                                        }
+                                                                        barColor={
+                                                                            accentColor
+                                                                        }
+                                                                        secondary={
+                                                                            secondaryTextColor
+                                                                        }
+                                                                        borderColor={
+                                                                            borderColorTheme
+                                                                        }
+                                                                    />
+                                                                    <Pressable
                                                                         onPress={() => {
                                                                             setEditingMultiDateIndex(
                                                                                 null
                                                                             )
                                                                         }}
-                                                                        style={{
-                                                                            marginTop: 12,
-                                                                        }}
+                                                                        style={[
+                                                                            styles.saveBtn,
+                                                                            {
+                                                                                backgroundColor:
+                                                                                    accentColor,
+                                                                                marginTop: 12,
+                                                                            },
+                                                                        ]}
                                                                     >
-                                                                        Uložit
-                                                                    </Button>
-                                                                    <Button
-                                                                        mode="text"
+                                                                        <ThemedText
+                                                                            style={
+                                                                                styles.saveBtnText
+                                                                            }
+                                                                        >
+                                                                            Hotovo
+                                                                        </ThemedText>
+                                                                    </Pressable>
+                                                                    <Pressable
                                                                         onPress={() =>
                                                                             setEditingMultiDateIndex(
                                                                                 null
                                                                             )
                                                                         }
+                                                                        style={
+                                                                            styles.cancelBtn
+                                                                        }
                                                                     >
-                                                                        Zrušit
-                                                                    </Button>
+                                                                        <ThemedText
+                                                                            style={{
+                                                                                color: secondaryTextColor,
+                                                                                fontWeight:
+                                                                                    '600',
+                                                                            }}
+                                                                        >
+                                                                            Zrušit
+                                                                        </ThemedText>
+                                                                    </Pressable>
                                                                 </ThemedView>
                                                             ) : (
                                                                 <>
@@ -3770,139 +4286,174 @@ export default function EventDetail() {
                                                                                 key={
                                                                                     idx
                                                                                 }
-                                                                                style={{
-                                                                                    flexDirection:
-                                                                                        'row',
-                                                                                    alignItems:
-                                                                                        'center',
-                                                                                    justifyContent:
-                                                                                        'space-between',
-                                                                                    paddingVertical: 6,
-                                                                                    borderBottomWidth: 1,
-                                                                                    borderBottomColor:
-                                                                                        borderColorTheme,
-                                                                                }}
+                                                                                style={[
+                                                                                    styles.dayInstanceRow,
+                                                                                    {
+                                                                                        borderBottomColor:
+                                                                                            borderColorTheme,
+                                                                                    },
+                                                                                ]}
                                                                             >
-                                                                                <ThemedText>
-                                                                                    {formatDate(
-                                                                                        instance.date
-                                                                                    )}{' '}
-                                                                                    {formatTime(
-                                                                                        instance.startTime
-                                                                                    )}{' '}
-                                                                                    -{' '}
-                                                                                    {formatTime(
-                                                                                        instance.endTime
-                                                                                    )}
-                                                                                </ThemedText>
+                                                                                <View
+                                                                                    style={[
+                                                                                        styles.dayInstanceBar,
+                                                                                        {
+                                                                                            backgroundColor:
+                                                                                                accentColor,
+                                                                                        },
+                                                                                    ]}
+                                                                                />
                                                                                 <View
                                                                                     style={{
-                                                                                        flexDirection:
-                                                                                            'row',
+                                                                                        flex: 1,
                                                                                     }}
                                                                                 >
-                                                                                    <IconButton
-                                                                                        icon="pencil"
-                                                                                        size={
-                                                                                            18
-                                                                                        }
-                                                                                        onPress={() => {
-                                                                                            setDateRange(
-                                                                                                {
-                                                                                                    startDate:
-                                                                                                        instance.date,
-                                                                                                    endDate:
-                                                                                                        instance.date,
-                                                                                                }
-                                                                                            )
-                                                                                            setTimeRange(
-                                                                                                {
-                                                                                                    start: instance.startTime,
-                                                                                                    end: instance.endTime,
-                                                                                                }
-                                                                                            )
-                                                                                            setEditingMultiDateIndex(
-                                                                                                idx
-                                                                                            )
+                                                                                    <ThemedText
+                                                                                        style={{
+                                                                                            fontWeight:
+                                                                                                '700',
+                                                                                            fontSize: 15,
                                                                                         }}
-                                                                                    />
-                                                                                    <IconButton
-                                                                                        icon="trash-can"
-                                                                                        size={
-                                                                                            18
-                                                                                        }
-                                                                                        iconColor="red"
-                                                                                        onPress={() => {
-                                                                                            setMultiDateInstances(
-                                                                                                (
-                                                                                                    prev
-                                                                                                ) =>
-                                                                                                    prev.filter(
-                                                                                                        (
-                                                                                                            _,
-                                                                                                            i
-                                                                                                        ) =>
-                                                                                                            i !==
-                                                                                                            idx
-                                                                                                    )
-                                                                                            )
+                                                                                    >
+                                                                                        {formatDate(
+                                                                                            instance.date
+                                                                                        )}
+                                                                                    </ThemedText>
+                                                                                    <ThemedText
+                                                                                        style={{
+                                                                                            color: secondaryTextColor,
+                                                                                            fontSize: 13,
                                                                                         }}
-                                                                                    />
+                                                                                    >
+                                                                                        {formatTime(
+                                                                                            instance.startTime
+                                                                                        )}{' '}
+                                                                                        –{' '}
+                                                                                        {formatTime(
+                                                                                            instance.endTime
+                                                                                        )}
+                                                                                    </ThemedText>
                                                                                 </View>
+                                                                                <IconButton
+                                                                                    icon="pencil"
+                                                                                    size={
+                                                                                        18
+                                                                                    }
+                                                                                    onPress={() => {
+                                                                                        setDateRange(
+                                                                                            {
+                                                                                                startDate:
+                                                                                                    instance.date,
+                                                                                                endDate:
+                                                                                                    instance.date,
+                                                                                            }
+                                                                                        )
+                                                                                        setTimeRange(
+                                                                                            {
+                                                                                                start: instance.startTime,
+                                                                                                end: instance.endTime,
+                                                                                            }
+                                                                                        )
+                                                                                        setEditingMultiDateIndex(
+                                                                                            idx
+                                                                                        )
+                                                                                    }}
+                                                                                />
+                                                                                <IconButton
+                                                                                    icon="trash-can"
+                                                                                    size={
+                                                                                        18
+                                                                                    }
+                                                                                    iconColor={
+                                                                                        Brand.danger
+                                                                                    }
+                                                                                    onPress={() => {
+                                                                                        setMultiDateInstances(
+                                                                                            (
+                                                                                                prev
+                                                                                            ) =>
+                                                                                                prev.filter(
+                                                                                                    (
+                                                                                                        _,
+                                                                                                        i
+                                                                                                    ) =>
+                                                                                                        i !==
+                                                                                                        idx
+                                                                                                )
+                                                                                        )
+                                                                                    }}
+                                                                                />
                                                                             </View>
                                                                         )
                                                                     )}
-                                                                    <Button
-                                                                        mode="outlined"
-                                                                        icon="plus"
+                                                                    <Pressable
                                                                         onPress={() => {
                                                                             const newDate =
                                                                                 new Date()
                                                                             newDate.setDate(
                                                                                 newDate.getDate() +
-                                                                                1
+                                                                                    1
                                                                             )
                                                                             setMultiDateInstances(
                                                                                 (
                                                                                     prev
                                                                                 ) => [
-                                                                                        ...prev,
-                                                                                        {
-                                                                                            date: newDate,
-                                                                                            startTime:
-                                                                                                new Date(
-                                                                                                    newDate.setHours(
-                                                                                                        8,
-                                                                                                        0,
-                                                                                                        0,
-                                                                                                        0
-                                                                                                    )
-                                                                                                ),
-                                                                                            endTime:
-                                                                                                new Date(
-                                                                                                    newDate.setHours(
-                                                                                                        9,
-                                                                                                        0,
-                                                                                                        0,
-                                                                                                        0
-                                                                                                    )
-                                                                                                ),
-                                                                                        },
-                                                                                    ]
+                                                                                    ...prev,
+                                                                                    {
+                                                                                        date: newDate,
+                                                                                        startTime:
+                                                                                            new Date(
+                                                                                                newDate.setHours(
+                                                                                                    8,
+                                                                                                    0,
+                                                                                                    0,
+                                                                                                    0
+                                                                                                )
+                                                                                            ),
+                                                                                        endTime:
+                                                                                            new Date(
+                                                                                                newDate.setHours(
+                                                                                                    9,
+                                                                                                    0,
+                                                                                                    0,
+                                                                                                    0
+                                                                                                )
+                                                                                            ),
+                                                                                    },
+                                                                                ]
                                                                             )
                                                                         }}
-                                                                        style={{
-                                                                            marginTop: 12,
-                                                                            borderColor:
-                                                                                buttonColor,
-                                                                        }}
-                                                                        textColor={
-                                                                            buttonColor
-                                                                        }
+                                                                        style={[
+                                                                            styles.cycleAddBtn,
+                                                                            {
+                                                                                marginTop: 12,
+                                                                                borderColor:
+                                                                                    accentColor,
+                                                                                backgroundColor: `${accentColor}14`,
+                                                                            },
+                                                                        ]}
                                                                     >
-                                                                        Přidat
-                                                                        nový den
-                                                                    </Button>
+                                                                        <MaterialCommunityIcons
+                                                                            name="plus"
+                                                                            size={
+                                                                                18
+                                                                            }
+                                                                            color={
+                                                                                accentColor
+                                                                            }
+                                                                        />
+                                                                        <ThemedText
+                                                                            style={{
+                                                                                color: accentColor,
+                                                                                fontWeight:
+                                                                                    '700',
+                                                                                fontSize: 13,
+                                                                            }}
+                                                                        >
+                                                                            Přidat
+                                                                            den
+                                                                        </ThemedText>
+                                                                    </Pressable>
                                                                 </>
                                                             )}
                                                         </>
@@ -3925,201 +4476,230 @@ export default function EventDetail() {
                                                             {editingRelatedEvent ? (
                                                                 <ThemedView
                                                                     style={{
-                                                                        padding: 12,
-                                                                        backgroundColor:
-                                                                            cardBackgroundColor,
-                                                                        borderRadius: 8,
+                                                                        paddingVertical: 4,
                                                                     }}
                                                                 >
-                                                                    <Pressable
-                                                                        onPress={() =>
+                                                                    <WhenRow
+                                                                        label="Od"
+                                                                        value={formatWhen(
+                                                                            dateRange.startDate,
+                                                                            timeRange.start
+                                                                        )}
+                                                                        onPress={() => {
+                                                                            setTimeContext(
+                                                                                'once'
+                                                                            )
+                                                                            setTimeStep(
+                                                                                'start'
+                                                                            )
+                                                                            setTimeModalVisible(
+                                                                                true
+                                                                            )
+                                                                        }}
+                                                                        onPressCalendar={() =>
                                                                             setDateModalVisible(
                                                                                 true
                                                                             )
                                                                         }
-                                                                    >
-                                                                        <PaperTextInput
-                                                                            value={getFormattedDateRange()}
-                                                                            label="Datum"
-                                                                            mode="outlined"
-                                                                            editable={
-                                                                                false
-                                                                            }
-                                                                        />
-                                                                    </Pressable>
-
-                                                                    <View
-                                                                        style={{
-                                                                            flexDirection:
-                                                                                'row',
-                                                                            gap: 8,
-                                                                            marginTop: 8,
+                                                                        barColor={
+                                                                            accentColor
+                                                                        }
+                                                                        secondary={
+                                                                            secondaryTextColor
+                                                                        }
+                                                                        borderColor={
+                                                                            borderColorTheme
+                                                                        }
+                                                                    />
+                                                                    <WhenRow
+                                                                        label="Do"
+                                                                        value={formatWhen(
+                                                                            dateRange.endDate ||
+                                                                                dateRange.startDate,
+                                                                            timeRange.end
+                                                                        )}
+                                                                        onPress={() => {
+                                                                            setTimeContext(
+                                                                                'once'
+                                                                            )
+                                                                            setTimeStep(
+                                                                                'end'
+                                                                            )
+                                                                            setTimeModalVisible(
+                                                                                true
+                                                                            )
                                                                         }}
-                                                                    >
-                                                                        <Pressable
-                                                                            style={{
-                                                                                flex: 1,
-                                                                            }}
-                                                                            onPress={() => {
-                                                                                setTimeContext(
-                                                                                    'once'
-                                                                                )
-                                                                                setTimeStep(
-                                                                                    'start'
-                                                                                )
-                                                                                setTimeModalVisible(
-                                                                                    true
-                                                                                )
-                                                                            }}
-                                                                        >
-                                                                            <PaperTextInput
-                                                                                value={formatTime(
-                                                                                    timeRange.start
-                                                                                )}
-                                                                                label="Od"
-                                                                                mode="outlined"
-                                                                                editable={
-                                                                                    false
-                                                                                }
-                                                                            />
-                                                                        </Pressable>
+                                                                        onPressCalendar={() =>
+                                                                            setDateModalVisible(
+                                                                                true
+                                                                            )
+                                                                        }
+                                                                        barColor={
+                                                                            accentColor
+                                                                        }
+                                                                        secondary={
+                                                                            secondaryTextColor
+                                                                        }
+                                                                        borderColor={
+                                                                            borderColorTheme
+                                                                        }
+                                                                    />
 
-                                                                        <Pressable
-                                                                            style={{
-                                                                                flex: 1,
-                                                                            }}
-                                                                            onPress={() => {
-                                                                                setTimeContext(
-                                                                                    'once'
-                                                                                )
-                                                                                setTimeStep(
-                                                                                    'end'
-                                                                                )
-                                                                                setTimeModalVisible(
-                                                                                    true
-                                                                                )
-                                                                            }}
-                                                                        >
-                                                                            <PaperTextInput
-                                                                                value={formatTime(
-                                                                                    timeRange.end
-                                                                                )}
-                                                                                label="Do"
-                                                                                mode="outlined"
-                                                                                editable={
-                                                                                    false
-                                                                                }
-                                                                            />
-                                                                        </Pressable>
-                                                                    </View>
-
-                                                                    <Button
-                                                                        mode="contained"
+                                                                    <Pressable
                                                                         onPress={
                                                                             handleSaveSpecificRelatedEvent
                                                                         }
-                                                                        style={{
-                                                                            marginTop: 12,
-                                                                        }}
+                                                                        style={[
+                                                                            styles.saveBtn,
+                                                                            {
+                                                                                backgroundColor:
+                                                                                    accentColor,
+                                                                                marginTop: 12,
+                                                                            },
+                                                                        ]}
                                                                     >
-                                                                        Uložit
-                                                                        čas
-                                                                    </Button>
+                                                                        <ThemedText
+                                                                            style={
+                                                                                styles.saveBtnText
+                                                                            }
+                                                                        >
+                                                                            Uložit
+                                                                            čas
+                                                                        </ThemedText>
+                                                                    </Pressable>
 
-                                                                    <Button
-                                                                        mode="text"
+                                                                    <Pressable
                                                                         onPress={() =>
                                                                             setEditingRelatedEvent(
                                                                                 null
                                                                             )
                                                                         }
+                                                                        style={
+                                                                            styles.cancelBtn
+                                                                        }
                                                                     >
-                                                                        Zpět na
-                                                                        seznam
-                                                                    </Button>
+                                                                        <ThemedText
+                                                                            style={{
+                                                                                color: secondaryTextColor,
+                                                                                fontWeight:
+                                                                                    '600',
+                                                                            }}
+                                                                        >
+                                                                            Zpět
+                                                                            na
+                                                                            seznam
+                                                                        </ThemedText>
+                                                                    </Pressable>
                                                                 </ThemedView>
                                                             ) : (
-                                                                (multiDateInstances.length > 0 ? multiDateInstances : relatedEvents).map(
-                                                                    (ev: any) => (
+                                                                (multiDateInstances.length >
+                                                                0
+                                                                    ? multiDateInstances
+                                                                    : relatedEvents
+                                                                ).map(
+                                                                    (
+                                                                        ev: any
+                                                                    ) => (
                                                                         <View
                                                                             key={
                                                                                 ev.id
                                                                             }
-                                                                            style={{
-                                                                                flexDirection:
-                                                                                    'row',
-                                                                                alignItems:
-                                                                                    'center',
-                                                                                justifyContent:
-                                                                                    'space-between',
-                                                                                paddingVertical: 6,
-                                                                                borderBottomWidth: 1,
-                                                                                borderBottomColor:
-                                                                                    borderColorTheme,
-                                                                            }}
+                                                                            style={[
+                                                                                styles.dayInstanceRow,
+                                                                                {
+                                                                                    borderBottomColor:
+                                                                                        borderColorTheme,
+                                                                                },
+                                                                            ]}
                                                                         >
-                                                                            <ThemedText>
-                                                                                {formatDate(
-                                                                                    ev.startTime || ev.start
-                                                                                )}{' '}
-                                                                                {formatTime(
-                                                                                    ev.startTime || ev.start
-                                                                                )}{' '}
-                                                                                -{' '}
-                                                                                {formatTime(
-                                                                                    ev.endTime || ev.end
-                                                                                )}
-                                                                            </ThemedText>
-
+                                                                            <View
+                                                                                style={[
+                                                                                    styles.dayInstanceBar,
+                                                                                    {
+                                                                                        backgroundColor:
+                                                                                            accentColor,
+                                                                                    },
+                                                                                ]}
+                                                                            />
                                                                             <View
                                                                                 style={{
-                                                                                    flexDirection:
-                                                                                        'row',
+                                                                                    flex: 1,
                                                                                 }}
                                                                             >
-                                                                                <IconButton
-                                                                                    icon="pencil"
-                                                                                    size={
-                                                                                        18
-                                                                                    }
-                                                                                    onPress={() => {
-                                                                                        const safeD =
-                                                                                            getSafeDates(
-                                                                                                ev
-                                                                                            )
-                                                                                        setDateRange(
-                                                                                            {
-                                                                                                startDate:
-                                                                                                    safeD.s,
-                                                                                                endDate:
-                                                                                                    safeD.e,
-                                                                                            }
-                                                                                        )
-                                                                                        setTimeRange(
-                                                                                            {
-                                                                                                start: safeD.s,
-                                                                                                end: safeD.e,
-                                                                                            }
-                                                                                        )
-                                                                                        setEditingRelatedEvent(
+                                                                                <ThemedText
+                                                                                    style={{
+                                                                                        fontWeight:
+                                                                                            '700',
+                                                                                        fontSize: 15,
+                                                                                    }}
+                                                                                >
+                                                                                    {formatDate(
+                                                                                        ev.startTime ||
+                                                                                            ev.start
+                                                                                    )}
+                                                                                </ThemedText>
+                                                                                <ThemedText
+                                                                                    style={{
+                                                                                        color: secondaryTextColor,
+                                                                                        fontSize: 13,
+                                                                                    }}
+                                                                                >
+                                                                                    {formatTime(
+                                                                                        ev.startTime ||
+                                                                                            ev.start
+                                                                                    )}{' '}
+                                                                                    –{' '}
+                                                                                    {formatTime(
+                                                                                        ev.endTime ||
+                                                                                            ev.end
+                                                                                    )}
+                                                                                </ThemedText>
+                                                                            </View>
+
+                                                                            <IconButton
+                                                                                icon="pencil"
+                                                                                size={
+                                                                                    18
+                                                                                }
+                                                                                onPress={() => {
+                                                                                    const safeD =
+                                                                                        getSafeDates(
                                                                                             ev
                                                                                         )
-                                                                                    }}
-                                                                                />
+                                                                                    setDateRange(
+                                                                                        {
+                                                                                            startDate:
+                                                                                                safeD.s,
+                                                                                            endDate:
+                                                                                                safeD.e,
+                                                                                        }
+                                                                                    )
+                                                                                    setTimeRange(
+                                                                                        {
+                                                                                            start: safeD.s,
+                                                                                            end: safeD.e,
+                                                                                        }
+                                                                                    )
+                                                                                    setEditingRelatedEvent(
+                                                                                        ev
+                                                                                    )
+                                                                                }}
+                                                                            />
 
-                                                                                <IconButton
-                                                                                    icon="trash-can"
-                                                                                    size={
-                                                                                        18
-                                                                                    }
-                                                                                    iconColor="red"
-                                                                                    onPress={() =>
-                                                                                        handleDeleteRelatedEvent(
-                                                                                            ev.id
-                                                                                        )
-                                                                                    }
-                                                                                />
-                                                                            </View>
+                                                                            <IconButton
+                                                                                icon="trash-can"
+                                                                                size={
+                                                                                    18
+                                                                                }
+                                                                                iconColor={
+                                                                                    Brand.danger
+                                                                                }
+                                                                                onPress={() =>
+                                                                                    handleDeleteRelatedEvent(
+                                                                                        ev.id
+                                                                                    )
+                                                                                }
+                                                                            />
                                                                         </View>
                                                                     )
                                                                 )
@@ -4137,24 +4717,45 @@ export default function EventDetail() {
                         {(!isRepeatingNonPattern ||
                             editField !== 'datetime' ||
                             !editingRelatedEvent) && (
-                                <View style={{ marginTop: 16 }}>
-                                    <Button
-                                        mode="contained"
+                                <View style={styles.editModalFooter}>
+                                    <Pressable
                                         onPress={handleSave}
-                                        loading={actionBusy}
                                         disabled={actionBusy}
-                                        style={{ paddingVertical: 4 }}
+                                        style={({ pressed }) => [
+                                            styles.saveBtn,
+                                            {
+                                                backgroundColor: actionBusy
+                                                    ? '#9AA0A6'
+                                                    : accentColor,
+                                                opacity:
+                                                    pressed && !actionBusy
+                                                        ? 0.9
+                                                        : 1,
+                                            },
+                                        ]}
                                     >
-                                        Uložit změny
-                                    </Button>
-                                    <Button
-                                        mode="text"
+                                        {actionBusy ? (
+                                            <ActivityIndicator color="#fff" />
+                                        ) : (
+                                            <ThemedText style={styles.saveBtnText}>
+                                                Uložit
+                                            </ThemedText>
+                                        )}
+                                    </Pressable>
+                                    <Pressable
                                         onPress={() => setModalVisible(false)}
                                         disabled={actionBusy}
-                                        style={{ marginTop: 4 }}
+                                        style={styles.cancelBtn}
                                     >
-                                        Zavřít
-                                    </Button>
+                                        <ThemedText
+                                            style={{
+                                                color: secondaryTextColor,
+                                                fontWeight: '600',
+                                            }}
+                                        >
+                                            Zavřít
+                                        </ThemedText>
+                                    </Pressable>
                                 </View>
                             )}
                     </ThemedView>
@@ -4208,7 +4809,178 @@ export default function EventDetail() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 16, paddingTop: 0 },
+    container: { flex: 1, paddingHorizontal: 20, paddingTop: 0 },
+
+    topBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 4,
+        minHeight: 44,
+    },
+    iconBtn: {
+        padding: 6,
+        borderRadius: 10,
+    },
+    scrollContent: {
+        paddingBottom: 40,
+        paddingTop: 4,
+        gap: 0,
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+        marginBottom: 28,
+        marginTop: 8,
+    },
+    heroTitle: {
+        flex: 1,
+        fontSize: 34,
+        fontWeight: '800',
+        lineHeight: 40,
+        letterSpacing: -0.6,
+    },
+    infoBlock: {
+        gap: 22,
+        marginBottom: 24,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 14,
+    },
+    infoTextCol: {
+        flex: 1,
+        minWidth: 0,
+        gap: 2,
+    },
+    infoPrimaryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    infoPrimary: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '700',
+        lineHeight: 22,
+    },
+    infoSecondary: {
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 1,
+    },
+    editHint: {
+        padding: 2,
+    },
+    avatarRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+        marginTop: 12,
+    },
+    avatarItem: {
+        width: 40,
+        alignItems: 'center',
+        gap: 4,
+    },
+    avatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarOverflow: {
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    avatarText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '800',
+    },
+    avatarName: {
+        fontSize: 10,
+        fontWeight: '600',
+        textAlign: 'center',
+        width: '100%',
+        lineHeight: 12,
+    },
+    avatarLg: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarLgText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '800',
+    },
+    participantsSheet: {
+        marginHorizontal: 20,
+        borderRadius: 20,
+        padding: 18,
+        maxHeight: '80%',
+    },
+    participantsSheetHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    participantsSheetTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    participantDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    participantDetailName: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    mapBlock: {
+        marginBottom: 28,
+        gap: 10,
+    },
+    mapWrap: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    mapsLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        alignSelf: 'flex-start',
+    },
+    actions: {
+        gap: 12,
+        marginTop: 4,
+    },
+    primaryBtn: {
+        borderRadius: 14,
+        width: '100%',
+    },
+    secondaryBtn: {
+        borderRadius: 14,
+        width: '100%',
+        borderWidth: 1.5,
+        backgroundColor: 'transparent',
+    },
+    primaryBtnContent: {
+        paddingVertical: 8,
+    },
+    btnLabel: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
 
     field: { marginBottom: 16, zIndex: 1 },
 
@@ -4229,11 +5001,238 @@ const styles = StyleSheet.create({
 
     content: { padding: 20, borderRadius: 16, maxHeight: '95%', width: '100%' },
 
+    editModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        paddingBottom: 12,
+        marginBottom: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    editModalTitle: {
+        fontSize: 20,
+        fontWeight: '800',
+        letterSpacing: -0.3,
+    },
+    editModalClose: {
+        padding: 4,
+        marginLeft: 8,
+    },
+    editModalFooter: {
+        marginTop: 12,
+        gap: 4,
+    },
+    titleInput: {
+        fontSize: 28,
+        fontWeight: '800',
+        letterSpacing: -0.4,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        marginBottom: 8,
+    },
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    personRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        gap: 10,
+    },
+    personDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+    },
+    personName: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    dayInstanceRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        gap: 4,
+    },
+    dayInstanceBar: {
+        width: 4,
+        borderRadius: 2,
+        alignSelf: 'stretch',
+        minHeight: 28,
+        marginRight: 8,
+    },
+    cycleHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    cycleTotal: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    cycleStrip: {
+        flexDirection: 'row',
+        height: 10,
+        borderRadius: 5,
+        overflow: 'hidden',
+        gap: 3,
+        marginBottom: 8,
+    },
+    cycleStripSeg: {
+        borderRadius: 4,
+        borderWidth: 1.5,
+        minWidth: 8,
+    },
+    cycleLegend: {
+        flexDirection: 'row',
+        gap: 14,
+        marginBottom: 12,
+    },
+    cycleLegendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    cycleLegendDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 3,
+    },
+    cycleLegendText: {
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    cycleAddRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 8,
+    },
+    cycleAddBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1.5,
+    },
+    segmentCard: {
+        flexDirection: 'row',
+        borderRadius: 12,
+        borderWidth: 1,
+        overflow: 'hidden',
+        marginBottom: 10,
+    },
+    segmentAccent: {
+        width: 4,
+    },
+    segmentMain: {
+        flex: 1,
+        padding: 12,
+        gap: 10,
+    },
+    segmentHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+    },
+    segmentTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        flex: 1,
+    },
+    segmentIconWrap: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    segmentIndex: {
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    segmentTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    segmentControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    daysStepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderRadius: 10,
+        overflow: 'hidden',
+    },
+    daysBtn: {
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+    },
+    daysValue: {
+        minWidth: 36,
+        textAlign: 'center',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    segmentRemove: {
+        padding: 6,
+    },
+    segmentTimes: {
+        flexDirection: 'row',
+        alignItems: 'stretch',
+        gap: 8,
+    },
+    segmentTimeTap: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        gap: 2,
+    },
+
     counterRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 10,
+    },
+    counterValue: {
+        fontSize: 22,
+        fontWeight: '700',
+        minWidth: 36,
+        textAlign: 'center',
+    },
+    saveBtn: {
+        borderRadius: 14,
+        paddingVertical: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 50,
+    },
+    saveBtnText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    cancelBtn: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
     },
 
     counterInput: {

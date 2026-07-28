@@ -1,24 +1,39 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StyleSheet, FlatList, Alert, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { ThemedSafeView } from '@/components/ThemedSafeView';
+import { LeagueCover } from '@/components/LeagueCover';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
-import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect, Stack } from 'expo-router';
 import {
     fetchLeagueDetails,
     fetchLeagueLeaderboard,
     fetchLeagueMatches,
     canViewLeague,
+    updateLeagueConfig,
     League,
     LeaguePlayer,
 } from '@/services/leagues/leagues';
+import {
+    pickLeagueImage,
+    updateLeagueImageUrl,
+    uploadLeagueCover,
+} from '@/services/leagues/league_image';
 import { deleteMatch } from '@/services/leagues/recompute_league';
-import { enrichPlayersFromMatches, formatLastPlayed } from '@/services/leagues/derived_stats';
+import {
+    buildMatchEloHistory,
+    enrichPlayersFromMatches,
+    formatLastPlayed,
+    type EloSnap,
+} from '@/services/leagues/derived_stats';
 import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
-import { Button, ActivityIndicator, FAB, Menu } from 'react-native-paper';
+import { Button, ActivityIndicator, FAB, Menu, Switch } from 'react-native-paper';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Brand, BrandSurfaces } from '@/constants/brand';
 
 dayjs.locale('cs');
 
@@ -27,6 +42,9 @@ type MatchFilter = 'all' | 'mine' | string; // string = vs user_id
 export default function LeaderboardDetailScreen() {
     const { id } = useLocalSearchParams();
     const { user } = useAuth();
+    const scheme = useColorScheme() ?? 'light';
+    const surfaces = BrandSurfaces[scheme];
+    const insets = useSafeAreaInsets();
 
     const [league, setLeague] = useState<League | null>(null);
     const [players, setPlayers] = useState<LeaguePlayer[]>([]);
@@ -39,18 +57,59 @@ export default function LeaderboardDetailScreen() {
     const [matchFilter, setMatchFilter] = useState<MatchFilter>('all');
     const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
-    const borderColor = useThemeColor({ light: '#ddd', dark: '#444' }, 'background');
-    const surfaceColor = useThemeColor({ light: '#fff', dark: '#2A2A2A' }, 'surface');
-    const primaryTextColor = useThemeColor({}, 'text');
+    const borderColor = surfaces.border;
+    const primaryTextColor = surfaces.text;
 
     const [sortBy, setSortBy] = useState<
         'default' | 'matches' | 'win_ratio' | 'winrate' | 'score_diff' | 'elo' | 'avg' | 'positions' | 'form' | 'sets' | 'best' | 'last'
     >('default');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+    const [uploadingCover, setUploadingCover] = useState(false);
+    const [savingSetsConfig, setSavingSetsConfig] = useState(false);
+
+    const isCreator = String(league?.created_by) === String(user?.id);
+
+    const handleToggleSetsDefault = async (value: boolean) => {
+        if (!league || !isCreator || savingSetsConfig) return;
+        setSavingSetsConfig(true);
+        try {
+            const updated = await updateLeagueConfig(league.id, {
+                track_set_stats: value,
+            });
+            setLeague(updated);
+        } catch (e) {
+            console.error(e);
+            Alert.alert('Nastavení', 'Nepodařilo se uložit nastavení setů.');
+        } finally {
+            setSavingSetsConfig(false);
+        }
+    };
+
+    const handleChangeCover = async () => {
+        if (!user || !league || !isCreator || uploadingCover) return;
+        const picked = await pickLeagueImage();
+        if (!picked) return;
+        setUploadingCover(true);
+        try {
+            const url = await uploadLeagueCover(String(user.id), league.id, picked);
+            await updateLeagueImageUrl(league.id, url);
+            setLeague({ ...league, image_url: url });
+        } catch (e) {
+            console.error(e);
+            Alert.alert('Obrázek', 'Nahrání selhalo. Zkontroluj, že v Supabase běží migrace league-covers.');
+        } finally {
+            setUploadingCover(false);
+        }
+    };
 
     const enrichedMap = useMemo(
         () => enrichPlayersFromMatches(players, matches, league?.config, league?.config?.lower_is_better),
         [players, matches, league?.config]
+    );
+
+    const matchEloHistory = useMemo(
+        () => buildMatchEloHistory(matches, league),
+        [matches, league]
     );
 
     const handleSort = (column: typeof sortBy) => {
@@ -263,20 +322,23 @@ export default function LeaderboardDetailScreen() {
 
     if (loading) {
         return (
-            <ThemedView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator />
-            </ThemedView>
+            <ThemedSafeView style={[styles.center, { backgroundColor: surfaces.background }]}>
+                <ActivityIndicator color={Brand.primary} />
+            </ThemedSafeView>
         );
     }
 
     if (forbidden || !league) {
         return (
-            <ThemedView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-                <ThemedText style={{ textAlign: 'center', marginBottom: 16 }}>
+            <ThemedSafeView style={[styles.center, { backgroundColor: surfaces.background, padding: 24 }]}>
+                <MaterialCommunityIcons name="lock-outline" size={40} color={surfaces.textSecondary} />
+                <ThemedText style={[styles.forbiddenText, { color: surfaces.text }]}>
                     Tuto tabulku nevidíš — je jen pro přátele a přátele přátel zakladatele / hráčů.
                 </ThemedText>
-                <Button onPress={() => router.back()}>Zpět</Button>
-            </ThemedView>
+                <Button mode="contained" onPress={() => router.back()} buttonColor={Brand.primary}>
+                    Zpět
+                </Button>
+            </ThemedSafeView>
         );
     }
 
@@ -362,568 +424,816 @@ export default function LeaderboardDetailScreen() {
         });
     };
 
-    const HeaderItem = ({ label, column, style }: any) => {
-        let isActive = false;
-        if (sortBy === column) {
-            isActive = true;
-        } else if (sortBy === 'default') {
-            if (league?.config?.track_elo) isActive = column === 'elo';
-            else if (league?.config?.track_average) isActive = column === 'avg';
-            else if (league?.config?.track_positions) isActive = column === 'positions';
-            else isActive = column === 'win_ratio';
+    const rankColor = (index: number) =>
+        index === 0 ? '#E6B800' : index === 1 ? '#9AA0A6' : index === 2 ? '#C47B3A' : surfaces.textSecondary;
+
+    const primaryMetricLabel = () => {
+        if (league?.config?.track_elo) return 'ELO';
+        if (league?.config?.track_average) return 'Průměr';
+        if (league?.config?.track_winrate || league?.config?.track_wins_losses) return '%';
+        return 'Záp';
+    };
+
+    const playerPrimaryValue = (p: any, en?: ReturnType<typeof enrichedMap.get>) => {
+        if (league?.config?.track_elo) return String(Math.round(p.rating));
+        if (league?.config?.track_average) {
+            return p.matches_played ? (p.total_score / p.matches_played).toFixed(1) : '0.0';
         }
+        if (league?.config?.track_winrate || league?.config?.track_wins_losses) {
+            return `${en?.winrate ?? 0}%`;
+        }
+        return String(p.matches_played);
+    };
+
+    const SortChips = ({ forTeams = false }: { forTeams?: boolean }) => {
+        const chips: { key: typeof sortBy; label: string }[] = [
+            { key: 'default', label: 'Výchozí' },
+            { key: 'matches', label: 'Zápasy' },
+        ];
+        if (league?.config?.track_wins_losses) chips.push({ key: 'win_ratio', label: 'V-R-P' });
+        if (league?.config?.track_winrate) chips.push({ key: 'winrate', label: '%' });
+        if (!forTeams && league?.config?.track_positions) chips.push({ key: 'positions', label: '1-2-3' });
+        if (league?.config?.track_score_diff) chips.push({ key: 'score_diff', label: 'Rozdíl' });
+        if (!forTeams && league?.config?.track_set_stats) chips.push({ key: 'sets', label: 'Sety' });
+        if (league?.config?.track_elo) chips.push({ key: 'elo', label: 'ELO' });
+        if (!forTeams && league?.config?.track_average) chips.push({ key: 'avg', label: 'Průměr' });
+        if (!forTeams && league?.config?.track_best_score) chips.push({ key: 'best', label: 'Best' });
+        if (!forTeams && league?.config?.track_last_played) chips.push({ key: 'last', label: 'Posl.' });
 
         return (
-            <TouchableOpacity onPress={() => handleSort(column)} style={style}>
-                <ThemedText
-                    style={{
-                        textAlign: style.textAlign || 'center',
-                        fontWeight: 'bold',
-                        color: isActive ? '#FF00AA' : primaryTextColor,
-                        fontSize: 12,
-                    }}
-                >
-                    {label} {isActive ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
-                </ThemedText>
-            </TouchableOpacity>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.sortChips}
+            >
+                {chips.map((c) => {
+                    const active = sortBy === c.key;
+                    return (
+                        <Pressable
+                            key={c.key}
+                            onPress={() => handleSort(c.key)}
+                            style={[
+                                styles.sortChip,
+                                {
+                                    backgroundColor: active ? Brand.primarySoft : surfaces.surface,
+                                    borderColor: active ? Brand.primary : surfaces.border,
+                                },
+                            ]}
+                        >
+                            <ThemedText
+                                style={{
+                                    fontSize: 12,
+                                    fontWeight: '700',
+                                    color: active ? Brand.primary : surfaces.textSecondary,
+                                }}
+                            >
+                                {c.label}
+                                {active ? (sortOrder === 'desc' ? ' ↓' : ' ↑') : ''}
+                            </ThemedText>
+                        </Pressable>
+                    );
+                })}
+            </ScrollView>
         );
     };
 
-    const renderRanking = () => (
-        <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }}>
-            <View style={{ padding: 16, minWidth: '100%' }}>
-                <View
-                    style={{
-                        flexDirection: 'row',
-                        borderBottomWidth: 1,
-                        borderColor,
-                        paddingBottom: 8,
-                        marginBottom: 8,
-                        alignItems: 'flex-end',
-                    }}
-                >
-                    <ThemedText style={{ width: 30, fontWeight: 'bold' }}>#</ThemedText>
-                    <ThemedText style={{ minWidth: 110, flex: 1, fontWeight: 'bold' }}>Hráč</ThemedText>
-                    <HeaderItem label="Záp" column="matches" style={{ width: 40 }} />
-                    {league.config?.track_wins_losses && (
-                        <HeaderItem label="V-R-P" column="win_ratio" style={{ width: 60 }} />
-                    )}
-                    {league.config?.track_winrate && (
-                        <HeaderItem label="%" column="winrate" style={{ width: 42 }} />
-                    )}
-                    {league.config?.track_form && (
-                        <ThemedText style={{ width: 70, textAlign: 'center', fontWeight: 'bold', fontSize: 12 }}>
-                            Forma
-                        </ThemedText>
-                    )}
-                    {league.config?.track_positions && (
-                        <HeaderItem label="1-2-3" column="positions" style={{ width: 60 }} />
-                    )}
-                    {league.config?.track_score && (
-                        <ThemedText style={{ width: 58, textAlign: 'center', fontWeight: 'bold', fontSize: 12 }}>
-                            Skóre
-                        </ThemedText>
-                    )}
-                    {league.config?.track_score_diff && (
-                        <HeaderItem label="Rozd" column="score_diff" style={{ width: 48 }} />
-                    )}
-                    {league.config?.track_set_stats && (
-                        <HeaderItem label="Sety" column="sets" style={{ width: 55 }} />
-                    )}
-                    {league.config?.track_elo && (
-                        <HeaderItem label="ELO" column="elo" style={{ width: 52, textAlign: 'right' }} />
-                    )}
-                    {league.config?.track_average && (
-                        <HeaderItem label="Prům" column="avg" style={{ width: 52, textAlign: 'right' }} />
-                    )}
-                    {league.config?.track_best_score && (
-                        <HeaderItem label="Best" column="best" style={{ width: 48, textAlign: 'right' }} />
-                    )}
-                    {league.config?.track_last_played && (
-                        <HeaderItem label="Posl" column="last" style={{ width: 48, textAlign: 'right' }} />
-                    )}
-                </View>
-
-                {getSortedArray(players).map((p, index) => {
-                    const en = enrichedMap.get(String(p.user_id));
-                    return (
-                        <View
-                            key={p.id}
-                            style={{
-                                flexDirection: 'row',
-                                paddingVertical: 12,
-                                borderBottomWidth: 1,
-                                borderColor,
-                                alignItems: 'center',
-                            }}
-                        >
-                            <ThemedText
-                                style={{
-                                    width: 30,
-                                    fontWeight: 'bold',
-                                    color:
-                                        index === 0
-                                            ? '#FFD700'
-                                            : index === 1
-                                              ? '#C0C0C0'
-                                              : index === 2
-                                                ? '#CD7F32'
-                                                : primaryTextColor,
-                                }}
-                            >
-                                {index + 1}.
-                            </ThemedText>
-                            <ThemedText style={{ minWidth: 110, flex: 1 }} numberOfLines={1}>
-                                {p.users?.username || p.users?.jmeno}
-                            </ThemedText>
-                            <ThemedText style={{ width: 40, textAlign: 'center' }}>{p.matches_played}</ThemedText>
-
-                            {league.config?.track_wins_losses && (
-                                <ThemedText style={{ width: 60, textAlign: 'center', color: '#888', fontSize: 12 }}>
-                                    {p.wins}-{p.draws}-{p.losses}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_winrate && (
-                                <ThemedText style={{ width: 42, textAlign: 'center', fontSize: 12 }}>
-                                    {en?.winrate ?? 0}%
-                                </ThemedText>
-                            )}
-                            {league.config?.track_form && (
-                                <ThemedText
-                                    style={{
-                                        width: 70,
-                                        textAlign: 'center',
-                                        fontSize: 11,
-                                        letterSpacing: 1,
-                                        color: '#888',
-                                    }}
-                                >
-                                    {en?.form || '—'}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_positions && (
-                                <ThemedText style={{ width: 60, textAlign: 'center', color: '#888', fontSize: 12 }}>
-                                    {p.first_places || 0}-{p.second_places || 0}-{p.third_places || 0}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_score && (
-                                <ThemedText style={{ width: 58, textAlign: 'center', fontSize: 12 }}>
-                                    {league.team_size === 0
-                                        ? p.score_for
-                                        : `${p.score_for}:${p.score_against}`}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_score_diff && (
-                                <ThemedText
-                                    style={{
-                                        width: 48,
-                                        textAlign: 'center',
-                                        fontSize: 12,
-                                        color:
-                                            p.score_diff > 0
-                                                ? '#4CAF50'
-                                                : p.score_diff < 0
-                                                  ? '#F44336'
-                                                  : '#888',
-                                    }}
-                                >
-                                    {p.score_diff > 0 ? '+' : ''}
-                                    {p.score_diff}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_set_stats && (
-                                <ThemedText style={{ width: 55, textAlign: 'center', fontSize: 11, color: '#888' }}>
-                                    {en?.sets_won || 0}:{en?.sets_lost || 0}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_elo && (
-                                <ThemedText
-                                    style={{
-                                        width: 52,
-                                        textAlign: 'right',
-                                        fontWeight: 'bold',
-                                        color: '#FFD700',
-                                    }}
-                                >
-                                    {Math.round(p.rating)}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_average && (
-                                <ThemedText
-                                    style={{
-                                        width: 52,
-                                        textAlign: 'right',
-                                        fontWeight: 'bold',
-                                        color: '#00E5FF',
-                                    }}
-                                >
-                                    {p.matches_played
-                                        ? (p.total_score / p.matches_played).toFixed(1)
-                                        : '0.0'}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_best_score && (
-                                <ThemedText style={{ width: 48, textAlign: 'right', fontSize: 12 }}>
-                                    {en?.best_score ?? '—'}
-                                </ThemedText>
-                            )}
-                            {league.config?.track_last_played && (
-                                <ThemedText style={{ width: 48, textAlign: 'right', fontSize: 11, color: '#888' }}>
-                                    {formatLastPlayed(en?.last_played)}
-                                </ThemedText>
-                            )}
-                        </View>
-                    );
-                })}
-            </View>
-        </ScrollView>
-    );
-
-    const renderTeams = () => (
-        <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }}>
-            <View style={{ padding: 16, minWidth: '100%' }}>
-                <ThemedText style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-                    ELO sestavy je samostatný rating páru/týmu (ne průměr hráčů). Každá sestava má vlastní ELO.
-                </ThemedText>
-                <View
-                    style={{
-                        flexDirection: 'row',
-                        borderBottomWidth: 1,
-                        borderColor,
-                        paddingBottom: 8,
-                        marginBottom: 8,
-                    }}
-                >
-                    <ThemedText style={{ width: 30, fontWeight: 'bold' }}>#</ThemedText>
-                    <ThemedText style={{ minWidth: 160, flex: 1, fontWeight: 'bold' }}>Tým</ThemedText>
-                    <HeaderItem label="Záp" column="matches" style={{ width: 45 }} />
-                    {league.config?.track_wins_losses && (
-                        <HeaderItem label="V-R-P" column="win_ratio" style={{ width: 65 }} />
-                    )}
-                    {league.config?.track_score && (
-                        <ThemedText style={{ width: 60, textAlign: 'center', fontWeight: 'bold' }}>
-                            Skóre
-                        </ThemedText>
-                    )}
-                    {league.config?.track_score_diff && (
-                        <HeaderItem label="Rozd" column="score_diff" style={{ width: 50 }} />
-                    )}
-                    {league.config?.track_elo && (
-                        <HeaderItem label="ELO" column="elo" style={{ width: 60, textAlign: 'right' }} />
-                    )}
-                </View>
-
-                {getSortedArray(teamStats, true).map((t, index) => (
-                    <View
-                        key={t.id}
-                        style={{
-                            flexDirection: 'row',
-                            paddingVertical: 12,
-                            borderBottomWidth: 1,
-                            borderColor,
-                        }}
-                    >
-                        <ThemedText
-                            style={{
-                                width: 30,
-                                fontWeight: 'bold',
-                                color:
-                                    index === 0
-                                        ? '#FFD700'
-                                        : index === 1
-                                          ? '#C0C0C0'
-                                          : index === 2
-                                            ? '#CD7F32'
-                                            : primaryTextColor,
-                            }}
-                        >
-                            {index + 1}.
-                        </ThemedText>
-                        <ThemedText style={{ minWidth: 160, flex: 1, fontSize: 13 }} numberOfLines={1}>
-                            {t.names}
-                        </ThemedText>
-                        <ThemedText style={{ width: 45, textAlign: 'center' }}>{t.matches_played}</ThemedText>
-
-                        {league.config?.track_wins_losses && (
-                            <ThemedText style={{ width: 65, textAlign: 'center', color: '#888' }}>
-                                {t.wins}-{t.draws}-{t.losses}
-                            </ThemedText>
-                        )}
-                        {league.config?.track_score && (
-                            <ThemedText style={{ width: 60, textAlign: 'center' }}>
-                                {`${t.score_for}:${t.score_against}`}
-                            </ThemedText>
-                        )}
-                        {league.config?.track_score_diff && (
-                            <ThemedText
-                                style={{
-                                    width: 50,
-                                    textAlign: 'center',
-                                    color:
-                                        t.score_diff > 0
-                                            ? '#4CAF50'
-                                            : t.score_diff < 0
-                                              ? '#F44336'
-                                              : '#888',
-                                }}
-                            >
-                                {t.score_diff > 0 ? '+' : ''}
-                                {t.score_diff}
-                            </ThemedText>
-                        )}
-                        {league.config?.track_elo && (
-                            <View style={{ width: 70, alignItems: 'flex-end' }}>
-                                <ThemedText style={{ fontWeight: 'bold', color: '#FFD700' }}>
-                                    {Math.round(t.rating)}
-                                </ThemedText>
-                                {typeof t.last_rating_change === 'number' && t.matches_played > 0 && (
-                                    <ThemedText
-                                        style={{
-                                            fontSize: 10,
-                                            color: t.last_rating_change > 0 ? '#4CAF50' : '#888',
-                                        }}
-                                    >
-                                        {t.last_rating_change > 0 ? '+' : ''}
-                                        {Math.round(t.last_rating_change)}
-                                    </ThemedText>
-                                )}
-                            </View>
-                        )}
-                    </View>
-                ))}
-                {teamStats.length === 0 && (
-                    <ThemedText style={{ color: '#888', textAlign: 'center', marginTop: 20 }}>
-                        Zatím nebyly odehrány žádné týmové zápasy.
-                    </ThemedText>
-                )}
-            </View>
-        </ScrollView>
-    );
-
-    const renderMatches = () => (
-        <View style={{ flex: 1 }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-                <Menu
-                    visible={filterMenuOpen}
-                    onDismiss={() => setFilterMenuOpen(false)}
-                    anchor={
-                        <Button
-                            mode="outlined"
-                            onPress={() => setFilterMenuOpen(true)}
-                            icon="filter"
-                            textColor={primaryTextColor}
-                            style={{ borderColor }}
-                        >
-                            {filterLabel}
-                        </Button>
-                    }
-                >
-                    <Menu.Item
-                        onPress={() => {
-                            setMatchFilter('all');
-                            setFilterMenuOpen(false);
-                        }}
-                        title="Všechny zápasy"
-                    />
-                    <Menu.Item
-                        onPress={() => {
-                            setMatchFilter('mine');
-                            setFilterMenuOpen(false);
-                        }}
-                        title="Moje zápasy"
-                    />
-                    {players
-                        .filter((p) => String(p.user_id) !== String(user?.id))
-                        .map((p) => (
-                            <Menu.Item
-                                key={p.user_id}
-                                onPress={() => {
-                                    setMatchFilter(String(p.user_id));
-                                    setFilterMenuOpen(false);
-                                }}
-                                title={`Zápasy: ${p.users?.username || p.users?.jmeno}`}
-                            />
-                        ))}
-                </Menu>
-            </View>
-
-            <FlatList
-                data={filteredMatches}
-                keyExtractor={(m) => m.id.toString()}
-                contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-                ListEmptyComponent={
-                    <ThemedText style={{ textAlign: 'center', marginTop: 20 }}>
-                        Žádné zápasy v tomto filtru.
-                    </ThemedText>
-                }
-                renderItem={({ item }) => {
-                    const sortedParticipants =
-                        league?.team_size === 0
-                            ? [...item.league_match_participants].sort((a: any, b: any) => {
-                                  if (league?.config?.lower_is_better) {
-                                      return (a.score || 0) - (b.score || 0);
-                                  }
-                                  return (b.score || 0) - (a.score || 0);
-                              })
-                            : item.league_match_participants;
-
-                    const setsMeta =
-                        item.metadata?.scoring_mode === 'sets' ? item.metadata : null;
-                    const setsLabel = setsMeta?.sets?.length
-                        ? setsMeta.sets.map((s: any) => `${s.team1}:${s.team2}`).join(', ')
-                        : null;
-
-                    return (
-                        <ThemedView
-                            style={{
-                                backgroundColor: surfaceColor,
-                                padding: 12,
-                                borderRadius: 8,
-                                marginBottom: 12,
-                            }}
-                        >
-                            <View
-                                style={{
-                                    flexDirection: 'row',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: 8,
-                                }}
-                            >
-                                <ThemedText style={{ fontSize: 12, color: '#888' }}>
-                                    {dayjs(item.played_at).format('D. MMMM YYYY HH:mm')}
-                                </ThemedText>
-                                <View style={{ flexDirection: 'row', gap: 4 }}>
-                                    <Button
-                                        compact
-                                        mode="text"
-                                        onPress={() =>
-                                            router.push(
-                                                `/leaderboards/add_match?id=${league.id}&matchId=${item.id}`
-                                            )
-                                        }
-                                        textColor="#00E5FF"
-                                    >
-                                        Upravit
-                                    </Button>
-                                    <Button
-                                        compact
-                                        mode="text"
-                                        onPress={() => handleDeleteMatch(item.id)}
-                                        textColor="#F44336"
-                                    >
-                                        Smazat
-                                    </Button>
-                                </View>
-                            </View>
-
-                            {setsLabel && (
-                                <ThemedText
-                                    style={{ fontSize: 13, marginBottom: 6, color: primaryTextColor }}
-                                >
-                                    Sety {setsMeta.sets_won?.team1 ?? '?'}:
-                                    {setsMeta.sets_won?.team2 ?? '?'}
-                                    {'  ·  '}
-                                    {setsLabel}
-                                    {setsMeta.games
-                                        ? `  ·  Gamy ${setsMeta.games.team1}:${setsMeta.games.team2}`
-                                        : ''}
-                                </ThemedText>
-                            )}
-
-                            {sortedParticipants.map((p: any, idx: number) => (
-                                <View
-                                    key={p.id}
-                                    style={{
-                                        flexDirection: 'row',
-                                        justifyContent: 'space-between',
-                                        marginVertical: 2,
-                                    }}
-                                >
-                                    <ThemedText
-                                        style={{
-                                            fontWeight: p.is_winner ? 'bold' : 'normal',
-                                            color: p.is_winner ? primaryTextColor : '#888',
-                                        }}
-                                    >
-                                        {league?.team_size === 0
-                                            ? `${p.position || idx + 1}. `
-                                            : p.is_winner
-                                              ? '👑 '
-                                              : ''}
-                                        {p.users?.username || p.users?.jmeno}
-                                        {p.team && league?.team_size !== 0
-                                            ? ` (Tým ${p.team})`
-                                            : ''}
-                                    </ThemedText>
-                                    <ThemedText
-                                        style={{
-                                            color: p.rating_change > 0 ? '#4CAF50' : '#888',
-                                        }}
-                                    >
-                                        {p.score !== null
-                                            ? `${p.score}${setsMeta ? ' set' : ' b'} `
-                                            : ''}
-                                        {league?.config?.track_elo
-                                            ? `(${p.rating_change > 0 ? '+' : ''}${Math.round(p.rating_change)})`
-                                            : ''}
-                                    </ThemedText>
-                                </View>
-                            ))}
-                        </ThemedView>
-                    );
-                }}
-            />
+    const StatChip = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
+        <View style={[styles.statChip, { backgroundColor: surfaces.surfaceElevated }]}>
+            <ThemedText style={[styles.statChipLabel, { color: surfaces.textSecondary }]}>
+                {label}
+            </ThemedText>
+            <ThemedText style={[styles.statChipValue, { color: tone || surfaces.text }]}>
+                {value}
+            </ThemedText>
         </View>
     );
 
+    const renderRanking = () => (
+        <FlatList
+            data={getSortedArray(players)}
+            keyExtractor={(p) => String(p.id)}
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.listPad}
+            ListHeaderComponent={
+                <View style={{ marginBottom: 8 }}>
+                    <SortChips />
+                    <ThemedText style={[styles.metricHint, { color: surfaces.textSecondary }]}>
+                        Hlavní hodnota vpravo: {primaryMetricLabel()}
+                    </ThemedText>
+                </View>
+            }
+            ListEmptyComponent={
+                <ThemedText style={{ textAlign: 'center', color: surfaces.textSecondary, marginTop: 24 }}>
+                    Zatím žádní hráči.
+                </ThemedText>
+            }
+            renderItem={({ item: p, index }) => {
+                const en = enrichedMap.get(String(p.user_id));
+                const name = p.users?.username || p.users?.jmeno || 'Neznámý';
+                const isMe = String(p.user_id) === String(user?.id);
+
+                return (
+                    <View
+                        style={[
+                            styles.playerCard,
+                            {
+                                backgroundColor: surfaces.surface,
+                                borderColor: isMe ? Brand.primary : surfaces.border,
+                                borderWidth: isMe ? 1.5 : StyleSheet.hairlineWidth,
+                            },
+                        ]}
+                    >
+                        <View style={styles.playerTop}>
+                            <View
+                                style={[
+                                    styles.rankBadge,
+                                    { backgroundColor: index < 3 ? Brand.primarySoft : surfaces.surfaceElevated },
+                                ]}
+                            >
+                                <ThemedText style={[styles.rankText, { color: rankColor(index) }]}>
+                                    {index + 1}
+                                </ThemedText>
+                            </View>
+                            <View style={styles.playerIdentity}>
+                                <ThemedText
+                                    style={[styles.playerName, { color: surfaces.text }]}
+                                    numberOfLines={1}
+                                >
+                                    {name}
+                                    {isMe ? ' · ty' : ''}
+                                </ThemedText>
+                                <ThemedText style={{ color: surfaces.textSecondary, fontSize: 12 }}>
+                                    {p.matches_played} zápas{p.matches_played === 1 ? '' : 'ů'}
+                                    {league.config?.track_form && en?.form ? ` · ${en.form}` : ''}
+                                </ThemedText>
+                            </View>
+                            <View style={styles.primaryMetric}>
+                                <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
+                                    {playerPrimaryValue(p, en)}
+                                </ThemedText>
+                                <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
+                                    {primaryMetricLabel()}
+                                </ThemedText>
+                            </View>
+                        </View>
+
+                        <View style={styles.statRow}>
+                            {league.config?.track_wins_losses && (
+                                <StatChip label="V–R–P" value={`${p.wins}-${p.draws}-${p.losses}`} />
+                            )}
+                            {league.config?.track_winrate && (
+                                <StatChip label="Výhry" value={`${en?.winrate ?? 0}%`} />
+                            )}
+                            {league.config?.track_positions && (
+                                <StatChip
+                                    label="1–2–3"
+                                    value={`${p.first_places || 0}-${p.second_places || 0}-${p.third_places || 0}`}
+                                />
+                            )}
+                            {league.config?.track_score && (
+                                <StatChip
+                                    label="Skóre"
+                                    value={
+                                        league.team_size === 0
+                                            ? String(p.score_for)
+                                            : `${p.score_for}:${p.score_against}`
+                                    }
+                                />
+                            )}
+                            {league.config?.track_score_diff && (
+                                <StatChip
+                                    label="Rozdíl"
+                                    value={`${p.score_diff > 0 ? '+' : ''}${p.score_diff}`}
+                                    tone={
+                                        p.score_diff > 0
+                                            ? Brand.success
+                                            : p.score_diff < 0
+                                              ? Brand.danger
+                                              : undefined
+                                    }
+                                />
+                            )}
+                            {league.config?.track_set_stats && (
+                                <StatChip
+                                    label="Sety"
+                                    value={`${en?.sets_won || 0}:${en?.sets_lost || 0}`}
+                                />
+                            )}
+                            {league.config?.track_elo && league.config?.track_average && (
+                                <StatChip
+                                    label="Průměr"
+                                    value={
+                                        p.matches_played
+                                            ? (p.total_score / p.matches_played).toFixed(1)
+                                            : '0.0'
+                                    }
+                                />
+                            )}
+                            {league.config?.track_best_score && (
+                                <StatChip label="Best" value={String(en?.best_score ?? '—')} />
+                            )}
+                            {league.config?.track_last_played && (
+                                <StatChip
+                                    label="Poslední"
+                                    value={formatLastPlayed(en?.last_played) || '—'}
+                                />
+                            )}
+                            {league.config?.track_elo && !league.config?.track_average && (
+                                <StatChip label="Zápasy" value={String(p.matches_played)} />
+                            )}
+                        </View>
+                    </View>
+                );
+            }}
+        />
+    );
+
+    const renderTeams = () => (
+        <FlatList
+            data={getSortedArray(teamStats, true)}
+            keyExtractor={(t) => String(t.id)}
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.listPad}
+            ListHeaderComponent={
+                <View style={{ marginBottom: 8, gap: 8 }}>
+                    <SortChips forTeams />
+                    <ThemedText style={[styles.metricHint, { color: surfaces.textSecondary }]}>
+                        ELO sestavy je rating páru/týmu, ne průměr hráčů.
+                    </ThemedText>
+                </View>
+            }
+            ListEmptyComponent={
+                <ThemedText style={{ color: surfaces.textSecondary, textAlign: 'center', marginTop: 24 }}>
+                    Zatím nebyly odehrány žádné týmové zápasy.
+                </ThemedText>
+            }
+            renderItem={({ item: t, index }) => (
+                <View
+                    style={[
+                        styles.playerCard,
+                        {
+                            backgroundColor: surfaces.surface,
+                            borderColor: surfaces.border,
+                            borderWidth: StyleSheet.hairlineWidth,
+                        },
+                    ]}
+                >
+                    <View style={styles.playerTop}>
+                        <View
+                            style={[
+                                styles.rankBadge,
+                                { backgroundColor: index < 3 ? Brand.primarySoft : surfaces.surfaceElevated },
+                            ]}
+                        >
+                            <ThemedText style={[styles.rankText, { color: rankColor(index) }]}>
+                                {index + 1}
+                            </ThemedText>
+                        </View>
+                        <View style={styles.playerIdentity}>
+                            <ThemedText
+                                style={[styles.playerName, { color: surfaces.text }]}
+                                numberOfLines={2}
+                            >
+                                {t.names}
+                            </ThemedText>
+                            <ThemedText style={{ color: surfaces.textSecondary, fontSize: 12 }}>
+                                {t.matches_played} zápas{t.matches_played === 1 ? '' : 'ů'}
+                            </ThemedText>
+                        </View>
+                        {league.config?.track_elo && (
+                            <View style={styles.primaryMetric}>
+                                <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
+                                    {Math.round(t.rating)}
+                                </ThemedText>
+                                <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
+                                    ELO
+                                    {typeof t.last_rating_change === 'number' && t.matches_played > 0
+                                        ? ` ${t.last_rating_change > 0 ? '+' : ''}${Math.round(t.last_rating_change)}`
+                                        : ''}
+                                </ThemedText>
+                            </View>
+                        )}
+                    </View>
+                    <View style={styles.statRow}>
+                        {league.config?.track_wins_losses && (
+                            <StatChip label="V–R–P" value={`${t.wins}-${t.draws}-${t.losses}`} />
+                        )}
+                        {league.config?.track_score && (
+                            <StatChip label="Skóre" value={`${t.score_for}:${t.score_against}`} />
+                        )}
+                        {league.config?.track_score_diff && (
+                            <StatChip
+                                label="Rozdíl"
+                                value={`${t.score_diff > 0 ? '+' : ''}${t.score_diff}`}
+                                tone={
+                                    t.score_diff > 0
+                                        ? Brand.success
+                                        : t.score_diff < 0
+                                          ? Brand.danger
+                                          : undefined
+                                }
+                            />
+                        )}
+                    </View>
+                </View>
+            )}
+        />
+    );
+
+    const formatEloChange = (change: number) => {
+        const rounded = Math.round(change);
+        if (rounded === 0) return '±0';
+        return `${rounded > 0 ? '+' : ''}${rounded}`;
+    };
+
+    const eloTone = (change: number) => {
+        if (change > 0) return Brand.success;
+        if (change < 0) return Brand.danger;
+        return surfaces.textSecondary;
+    };
+
+    const EloBadge = ({ snap, label }: { snap?: EloSnap; label?: string }) => {
+        if (!snap) return null;
+        return (
+            <View style={styles.eloBadge}>
+                {label ? (
+                    <ThemedText style={[styles.eloBadgeLabel, { color: surfaces.textSecondary }]}>
+                        {label}
+                    </ThemedText>
+                ) : null}
+                <ThemedText style={[styles.eloAfter, { color: surfaces.text }]}>
+                    {Math.round(snap.after)}
+                </ThemedText>
+                <ThemedText style={[styles.eloDelta, { color: eloTone(snap.change) }]}>
+                    {formatEloChange(snap.change)}
+                </ThemedText>
+            </View>
+        );
+    };
+
+    const renderMatches = () => {
+        const trackElo = !!league?.config?.track_elo;
+
+        return (
+            <View style={{ flex: 1 }}>
+                <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+                    <Menu
+                        visible={filterMenuOpen}
+                        onDismiss={() => setFilterMenuOpen(false)}
+                        anchor={
+                            <Button
+                                mode="outlined"
+                                onPress={() => setFilterMenuOpen(true)}
+                                icon="filter"
+                                textColor={primaryTextColor}
+                                style={{ borderColor }}
+                            >
+                                {filterLabel}
+                            </Button>
+                        }
+                    >
+                        <Menu.Item
+                            onPress={() => {
+                                setMatchFilter('all');
+                                setFilterMenuOpen(false);
+                            }}
+                            title="Všechny zápasy"
+                        />
+                        <Menu.Item
+                            onPress={() => {
+                                setMatchFilter('mine');
+                                setFilterMenuOpen(false);
+                            }}
+                            title="Moje zápasy"
+                        />
+                        {players
+                            .filter((p) => String(p.user_id) !== String(user?.id))
+                            .map((p) => (
+                                <Menu.Item
+                                    key={p.user_id}
+                                    onPress={() => {
+                                        setMatchFilter(String(p.user_id));
+                                        setFilterMenuOpen(false);
+                                    }}
+                                    title={`Zápasy: ${p.users?.username || p.users?.jmeno}`}
+                                />
+                            ))}
+                    </Menu>
+                </View>
+
+                <FlatList
+                    data={filteredMatches}
+                    keyExtractor={(m) => m.id.toString()}
+                    contentContainerStyle={{ padding: 16, paddingBottom: 110 }}
+                    ListEmptyComponent={
+                        <ThemedText
+                            style={{
+                                textAlign: 'center',
+                                marginTop: 24,
+                                color: surfaces.textSecondary,
+                            }}
+                        >
+                            Žádné zápasy v tomto filtru.
+                        </ThemedText>
+                    }
+                    renderItem={({ item }) => {
+                        const parts = item.league_match_participants || [];
+                        const eloSnap = matchEloHistory.get(Number(item.id));
+                        const setsMeta =
+                            item.metadata?.scoring_mode === 'sets' ? item.metadata : null;
+                        const setsLabel = setsMeta?.sets?.length
+                            ? setsMeta.sets.map((s: any) => `${s.team1}:${s.team2}`).join(', ')
+                            : null;
+                        const isFfa = league?.team_size === 0;
+
+                        const byTeam = new Map<number, any[]>();
+                        for (const p of parts) {
+                            const t = Number(p.team ?? 0);
+                            if (!byTeam.has(t)) byTeam.set(t, []);
+                            byTeam.get(t)!.push(p);
+                        }
+                        const teamEntries = [...byTeam.entries()].sort(([a], [b]) => a - b);
+
+                        const nameOf = (p: any) => p.users?.username || p.users?.jmeno || '?';
+
+                        return (
+                            <View
+                                style={[
+                                    styles.matchCard,
+                                    {
+                                        backgroundColor: surfaces.surface,
+                                        borderColor: surfaces.border,
+                                    },
+                                ]}
+                            >
+                                <View style={styles.matchHeader}>
+                                    <ThemedText
+                                        style={{ fontSize: 12, color: surfaces.textSecondary }}
+                                    >
+                                        {dayjs(item.played_at).format('D. MMMM YYYY · HH:mm')}
+                                    </ThemedText>
+                                    <View style={styles.matchActions}>
+                                        <Pressable
+                                            hitSlop={8}
+                                            onPress={() =>
+                                                router.push(
+                                                    `/leaderboards/add_match?id=${league.id}&matchId=${item.id}`
+                                                )
+                                            }
+                                            style={styles.matchIconBtn}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name="pencil-outline"
+                                                size={18}
+                                                color={Brand.primary}
+                                            />
+                                        </Pressable>
+                                        <Pressable
+                                            hitSlop={8}
+                                            onPress={() => handleDeleteMatch(item.id)}
+                                            style={styles.matchIconBtn}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name="trash-can-outline"
+                                                size={18}
+                                                color={Brand.danger}
+                                            />
+                                        </Pressable>
+                                    </View>
+                                </View>
+
+                                {setsLabel && (
+                                    <View
+                                        style={[
+                                            styles.setsBar,
+                                            { backgroundColor: surfaces.surfaceElevated },
+                                        ]}
+                                    >
+                                        <ThemedText
+                                            style={{
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                                color: surfaces.textSecondary,
+                                            }}
+                                        >
+                                            Sety {setsMeta.sets_won?.team1 ?? '?'}:
+                                            {setsMeta.sets_won?.team2 ?? '?'}
+                                            {' · '}
+                                            {setsLabel}
+                                            {setsMeta.games
+                                                ? ` · Gamy ${setsMeta.games.team1}:${setsMeta.games.team2}`
+                                                : ''}
+                                        </ThemedText>
+                                    </View>
+                                )}
+
+                                {isFfa ? (
+                                    [...parts]
+                                        .sort((a: any, b: any) => {
+                                            if (league?.config?.lower_is_better) {
+                                                return (a.score || 0) - (b.score || 0);
+                                            }
+                                            return (b.score || 0) - (a.score || 0);
+                                        })
+                                        .map((p: any, idx: number) => {
+                                            const snap = eloSnap?.players.get(String(p.user_id));
+                                            return (
+                                                <View
+                                                    key={p.id}
+                                                    style={[
+                                                        styles.ffaRow,
+                                                        idx > 0 && {
+                                                            borderTopWidth: StyleSheet.hairlineWidth,
+                                                            borderTopColor: surfaces.border,
+                                                        },
+                                                    ]}
+                                                >
+                                                    <View
+                                                        style={[
+                                                            styles.rankBadge,
+                                                            {
+                                                                backgroundColor:
+                                                                    idx < 3
+                                                                        ? Brand.primarySoft
+                                                                        : surfaces.surfaceElevated,
+                                                            },
+                                                        ]}
+                                                    >
+                                                        <ThemedText
+                                                            style={[
+                                                                styles.rankText,
+                                                                { color: rankColor(idx) },
+                                                            ]}
+                                                        >
+                                                            {p.position || idx + 1}
+                                                        </ThemedText>
+                                                    </View>
+                                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                                        <ThemedText
+                                                            style={[
+                                                                styles.matchPlayerName,
+                                                                {
+                                                                    color: p.is_winner
+                                                                        ? surfaces.text
+                                                                        : surfaces.textSecondary,
+                                                                    fontWeight: p.is_winner
+                                                                        ? '700'
+                                                                        : '500',
+                                                                },
+                                                            ]}
+                                                            numberOfLines={1}
+                                                        >
+                                                            {nameOf(p)}
+                                                        </ThemedText>
+                                                    </View>
+                                                    <ThemedText
+                                                        style={[
+                                                            styles.matchScore,
+                                                            { color: surfaces.text },
+                                                        ]}
+                                                    >
+                                                        {p.score !== null && p.score !== undefined
+                                                            ? `${p.score}`
+                                                            : '—'}
+                                                    </ThemedText>
+                                                    {trackElo && <EloBadge snap={snap} />}
+                                                </View>
+                                            );
+                                        })
+                                ) : (
+                                    <View style={styles.vsRow}>
+                                        {(() => {
+                                            const left = teamEntries[0];
+                                            const right = teamEntries[1];
+                                            if (!left) return null;
+
+                                            const renderSide = (
+                                                entry: [number, any[]] | undefined,
+                                                side: 'left' | 'right'
+                                            ) => {
+                                                if (!entry) return <View style={styles.vsSide} />;
+                                                const [, members] = entry;
+                                                const isWinner = members.some((m: any) => m.is_winner);
+                                                const pairKey =
+                                                    members.length >= 2
+                                                        ? makePairKey(
+                                                              members.map((m: any) => m.user_id)
+                                                          )
+                                                        : null;
+                                                const pairSnap = pairKey
+                                                    ? eloSnap?.pairs.get(pairKey)
+                                                    : undefined;
+
+                                                return (
+                                                    <View
+                                                        style={[
+                                                            styles.vsSide,
+                                                            {
+                                                                alignItems:
+                                                                    side === 'left'
+                                                                        ? 'flex-start'
+                                                                        : 'flex-end',
+                                                            },
+                                                        ]}
+                                                    >
+                                                        {members.map((m: any) => {
+                                                            const snap = eloSnap?.players.get(
+                                                                String(m.user_id)
+                                                            );
+                                                            return (
+                                                                <View
+                                                                    key={m.id}
+                                                                    style={{
+                                                                        alignItems:
+                                                                            side === 'left'
+                                                                                ? 'flex-start'
+                                                                                : 'flex-end',
+                                                                        gap: 2,
+                                                                    }}
+                                                                >
+                                                                    <ThemedText
+                                                                        style={[
+                                                                            styles.matchPlayerName,
+                                                                            {
+                                                                                color: isWinner
+                                                                                    ? surfaces.text
+                                                                                    : surfaces.textSecondary,
+                                                                                fontWeight: isWinner
+                                                                                    ? '700'
+                                                                                    : '500',
+                                                                                textAlign:
+                                                                                    side === 'left'
+                                                                                        ? 'left'
+                                                                                        : 'right',
+                                                                            },
+                                                                        ]}
+                                                                        numberOfLines={1}
+                                                                    >
+                                                                        {nameOf(m)}
+                                                                    </ThemedText>
+                                                                    {trackElo && members.length === 1 && (
+                                                                        <EloBadge snap={snap} />
+                                                                    )}
+                                                                    {trackElo &&
+                                                                        members.length > 1 &&
+                                                                        snap && (
+                                                                            <ThemedText
+                                                                                style={{
+                                                                                    fontSize: 11,
+                                                                                    fontWeight: '600',
+                                                                                    color: eloTone(
+                                                                                        snap.change
+                                                                                    ),
+                                                                                }}
+                                                                            >
+                                                                                {Math.round(snap.after)}{' '}
+                                                                                {formatEloChange(
+                                                                                    snap.change
+                                                                                )}
+                                                                            </ThemedText>
+                                                                        )}
+                                                                </View>
+                                                            );
+                                                        })}
+                                                        {trackElo && pairSnap && (
+                                                            <EloBadge snap={pairSnap} label="Tým" />
+                                                        )}
+                                                    </View>
+                                                );
+                                            };
+
+                                            const leftScore = left[1]?.[0]?.score;
+                                            const rightScore = right?.[1]?.[0]?.score;
+
+                                            return (
+                                                <>
+                                                    {renderSide(left, 'left')}
+                                                    <View style={styles.vsCenter}>
+                                                        <ThemedText
+                                                            style={[
+                                                                styles.vsScore,
+                                                                { color: surfaces.text },
+                                                            ]}
+                                                        >
+                                                            {`${leftScore ?? '—'} — ${rightScore ?? '—'}`}
+                                                        </ThemedText>
+                                                    </View>
+                                                    {renderSide(right, 'right')}
+                                                </>
+                                            );
+                                        })()}
+                                    </View>
+                                )}
+                            </View>
+                        );
+                    }}
+                />
+            </View>
+        );
+    };
+
     return (
-        <ThemedView style={{ flex: 1 }}>
-            <View style={{ padding: 16, paddingTop: 40, flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 16 }}>
-                    <ThemedText style={{ fontSize: 24 }}>←</ThemedText>
-                </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                    <ThemedText style={{ fontSize: 22, fontWeight: 'bold' }}>{league.name}</ThemedText>
-                    <ThemedText style={{ fontSize: 14, color: '#888' }}>
+        <ThemedSafeView style={[styles.screen, { backgroundColor: surfaces.background }]}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <View style={styles.header}>
+                <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+                    <MaterialCommunityIcons name="arrow-left" size={24} color={surfaces.text} />
+                </Pressable>
+
+                <Pressable
+                    onPress={isCreator ? handleChangeCover : undefined}
+                    disabled={!isCreator || uploadingCover}
+                    style={styles.coverWrap}
+                >
+                    <LeagueCover uri={league.image_url} size={52} mine={isCreator} />
+                    {isCreator && (
+                        <View style={styles.cameraBadge}>
+                            <MaterialCommunityIcons name="camera" size={12} color="#fff" />
+                        </View>
+                    )}
+                </Pressable>
+
+                <View style={styles.headerText}>
+                    <ThemedText style={[styles.leagueName, { color: surfaces.text }]} numberOfLines={1}>
+                        {league.name}
+                    </ThemedText>
+                    <ThemedText style={{ color: surfaces.textSecondary, fontSize: 13 }} numberOfLines={1}>
                         {league.team_size === 0
-                            ? '(Všichni proti všem)'
+                            ? 'Všichni proti všem'
                             : league.team_size > 1
-                              ? `(Týmy ${league.team_size}v${league.team_size})`
-                              : '(1v1)'}
+                              ? `Týmy ${league.team_size}v${league.team_size}`
+                              : '1v1'}
+                        {isCreator ? ' · změnit obrázek' : ''}
                     </ThemedText>
                 </View>
             </View>
 
-            <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor }}>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'ranking' && styles.activeTab]}
-                    onPress={() => setActiveTab('ranking')}
-                >
-                    <ThemedText style={{ fontWeight: activeTab === 'ranking' ? 'bold' : 'normal' }}>
-                        Hráči
-                    </ThemedText>
-                </TouchableOpacity>
-
-                {league.team_size > 1 && (
-                    <TouchableOpacity
-                        style={[styles.tab, activeTab === 'teams' && styles.activeTab]}
-                        onPress={() => setActiveTab('teams')}
+            {isCreator &&
+                !!league.config?.track_score &&
+                league.team_size !== 0 && (
+                    <View
+                        style={[
+                            styles.setsConfigRow,
+                            {
+                                backgroundColor: surfaces.surface,
+                                borderBottomColor: surfaces.border,
+                            },
+                        ]}
                     >
-                        <ThemedText style={{ fontWeight: activeTab === 'teams' ? 'bold' : 'normal' }}>
-                            Týmy
-                        </ThemedText>
-                    </TouchableOpacity>
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                            <ThemedText
+                                style={{ fontWeight: '700', fontSize: 14 }}
+                            >
+                                Zapisovat sety
+                            </ThemedText>
+                            <ThemedText
+                                style={{
+                                    color: surfaces.textSecondary,
+                                    fontSize: 12,
+                                    marginTop: 2,
+                                }}
+                            >
+                                Výchozí zápis po setech + statistiky ve žebříčku
+                            </ThemedText>
+                        </View>
+                        <Switch
+                            value={!!league.config?.track_set_stats}
+                            onValueChange={handleToggleSetsDefault}
+                            disabled={savingSetsConfig}
+                            color={Brand.primary}
+                        />
+                    </View>
                 )}
 
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'matches' && styles.activeTab]}
-                    onPress={() => setActiveTab('matches')}
-                >
-                    <ThemedText style={{ fontWeight: activeTab === 'matches' ? 'bold' : 'normal' }}>
-                        Zápasy
-                    </ThemedText>
-                </TouchableOpacity>
+            <View style={[styles.tabs, { borderBottomColor: surfaces.border, backgroundColor: surfaces.surface }]}>
+                {(
+                    [
+                        { key: 'ranking' as const, label: 'Hráči' },
+                        ...(league.team_size > 1
+                            ? [{ key: 'teams' as const, label: 'Týmy' }]
+                            : []),
+                        { key: 'matches' as const, label: 'Zápasy' },
+                    ]
+                ).map((tab) => {
+                    const active = activeTab === tab.key;
+                    return (
+                        <Pressable
+                            key={tab.key}
+                            onPress={() => setActiveTab(tab.key)}
+                            style={[styles.tab, active && { borderBottomColor: Brand.primary }]}
+                        >
+                            <ThemedText
+                                style={{
+                                    fontWeight: active ? '700' : '500',
+                                    color: active ? Brand.primary : surfaces.textSecondary,
+                                }}
+                            >
+                                {tab.label}
+                            </ThemedText>
+                        </Pressable>
+                    );
+                })}
             </View>
 
             <View style={{ flex: 1 }}>
@@ -935,29 +1245,245 @@ export default function LeaderboardDetailScreen() {
             <FAB
                 icon="plus"
                 label="Zapsat výsledek"
-                style={{
-                    position: 'absolute',
-                    margin: 16,
-                    right: 0,
-                    bottom: 20,
-                    backgroundColor: '#FF00AA',
-                    borderRadius: 30,
-                }}
-                color="white"
+                style={[
+                    styles.fab,
+                    { bottom: Math.max(insets.bottom, 12) + 16 },
+                ]}
+                color={Brand.onPrimary}
+                customSize={56}
                 onPress={() => router.push(`/leaderboards/add_match?id=${league.id}`)}
             />
-        </ThemedView>
+        </ThemedSafeView>
     );
 }
 
 const styles = StyleSheet.create({
+    screen: { flex: 1 },
+    center: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+    },
+    forbiddenText: {
+        textAlign: 'center',
+        fontSize: 15,
+        lineHeight: 22,
+        marginHorizontal: 8,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 10,
+        gap: 10,
+    },
+    backBtn: { padding: 8 },
+    coverWrap: { position: 'relative' },
+    cameraBadge: {
+        position: 'absolute',
+        right: -2,
+        bottom: -2,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: Brand.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerText: { flex: 1, minWidth: 0, gap: 2 },
+    leagueName: { fontSize: 20, fontWeight: '700' },
+    setsConfigRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    tabs: {
+        flexDirection: 'row',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
     tab: {
         flex: 1,
-        padding: 16,
+        paddingVertical: 14,
+        alignItems: 'center',
+        borderBottomWidth: 2,
+        borderBottomColor: 'transparent',
+    },
+    fab: {
+        position: 'absolute',
+        margin: 16,
+        right: 0,
+        backgroundColor: Brand.primary,
+        borderRadius: 28,
+    },
+    listPad: {
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 130,
+    },
+    sortChips: {
+        flexDirection: 'row',
+        gap: 8,
+        paddingVertical: 4,
+    },
+    sortChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 16,
+        borderWidth: 1.5,
+    },
+    metricHint: {
+        fontSize: 12,
+        marginTop: 8,
+        marginBottom: 4,
+    },
+    playerCard: {
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 10,
+        gap: 10,
+    },
+    playerTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    rankBadge: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    rankText: {
+        fontSize: 15,
+        fontWeight: '800',
+    },
+    playerIdentity: {
+        flex: 1,
+        minWidth: 0,
+        gap: 2,
+    },
+    playerName: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    primaryMetric: {
+        alignItems: 'flex-end',
+        minWidth: 56,
+    },
+    primaryValue: {
+        fontSize: 20,
+        fontWeight: '800',
+    },
+    primaryLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    statRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    statChip: {
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        minWidth: 72,
+    },
+    statChipLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
+    },
+    statChipValue: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginTop: 1,
+    },
+    matchCard: {
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        gap: 10,
+    },
+    matchHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
     },
-    activeTab: {
-        borderBottomWidth: 2,
-        borderBottomColor: '#FF00AA',
+    matchActions: {
+        flexDirection: 'row',
+        gap: 4,
+    },
+    matchIconBtn: {
+        padding: 6,
+        borderRadius: 8,
+    },
+    setsBar: {
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    ffaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 8,
+    },
+    vsRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 8,
+    },
+    vsSide: {
+        flex: 1,
+        minWidth: 0,
+        gap: 4,
+    },
+    vsCenter: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 6,
+        paddingTop: 2,
+        minWidth: 72,
+    },
+    vsScore: {
+        fontSize: 20,
+        fontWeight: '800',
+    },
+    matchPlayerName: {
+        fontSize: 15,
+    },
+    matchScore: {
+        fontSize: 16,
+        fontWeight: '700',
+        minWidth: 28,
+        textAlign: 'right',
+    },
+    eloBadge: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        gap: 4,
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
+    },
+    eloBadgeLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+    },
+    eloAfter: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    eloDelta: {
+        fontSize: 12,
+        fontWeight: '700',
     },
 });

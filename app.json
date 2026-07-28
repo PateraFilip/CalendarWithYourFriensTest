@@ -64,7 +64,13 @@
         }
       ],
       "expo-font",
-      "./plugins/withFirebaseMessagingManifestFix.js"
+      "./plugins/withFirebaseMessagingManifestFix.js",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikace potřebuje přístup k fotkám pro obrázek tabulky."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

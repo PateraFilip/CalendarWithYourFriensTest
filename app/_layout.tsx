@@ -1,3 +1,5 @@
+import { Brand } from '@/constants/brand'
+import { Colors } from '@/constants/theme'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 import { useNotificationHandler } from '@/hooks/useNotificationHandler'
@@ -8,11 +10,11 @@ import {
 } from '@react-navigation/native'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
 import { ActivityIndicator, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { Provider } from 'react-native-paper'
+import { MD3DarkTheme, MD3LightTheme, Provider } from 'react-native-paper'
 import 'react-native-reanimated'
 import { UnreadMessagesProvider } from '@/contexts/UnreadMessagesContext'
 import { AppDataProvider } from '@/contexts/AppDataContext'
@@ -63,11 +65,11 @@ function RootLayoutNav() {
             <Stack.Screen name="(login)" />
             <Stack.Screen
                 name="register"
-                options={{ title: 'Registrace' }}
+                options={{ headerShown: false }}
             />
             <Stack.Screen
                 name="reset_password"
-                options={{ title: 'Obnova hesla' }}
+                options={{ headerShown: false }}
             />
         </Stack>
     )
@@ -75,12 +77,37 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
     const colorScheme = useColorScheme()
+    const scheme = colorScheme ?? 'light'
+    const paperTheme = useMemo(() => ({
+        ...(scheme === 'dark' ? MD3DarkTheme : MD3LightTheme),
+        colors: {
+            ...(scheme === 'dark' ? MD3DarkTheme.colors : MD3LightTheme.colors),
+            primary: Brand.primary,
+            secondary: Brand.primaryMuted,
+            background: Colors[scheme].background,
+            surface: Colors[scheme].surface,
+        },
+    }), [scheme])
+
+    const navTheme = useMemo(() => {
+        const base = scheme === 'dark' ? DarkTheme : DefaultTheme
+        return {
+            ...base,
+            colors: {
+                ...base.colors,
+                primary: Brand.primary,
+                background: Colors[scheme].background,
+                card: Colors[scheme].surface,
+                text: Colors[scheme].text,
+                border: Colors[scheme].border,
+            },
+        }
+    }, [scheme])
+
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <Provider>
-                <ThemeProvider
-                    value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
-                >
+            <Provider theme={paperTheme}>
+                <ThemeProvider value={navTheme}>
                     <AuthProvider>
                         <AppDataProvider>
                             <UnreadMessagesProvider>

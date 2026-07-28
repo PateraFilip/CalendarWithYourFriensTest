@@ -2,7 +2,45 @@
 
 Tento adresář obsahuje **cílové schéma DB**, migraci a **upravené Edge Functions** pro model `event_series` + `recurrence_rule` (JSON).
 
-## Postup nasazení (nový projekt + migrace dat)
+## Migrace regionu Paříž → Frankfurt
+
+**Aktuální produkční projekt (Frankfurt):** `pnbcylzrudowpeiikult`  
+`https://pnbcylzrudowpeiikult.supabase.co`
+
+Starý Paříž projekt `sdzyhihtqrgsntbxlugp` nech jako fallback pár dní, pak pause/delete.
+
+Region u existujícího projektu **nejde změnit**. Postup: nový projekt ve Frankfurtu (`eu-central-1`) + dump/restore.
+
+1. Vytvoř [Personal Access Token](https://supabase.com/dashboard/account/tokens).
+2. Zjisti **Database password** starého projektu (Settings → Database; případně reset).
+3. Zkopíruj [`scripts/.env.migration.example`](scripts/.env.migration.example) do **kořene repo** jako `.env.migration` a doplň:
+   - `SUPABASE_ACCESS_TOKEN`
+   - `OLD_DB_PASSWORD`
+   - `NEW_DB_PASSWORD` (heslo pro nový projekt)
+4. Spusť:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File supabase/scripts/migrate-paris-to-frankfurt.ps1
+```
+
+Skript vytvoří projekt ve Frankfurtu (pokud není `NEW_PROJECT_REF`), udělá dump a restore.
+
+5. Po skriptu:
+   - Realtime publications (tabulky z AppData)
+   - Database Webhooks → `send-notification`
+   - Auth URLs / OAuth
+   - `node supabase/scripts/copy-storage-bucket.mjs` (bucket `league-covers`)
+   - `supabase link --project-ref <NEW_REF>` + deploy functions + secrets
+   - **Znovu nastav Edge secret `FIREBASE_SERVICE_ACCOUNT`** (nejde zkopírovat přes CLI — jen digest)
+   - Přepni `.env` appky na novou URL + anon key
+
+**Nepoužívej** `migrate-from-old-supabase.mjs` pro změnu regionu — ten je jen na legacy schema migraci.
+
+Oficiální docs: [Migrating within Supabase](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
+
+---
+
+## Postup nasazení (nový projekt + migrace dat / legacy schema)
 
 1. V **novém** Supabase projektu spusť `schema.sql`
 2. Migruj data ze **starého** projektu (`sdzyhihtqrgsntbxlugp`):
@@ -129,7 +167,9 @@ Když je aplikace **zavřená**, lokální Realtime notifikace nefungují. Push 
 |---------|----------|---------------|
 | `user_notifications` | INSERT | `send-notification` |
 | `event_messages` | INSERT | `send-notification` |
-| `friendships` | INSERT | `send-notification` |
+| `friendships` | INSERT (žádost), UPDATE (přijetí) | `send-notification` |
+
+Narozeniny: `pg_cron` job `check-birthdays` (`0 8 * * *` UTC) volá `check_and_insert_birthdays()` → INSERT do `user_notifications` → webhook.
 
 URL: `https://<PROJECT_REF>.supabase.co/functions/v1/send-notification`
 

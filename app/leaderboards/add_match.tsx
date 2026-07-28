@@ -1,32 +1,75 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import {
+    View,
+    ScrollView,
+    Pressable,
+    StyleSheet,
+    Alert,
+    TextInput as RNTextInput,
+    ActivityIndicator as RNActivityIndicator,
+} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { ThemedSafeView } from '@/components/ThemedSafeView';
+import { FormChip } from '@/components/formUi';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
-import { useLocalSearchParams, router } from 'expo-router';
-import { fetchLeagueDetails, fetchLeagueLeaderboard, fetchNetworkIds, League } from '@/services/leagues/leagues';
+import { useAppDataOptional } from '@/contexts/AppDataContext';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
+import {
+    fetchLeagueDetails,
+    fetchLeagueLeaderboard,
+    fetchNetworkIds,
+    League,
+} from '@/services/leagues/leagues';
 import { fetchUsers } from '@/services/users/get_users';
 import { submitMatch, SubmitMatchData } from '@/services/leagues/submit_match';
 import { buildSetsMetadata, summarizeSets } from '@/services/leagues/match_sets';
 import { supabase } from '@/lib/supabaseClient';
-import { Button, ActivityIndicator, TextInput, Checkbox, Switch, IconButton } from 'react-native-paper';
+import { Brand, BrandSurfaces } from '@/constants/brand';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 type SetRow = { team1: string; team2: string };
+
+type PlayerOption = {
+    user_id: string;
+    name: string;
+    jmeno?: string | null;
+    prijmeni?: string | null;
+    username?: string | null;
+    inLeague: boolean;
+};
+
+const TEAM1 = Brand.primary;
+const TEAM2 = '#00BCD4';
+
+function playerInitials(p: {
+    jmeno?: string | null;
+    prijmeni?: string | null;
+    username?: string | null;
+    name?: string;
+}): string {
+    const a = (p.jmeno || '').trim().charAt(0);
+    const b = (p.prijmeni || '').trim().charAt(0);
+    if (a || b) return `${a}${b}`.toUpperCase();
+    return (p.username || p.name || '?').slice(0, 2).toUpperCase();
+}
 
 export default function AddMatchScreen() {
     const { id, matchId } = useLocalSearchParams();
     const { user } = useAuth();
     const editingMatchId = matchId ? Number(matchId) : null;
-    
+    const scheme = useColorScheme() ?? 'light';
+    const surfaces = BrandSurfaces[scheme];
+    const appData = useAppDataOptional();
+    const colors = appData?.colors ?? [];
+
+    const chipInactive = scheme === 'dark' ? '#E8EAED' : '#3c4043';
+    const chipInactiveBorder = scheme === 'dark' ? '#BDC1C6' : '#80868b';
+
     const [league, setLeague] = useState<League | null>(null);
-    const [players, setPlayers] = useState<any[]>([]);
+    const [players, setPlayers] = useState<PlayerOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-
-    const surfaceColor = useThemeColor({ light: '#fff', dark: '#222' }, 'surface');
-    const primaryTextColor = useThemeColor({}, 'text');
-    const borderColor = useThemeColor({ light: '#ddd', dark: '#333' }, 'text');
 
     const [team1Players, setTeam1Players] = useState<string[]>([]);
     const [team2Players, setTeam2Players] = useState<string[]>([]);
@@ -37,7 +80,9 @@ export default function AddMatchScreen() {
     const [useSets, setUseSets] = useState(false);
     const [sets, setSets] = useState<SetRow[]>([{ team1: '', team2: '' }]);
 
-    const [ffaParticipants, setFfaParticipants] = useState<{user_id: string, score: string}[]>([]);
+    const [ffaParticipants, setFfaParticipants] = useState<
+        { user_id: string; score: string }[]
+    >([]);
 
     useEffect(() => {
         async function load() {
@@ -52,18 +97,26 @@ export default function AddMatchScreen() {
                 setLeague(l);
 
                 const networkSet = new Set(networkIds.map(String));
-                const allCandidates = u
+                const allCandidates: PlayerOption[] = u
                     .filter((usr: any) => networkSet.has(String(usr.id)))
                     .map((usr: any) => {
-                        const inLeague = p.some(player => String(player.user_id) === String(usr.id));
+                        const inLeague = p.some(
+                            (player) =>
+                                String(player.user_id) === String(usr.id)
+                        );
                         return {
                             user_id: String(usr.id),
                             name: usr.username || usr.jmeno || 'Neznámý',
-                            inLeague
+                            jmeno: usr.jmeno,
+                            prijmeni: usr.prijmeni,
+                            username: usr.username,
+                            inLeague,
                         };
                     });
-                
-                allCandidates.sort((a, b) => (a.inLeague === b.inLeague ? 0 : a.inLeague ? -1 : 1));
+
+                allCandidates.sort((a, b) =>
+                    a.inLeague === b.inLeague ? 0 : a.inLeague ? -1 : 1
+                );
                 setPlayers(allCandidates);
 
                 if (editingMatchId) {
@@ -82,15 +135,26 @@ export default function AddMatchScreen() {
                                 }))
                             );
                         } else {
-                            const t1 = parts.filter((p: any) => Number(p.team) === 1).map((p: any) => String(p.user_id));
-                            const t2 = parts.filter((p: any) => Number(p.team) === 2).map((p: any) => String(p.user_id));
+                            const t1 = parts
+                                .filter((p: any) => Number(p.team) === 1)
+                                .map((p: any) => String(p.user_id));
+                            const t2 = parts
+                                .filter((p: any) => Number(p.team) === 2)
+                                .map((p: any) => String(p.user_id));
                             setTeam1Players(t1);
                             setTeam2Players(t2);
-                            const s1 = parts.find((p: any) => Number(p.team) === 1)?.score;
-                            const s2 = parts.find((p: any) => Number(p.team) === 2)?.score;
+                            const s1 = parts.find(
+                                (p: any) => Number(p.team) === 1
+                            )?.score;
+                            const s2 = parts.find(
+                                (p: any) => Number(p.team) === 2
+                            )?.score;
                             setTeam1Score(s1 != null ? String(s1) : '');
                             setTeam2Score(s2 != null ? String(s2) : '');
-                            if (match.metadata?.scoring_mode === 'sets' && match.metadata.sets?.length) {
+                            if (
+                                match.metadata?.scoring_mode === 'sets' &&
+                                match.metadata.sets?.length
+                            ) {
                                 setUseSets(true);
                                 setSets(
                                     match.metadata.sets.map((s: any) => ({
@@ -99,17 +163,30 @@ export default function AddMatchScreen() {
                                     }))
                                 );
                             }
-                            const t1Win = parts.some((p: any) => Number(p.team) === 1 && p.is_winner);
-                            const t2Win = parts.some((p: any) => Number(p.team) === 2 && p.is_winner);
+                            const t1Win = parts.some(
+                                (p: any) =>
+                                    Number(p.team) === 1 && p.is_winner
+                            );
+                            const t2Win = parts.some(
+                                (p: any) =>
+                                    Number(p.team) === 2 && p.is_winner
+                            );
                             if (t1Win) setWinner(1);
                             else if (t2Win) setWinner(2);
                             else setWinner(0);
                         }
                     }
+                } else {
+                    const preferSets =
+                        !!l.config?.track_score &&
+                        !!l.config?.track_set_stats &&
+                        l.team_size !== 0;
+                    setUseSets(preferSets);
+                    if (preferSets) setSets([{ team1: '', team2: '' }]);
                 }
             } catch (e) {
                 console.error(e);
-                Alert.alert("Chyba", "Nepodařilo se načíst data.");
+                Alert.alert('Chyba', 'Nepodařilo se načíst data.');
             } finally {
                 setLoading(false);
             }
@@ -119,42 +196,60 @@ export default function AddMatchScreen() {
 
     const setsSummary = useMemo(() => {
         const parsed = sets
-            .map((s) => ({ team1: parseInt(s.team1, 10), team2: parseInt(s.team2, 10) }))
+            .map((s) => ({
+                team1: parseInt(s.team1, 10),
+                team2: parseInt(s.team2, 10),
+            }))
             .filter((s) => !Number.isNaN(s.team1) && !Number.isNaN(s.team2));
         return summarizeSets(parsed);
     }, [sets]);
 
     const handlePlayerToggle = (userId: string, team: 1 | 2) => {
         if (team === 1) {
-            if (team1Players.includes(userId)) setTeam1Players(p => p.filter(id => id !== userId));
+            if (team1Players.includes(userId))
+                setTeam1Players((p) => p.filter((id) => id !== userId));
             else if (team1Players.length < (league?.team_size || 99)) {
-                setTeam1Players(p => [...p, userId]);
-                setTeam2Players(p => p.filter(id => id !== userId));
+                setTeam1Players((p) => [...p, userId]);
+                setTeam2Players((p) => p.filter((id) => id !== userId));
             }
         } else {
-            if (team2Players.includes(userId)) setTeam2Players(p => p.filter(id => id !== userId));
+            if (team2Players.includes(userId))
+                setTeam2Players((p) => p.filter((id) => id !== userId));
             else if (team2Players.length < (league?.team_size || 99)) {
-                setTeam2Players(p => [...p, userId]);
-                setTeam1Players(p => p.filter(id => id !== userId));
+                setTeam2Players((p) => [...p, userId]);
+                setTeam1Players((p) => p.filter((id) => id !== userId));
             }
         }
     };
 
     const handleFfaToggle = (userId: string) => {
-        const exists = ffaParticipants.find(p => p.user_id === userId);
+        const exists = ffaParticipants.find((p) => p.user_id === userId);
         if (exists) {
-            setFfaParticipants(p => p.filter(x => x.user_id !== userId));
+            setFfaParticipants((p) => p.filter((x) => x.user_id !== userId));
         } else {
-            setFfaParticipants(p => [...p, { user_id: userId, score: '' }]);
+            setFfaParticipants((p) => [
+                ...p,
+                { user_id: userId, score: '' },
+            ]);
         }
     };
 
     const updateFfaScore = (userId: string, score: string) => {
-        setFfaParticipants(p => p.map(x => x.user_id === userId ? { ...x, score } : x));
+        setFfaParticipants((p) =>
+            p.map((x) => (x.user_id === userId ? { ...x, score } : x))
+        );
     };
 
-    const updateSet = (index: number, side: 'team1' | 'team2', value: string) => {
-        setSets((prev) => prev.map((row, i) => (i === index ? { ...row, [side]: value } : row)));
+    const updateSet = (
+        index: number,
+        side: 'team1' | 'team2',
+        value: string
+    ) => {
+        setSets((prev) =>
+            prev.map((row, i) =>
+                i === index ? { ...row, [side]: value } : row
+            )
+        );
     };
 
     const handleSubmit = async () => {
@@ -171,7 +266,10 @@ export default function AddMatchScreen() {
 
             if (league.team_size > 0) {
                 if (team1Players.length === 0 || team2Players.length === 0) {
-                    Alert.alert('Pozor', 'Oba týmy musí mít alespoň jednoho hráče!');
+                    Alert.alert(
+                        'Pozor',
+                        'Oba týmy musí mít alespoň jednoho hráče!'
+                    );
                     setSubmitting(false);
                     return;
                 }
@@ -184,8 +282,15 @@ export default function AddMatchScreen() {
 
                 if (useSets && league.config?.track_score) {
                     const parsedSets = sets
-                        .map((s) => ({ team1: parseInt(s.team1, 10), team2: parseInt(s.team2, 10) }))
-                        .filter((s) => !Number.isNaN(s.team1) && !Number.isNaN(s.team2));
+                        .map((s) => ({
+                            team1: parseInt(s.team1, 10),
+                            team2: parseInt(s.team2, 10),
+                        }))
+                        .filter(
+                            (s) =>
+                                !Number.isNaN(s.team1) &&
+                                !Number.isNaN(s.team2)
+                        );
 
                     if (parsedSets.length === 0) {
                         Alert.alert('Pozor', 'Zadejte alespoň jeden set.');
@@ -193,7 +298,10 @@ export default function AddMatchScreen() {
                         return;
                     }
                     if (parsedSets.some((s) => s.team1 === s.team2)) {
-                        Alert.alert('Pozor', 'Set nemůže skončit remízou — upravte gamy.');
+                        Alert.alert(
+                            'Pozor',
+                            'Set nemůže skončit remízou — upravte gamy.'
+                        );
                         setSubmitting(false);
                         return;
                     }
@@ -205,7 +313,11 @@ export default function AddMatchScreen() {
                     if (s1 > s2) t1Wins = true;
                     else if (s2 > s1) t2Wins = true;
                     else isDraw = true;
-                } else if (league.config?.track_score && team1Score !== '' && team2Score !== '') {
+                } else if (
+                    league.config?.track_score &&
+                    team1Score !== '' &&
+                    team2Score !== ''
+                ) {
                     if (league.config?.lower_is_better) {
                         if (s1 < s2) t1Wins = true;
                         else if (s2 < s1) t2Wins = true;
@@ -222,8 +334,20 @@ export default function AddMatchScreen() {
                 }
 
                 data.teams = [
-                    { team_index: 1, user_ids: team1Players, score: s1, is_winner: t1Wins, is_draw: isDraw },
-                    { team_index: 2, user_ids: team2Players, score: s2, is_winner: t2Wins, is_draw: isDraw }
+                    {
+                        team_index: 1,
+                        user_ids: team1Players,
+                        score: s1,
+                        is_winner: t1Wins,
+                        is_draw: isDraw,
+                    },
+                    {
+                        team_index: 2,
+                        user_ids: team2Players,
+                        score: s2,
+                        is_winner: t2Wins,
+                        is_draw: isDraw,
+                    },
                 ];
             } else {
                 if (ffaParticipants.length < 1) {
@@ -232,39 +356,54 @@ export default function AddMatchScreen() {
                     return;
                 }
 
-                let bestScore = league.config?.lower_is_better ? Infinity : -Infinity;
-                if (league.config?.track_score || league.config?.track_average) {
+                let bestScore = league.config?.lower_is_better
+                    ? Infinity
+                    : -Infinity;
+                if (
+                    league.config?.track_score ||
+                    league.config?.track_average
+                ) {
                     if (league.config?.lower_is_better) {
-                        bestScore = Math.min(...ffaParticipants.map(p => parseInt(p.score) || 0));
+                        bestScore = Math.min(
+                            ...ffaParticipants.map((p) => parseInt(p.score) || 0)
+                        );
                     } else {
-                        bestScore = Math.max(...ffaParticipants.map(p => parseInt(p.score) || 0));
+                        bestScore = Math.max(
+                            ...ffaParticipants.map((p) => parseInt(p.score) || 0)
+                        );
                     }
                 }
 
                 data.teams = ffaParticipants.map((p, idx) => {
                     const sc = parseInt(p.score) || 0;
-                    const win = (league.config?.track_score || league.config?.track_average) ? (sc === bestScore) : false;
+                    const win =
+                        league.config?.track_score ||
+                        league.config?.track_average
+                            ? sc === bestScore
+                            : false;
                     return {
                         team_index: idx + 1,
                         user_ids: [p.user_id],
                         score: sc,
                         is_winner: win,
-                        is_draw: false
+                        is_draw: false,
                     };
                 });
             }
 
             await submitMatch(data);
-            Alert.alert("Úspěch", editingMatchId ? "Zápas byl upraven." : "Výsledek byl zapsán!", [
-                { text: "OK", onPress: () => router.back() }
-            ]);
+            Alert.alert(
+                'Úspěch',
+                editingMatchId ? 'Zápas byl upraven.' : 'Výsledek byl zapsán!',
+                [{ text: 'OK', onPress: () => router.back() }]
+            );
         } catch (e: any) {
             console.error(e);
             const msg =
-              e?.message ||
-              e?.error_description ||
-              e?.details ||
-              'Nepodařilo se uložit výsledek.';
+                e?.message ||
+                e?.error_description ||
+                e?.details ||
+                'Nepodařilo se uložit výsledek.';
             Alert.alert('Chyba', String(msg));
         } finally {
             setSubmitting(false);
@@ -272,220 +411,889 @@ export default function AddMatchScreen() {
     };
 
     if (loading || !league) {
-        return <ThemedView style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator size="large" /></ThemedView>;
+        return (
+            <ThemedSafeView
+                style={{
+                    flex: 1,
+                    justifyContent: 'center',
+                    backgroundColor: surfaces.background,
+                }}
+            >
+                <Stack.Screen options={{ headerShown: false }} />
+                <RNActivityIndicator size="large" color={Brand.primary} />
+            </ThemedSafeView>
+        );
     }
 
     const isFfa = league.team_size === 0;
     const canUseSets = !isFfa && !!league.config?.track_score;
 
-    return (
-        <ThemedView style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-                <ThemedText style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>
-                    {editingMatchId ? 'Upravit zápas' : 'Zapsat výsledek'}
+    const colorForUser = (userId: string) =>
+        colors.find((c: any) => String(c.user_id) === String(userId));
+
+    const renderPlayerRow = (
+        p: PlayerOption,
+        selected: boolean,
+        accent: string,
+        onPress: () => void
+    ) => {
+        const color = colorForUser(p.user_id);
+        const bg = color?.background_color || Brand.primary;
+        const fg = color?.text_color || Brand.onPrimary;
+        return (
+            <Pressable
+                key={p.user_id}
+                onPress={onPress}
+                style={[
+                    styles.playerRow,
+                    { borderBottomColor: surfaces.border },
+                ]}
+            >
+                <View style={[styles.avatar, { backgroundColor: bg }]}>
+                    <ThemedText style={[styles.avatarText, { color: fg }]}>
+                        {playerInitials(p)}
+                    </ThemedText>
+                </View>
+                <ThemedText
+                    style={{
+                        flex: 1,
+                        fontWeight: selected ? '700' : '500',
+                        color: p.inLeague
+                            ? surfaces.text
+                            : surfaces.textSecondary,
+                    }}
+                    numberOfLines={1}
+                >
+                    {p.name}
                 </ThemedText>
-                <ThemedText style={{ color: '#888', fontSize: 12, marginBottom: 16 }}>
-                    Zobrazují se jen lidé z tvé sítě (přátelé a přátelé přátel).
+                <MaterialCommunityIcons
+                    name={
+                        selected
+                            ? 'checkbox-marked'
+                            : 'checkbox-blank-outline'
+                    }
+                    size={22}
+                    color={selected ? accent : surfaces.textSecondary}
+                />
+            </Pressable>
+        );
+    };
+
+    return (
+        <ThemedSafeView
+            style={{ flex: 1, backgroundColor: surfaces.background }}
+        >
+            <Stack.Screen options={{ headerShown: false }} />
+            <ScrollView
+                contentContainerStyle={styles.scroll}
+                keyboardShouldPersistTaps="handled"
+            >
+                <View style={styles.topBar}>
+                    <Pressable
+                        onPress={() => router.back()}
+                        hitSlop={12}
+                        style={styles.backBtn}
+                    >
+                        <MaterialCommunityIcons
+                            name="arrow-left"
+                            size={24}
+                            color={surfaces.text}
+                        />
+                    </Pressable>
+                    <ThemedText
+                        style={[styles.title, { color: surfaces.text }]}
+                    >
+                        {editingMatchId
+                            ? 'Upravit zápas'
+                            : 'Zapsat výsledek'}
+                    </ThemedText>
+                </View>
+                <ThemedText
+                    style={[
+                        styles.subtitle,
+                        { color: surfaces.textSecondary },
+                    ]}
+                >
+                    Zobrazují se jen lidé z tvé sítě (přátelé a přátelé
+                    přátel).
                 </ThemedText>
 
                 {!isFfa && (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 15 }}>
-                        <ThemedView style={{ flex: 1, backgroundColor: surfaceColor, padding: 10, borderRadius: 10, borderWidth: 1, borderColor }}>
-                            <ThemedText style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#FF00AA' }}>Tým 1</ThemedText>
-                            {players.map(p => (
-                                <TouchableOpacity key={p.user_id} onPress={() => handlePlayerToggle(p.user_id, 1)} style={styles.playerRow}>
-                                    <Checkbox status={team1Players.includes(p.user_id) ? 'checked' : 'unchecked'} color="#FF00AA" />
-                                    <ThemedText style={{ flex: 1, color: p.inLeague ? primaryTextColor : '#888' }}>{p.name}</ThemedText>
-                                </TouchableOpacity>
-                            ))}
-                        </ThemedView>
+                    <View style={styles.teamsRow}>
+                        <View
+                            style={[
+                                styles.teamCol,
+                                {
+                                    backgroundColor: surfaces.surface,
+                                    borderColor: surfaces.border,
+                                },
+                            ]}
+                        >
+                            <View style={styles.teamHeader}>
+                                <View
+                                    style={[
+                                        styles.teamBar,
+                                        { backgroundColor: TEAM1 },
+                                    ]}
+                                />
+                                <ThemedText
+                                    style={[
+                                        styles.teamTitle,
+                                        { color: TEAM1 },
+                                    ]}
+                                >
+                                    Tým 1
+                                </ThemedText>
+                                <ThemedText
+                                    style={{
+                                        color: surfaces.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    {team1Players.length}/
+                                    {league.team_size}
+                                </ThemedText>
+                            </View>
+                            {players.map((p) =>
+                                renderPlayerRow(
+                                    p,
+                                    team1Players.includes(p.user_id),
+                                    TEAM1,
+                                    () => handlePlayerToggle(p.user_id, 1)
+                                )
+                            )}
+                        </View>
 
-                        <ThemedView style={{ flex: 1, backgroundColor: surfaceColor, padding: 10, borderRadius: 10, borderWidth: 1, borderColor }}>
-                            <ThemedText style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#00E5FF' }}>Tým 2</ThemedText>
-                            {players.map(p => (
-                                <TouchableOpacity key={p.user_id} onPress={() => handlePlayerToggle(p.user_id, 2)} style={styles.playerRow}>
-                                    <Checkbox status={team2Players.includes(p.user_id) ? 'checked' : 'unchecked'} color="#00E5FF" />
-                                    <ThemedText style={{ flex: 1, color: p.inLeague ? primaryTextColor : '#888' }}>{p.name}</ThemedText>
-                                </TouchableOpacity>
-                            ))}
-                        </ThemedView>
+                        <View
+                            style={[
+                                styles.teamCol,
+                                {
+                                    backgroundColor: surfaces.surface,
+                                    borderColor: surfaces.border,
+                                },
+                            ]}
+                        >
+                            <View style={styles.teamHeader}>
+                                <View
+                                    style={[
+                                        styles.teamBar,
+                                        { backgroundColor: TEAM2 },
+                                    ]}
+                                />
+                                <ThemedText
+                                    style={[
+                                        styles.teamTitle,
+                                        { color: TEAM2 },
+                                    ]}
+                                >
+                                    Tým 2
+                                </ThemedText>
+                                <ThemedText
+                                    style={{
+                                        color: surfaces.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    {team2Players.length}/
+                                    {league.team_size}
+                                </ThemedText>
+                            </View>
+                            {players.map((p) =>
+                                renderPlayerRow(
+                                    p,
+                                    team2Players.includes(p.user_id),
+                                    TEAM2,
+                                    () => handlePlayerToggle(p.user_id, 2)
+                                )
+                            )}
+                        </View>
                     </View>
                 )}
 
                 {canUseSets && (
-                    <ThemedView style={{ marginTop: 20, backgroundColor: surfaceColor, padding: 14, borderRadius: 10, borderWidth: 1, borderColor }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <View style={{ flex: 1, paddingRight: 12 }}>
-                                <ThemedText style={{ fontWeight: '600' }}>Zapsat po setech</ThemedText>
-                                <ThemedText style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-                                    Např. 6:1 a 2:6 jako jeden zápas. ELO zohlední sety i gamy.
-                                </ThemedText>
-                            </View>
-                            <Switch
-                                value={useSets}
-                                onValueChange={(v) => {
-                                    setUseSets(v);
-                                    if (v && sets.length === 0) setSets([{ team1: '', team2: '' }]);
+                    <View style={styles.section}>
+                        <ThemedText
+                            style={[
+                                styles.sectionLabel,
+                                { color: surfaces.textSecondary },
+                            ]}
+                        >
+                            Režim skóre
+                        </ThemedText>
+                        <View style={styles.chipRow}>
+                            <FormChip
+                                label="Skóre"
+                                active={!useSets}
+                                onPress={() => setUseSets(false)}
+                                activeColor={Brand.primary}
+                                inactiveColor={chipInactive}
+                                inactiveBorder={chipInactiveBorder}
+                            />
+                            <FormChip
+                                label="Sety"
+                                active={useSets}
+                                onPress={() => {
+                                    setUseSets(true);
+                                    if (sets.length === 0)
+                                        setSets([{ team1: '', team2: '' }]);
                                 }}
-                                color="#FF00AA"
+                                activeColor={Brand.primary}
+                                inactiveColor={chipInactive}
+                                inactiveBorder={chipInactiveBorder}
                             />
                         </View>
+                    </View>
+                )}
 
-                        {useSets && (
-                            <View style={{ marginTop: 16 }}>
-                                {sets.map((set, index) => (
-                                    <View key={index} style={styles.setRow}>
-                                        <ThemedText style={{ width: 56, color: '#888' }}>Set {index + 1}</ThemedText>
-                                        <TextInput
-                                            label="T1"
-                                            value={set.team1}
-                                            onChangeText={(v) => updateSet(index, 'team1', v)}
-                                            keyboardType="number-pad"
-                                            mode="outlined"
-                                            style={styles.setInput}
-                                            dense
-                                        />
-                                        <ThemedText style={{ marginHorizontal: 6 }}>:</ThemedText>
-                                        <TextInput
-                                            label="T2"
-                                            value={set.team2}
-                                            onChangeText={(v) => updateSet(index, 'team2', v)}
-                                            keyboardType="number-pad"
-                                            mode="outlined"
-                                            style={styles.setInput}
-                                            dense
-                                        />
-                                        {sets.length > 1 && (
-                                            <IconButton
-                                                icon="close"
-                                                size={18}
-                                                onPress={() => setSets((prev) => prev.filter((_, i) => i !== index))}
-                                            />
-                                        )}
-                                    </View>
-                                ))}
-
-                                <Button
-                                    mode="outlined"
-                                    icon="plus"
-                                    onPress={() => setSets((prev) => [...prev, { team1: '', team2: '' }])}
-                                    style={{ marginTop: 4, borderColor: '#FF00AA' }}
-                                    textColor="#FF00AA"
+                {canUseSets && useSets && (
+                    <View
+                        style={[
+                            styles.scoreCard,
+                            {
+                                backgroundColor: surfaces.surface,
+                                borderColor: surfaces.border,
+                            },
+                        ]}
+                    >
+                        {sets.map((set, index) => (
+                            <View
+                                key={index}
+                                style={[
+                                    styles.setRow,
+                                    { borderBottomColor: surfaces.border },
+                                ]}
+                            >
+                                <ThemedText
+                                    style={[
+                                        styles.setLabel,
+                                        { color: surfaces.textSecondary },
+                                    ]}
                                 >
-                                    Přidat set
-                                </Button>
-
-                                <ThemedText style={{ marginTop: 12, color: '#888' }}>
-                                    Sety {setsSummary.sets_won.team1}:{setsSummary.sets_won.team2}
-                                    {'  ·  '}
-                                    Gamy {setsSummary.games.team1}:{setsSummary.games.team2}
+                                    Set {index + 1}
                                 </ThemedText>
+                                <RNTextInput
+                                    value={set.team1}
+                                    onChangeText={(v) =>
+                                        updateSet(index, 'team1', v)
+                                    }
+                                    keyboardType="number-pad"
+                                    placeholder="0"
+                                    placeholderTextColor={
+                                        surfaces.textSecondary
+                                    }
+                                    style={[
+                                        styles.setInput,
+                                        {
+                                            color: TEAM1,
+                                            borderColor: surfaces.border,
+                                            backgroundColor:
+                                                surfaces.surfaceElevated,
+                                        },
+                                    ]}
+                                />
+                                <ThemedText
+                                    style={[
+                                        styles.setColon,
+                                        { color: surfaces.textSecondary },
+                                    ]}
+                                >
+                                    :
+                                </ThemedText>
+                                <RNTextInput
+                                    value={set.team2}
+                                    onChangeText={(v) =>
+                                        updateSet(index, 'team2', v)
+                                    }
+                                    keyboardType="number-pad"
+                                    placeholder="0"
+                                    placeholderTextColor={
+                                        surfaces.textSecondary
+                                    }
+                                    style={[
+                                        styles.setInput,
+                                        {
+                                            color: TEAM2,
+                                            borderColor: surfaces.border,
+                                            backgroundColor:
+                                                surfaces.surfaceElevated,
+                                        },
+                                    ]}
+                                />
+                                {sets.length > 1 ? (
+                                    <Pressable
+                                        onPress={() =>
+                                            setSets((prev) =>
+                                                prev.filter(
+                                                    (_, i) => i !== index
+                                                )
+                                            )
+                                        }
+                                        hitSlop={8}
+                                        style={styles.setRemove}
+                                    >
+                                        <MaterialCommunityIcons
+                                            name="close"
+                                            size={18}
+                                            color={Brand.danger}
+                                        />
+                                    </Pressable>
+                                ) : (
+                                    <View style={styles.setRemove} />
+                                )}
                             </View>
-                        )}
-                    </ThemedView>
+                        ))}
+
+                        <Pressable
+                            onPress={() =>
+                                setSets((prev) => [
+                                    ...prev,
+                                    { team1: '', team2: '' },
+                                ])
+                            }
+                            style={[
+                                styles.addSetBtn,
+                                {
+                                    borderColor: Brand.primary,
+                                    backgroundColor: Brand.primarySoft,
+                                },
+                            ]}
+                        >
+                            <MaterialCommunityIcons
+                                name="plus"
+                                size={18}
+                                color={Brand.primary}
+                            />
+                            <ThemedText
+                                style={{
+                                    color: Brand.primary,
+                                    fontWeight: '700',
+                                    fontSize: 13,
+                                }}
+                            >
+                                Přidat set
+                            </ThemedText>
+                        </Pressable>
+
+                        <View style={styles.summaryRow}>
+                            <ThemedText
+                                style={[
+                                    styles.summaryMain,
+                                    { color: surfaces.text },
+                                ]}
+                            >
+                                Sety {setsSummary.sets_won.team1}:
+                                {setsSummary.sets_won.team2}
+                            </ThemedText>
+                            <ThemedText
+                                style={{
+                                    color: surfaces.textSecondary,
+                                    fontWeight: '600',
+                                }}
+                            >
+                                Gamy {setsSummary.games.team1}:
+                                {setsSummary.games.team2}
+                            </ThemedText>
+                        </View>
+                    </View>
                 )}
 
                 {!isFfa && league.config?.track_score && !useSets && (
-                    <View style={{ flexDirection: 'row', gap: 15, marginTop: 20 }}>
-                        <TextInput
-                            label="Skóre (Tým 1)"
-                            value={team1Score}
-                            onChangeText={setTeam1Score}
-                            keyboardType="number-pad"
-                            mode="outlined"
-                            style={{ flex: 1 }}
-                        />
-                        <TextInput
-                            label="Skóre (Tým 2)"
-                            value={team2Score}
-                            onChangeText={setTeam2Score}
-                            keyboardType="number-pad"
-                            mode="outlined"
-                            style={{ flex: 1 }}
-                        />
+                    <View
+                        style={[
+                            styles.scoreCard,
+                            {
+                                backgroundColor: surfaces.surface,
+                                borderColor: surfaces.border,
+                            },
+                        ]}
+                    >
+                        <View
+                            style={[
+                                styles.simpleScoreRow,
+                                { borderBottomColor: surfaces.border },
+                            ]}
+                        >
+                            <View
+                                style={[
+                                    styles.teamBar,
+                                    { backgroundColor: TEAM1 },
+                                ]}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <ThemedText
+                                    style={{
+                                        color: surfaces.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: '500',
+                                    }}
+                                >
+                                    Tým 1
+                                </ThemedText>
+                                <RNTextInput
+                                    value={team1Score}
+                                    onChangeText={setTeam1Score}
+                                    keyboardType="number-pad"
+                                    placeholder="Skóre"
+                                    placeholderTextColor={
+                                        surfaces.textSecondary
+                                    }
+                                    style={[
+                                        styles.simpleScoreInput,
+                                        { color: surfaces.text },
+                                    ]}
+                                />
+                            </View>
+                        </View>
+                        <View style={styles.simpleScoreRow}>
+                            <View
+                                style={[
+                                    styles.teamBar,
+                                    { backgroundColor: TEAM2 },
+                                ]}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <ThemedText
+                                    style={{
+                                        color: surfaces.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: '500',
+                                    }}
+                                >
+                                    Tým 2
+                                </ThemedText>
+                                <RNTextInput
+                                    value={team2Score}
+                                    onChangeText={setTeam2Score}
+                                    keyboardType="number-pad"
+                                    placeholder="Skóre"
+                                    placeholderTextColor={
+                                        surfaces.textSecondary
+                                    }
+                                    style={[
+                                        styles.simpleScoreInput,
+                                        { color: surfaces.text },
+                                    ]}
+                                />
+                            </View>
+                        </View>
                     </View>
                 )}
 
                 {isFfa && (
-                    <ThemedView style={{ backgroundColor: surfaceColor, padding: 15, borderRadius: 10, borderWidth: 1, borderColor }}>
-                        <ThemedText style={{ fontSize: 16, marginBottom: 10, color: '#888' }}>
-                            Vyberte hráče a zadejte jejich výsledky
+                    <View
+                        style={[
+                            styles.scoreCard,
+                            {
+                                backgroundColor: surfaces.surface,
+                                borderColor: surfaces.border,
+                            },
+                        ]}
+                    >
+                        <ThemedText
+                            style={[
+                                styles.sectionLabel,
+                                {
+                                    color: surfaces.textSecondary,
+                                    marginBottom: 8,
+                                },
+                            ]}
+                        >
+                            Vyberte hráče a zadejte výsledky
                         </ThemedText>
-                        
-                        {players.map(p => {
-                            const isSelected = !!ffaParticipants.find(x => x.user_id === p.user_id);
+                        {players.map((p) => {
+                            const isSelected = !!ffaParticipants.find(
+                                (x) => x.user_id === p.user_id
+                            );
+                            const color = colorForUser(p.user_id);
+                            const bg =
+                                color?.background_color || Brand.primary;
+                            const fg =
+                                color?.text_color || Brand.onPrimary;
                             return (
-                                <View key={p.user_id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                                    <TouchableOpacity onPress={() => handleFfaToggle(p.user_id)} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                                        <Checkbox status={isSelected ? 'checked' : 'unchecked'} color="#FF00AA" />
-                                        <ThemedText style={{ flex: 1, color: p.inLeague ? primaryTextColor : '#888' }}>{p.name}</ThemedText>
-                                    </TouchableOpacity>
-                                    
-                                    {(isSelected && (league.config?.track_score || league.config?.track_average)) && (
-                                        <TextInput
-                                            label="Skóre"
-                                            value={ffaParticipants.find(x => x.user_id === p.user_id)?.score || ''}
-                                            onChangeText={(val) => updateFfaScore(p.user_id, val)}
-                                            keyboardType="number-pad"
-                                            mode="outlined"
-                                            style={{ width: 100, height: 45 }}
+                                <View
+                                    key={p.user_id}
+                                    style={[
+                                        styles.ffaRow,
+                                        {
+                                            borderBottomColor:
+                                                surfaces.border,
+                                        },
+                                    ]}
+                                >
+                                    <Pressable
+                                        onPress={() =>
+                                            handleFfaToggle(p.user_id)
+                                        }
+                                        style={{
+                                            flex: 1,
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 10,
+                                        }}
+                                    >
+                                        <View
+                                            style={[
+                                                styles.avatar,
+                                                { backgroundColor: bg },
+                                            ]}
+                                        >
+                                            <ThemedText
+                                                style={[
+                                                    styles.avatarText,
+                                                    { color: fg },
+                                                ]}
+                                            >
+                                                {playerInitials(p)}
+                                            </ThemedText>
+                                        </View>
+                                        <ThemedText
+                                            style={{
+                                                flex: 1,
+                                                fontWeight: isSelected
+                                                    ? '700'
+                                                    : '500',
+                                                color: p.inLeague
+                                                    ? surfaces.text
+                                                    : surfaces.textSecondary,
+                                            }}
+                                            numberOfLines={1}
+                                        >
+                                            {p.name}
+                                        </ThemedText>
+                                        <MaterialCommunityIcons
+                                            name={
+                                                isSelected
+                                                    ? 'checkbox-marked'
+                                                    : 'checkbox-blank-outline'
+                                            }
+                                            size={22}
+                                            color={
+                                                isSelected
+                                                    ? Brand.primary
+                                                    : surfaces.textSecondary
+                                            }
                                         />
-                                    )}
+                                    </Pressable>
+                                    {isSelected &&
+                                        (league.config?.track_score ||
+                                            league.config
+                                                ?.track_average) && (
+                                            <RNTextInput
+                                                value={
+                                                    ffaParticipants.find(
+                                                        (x) =>
+                                                            x.user_id ===
+                                                            p.user_id
+                                                    )?.score || ''
+                                                }
+                                                onChangeText={(val) =>
+                                                    updateFfaScore(
+                                                        p.user_id,
+                                                        val
+                                                    )
+                                                }
+                                                keyboardType="number-pad"
+                                                placeholder="0"
+                                                placeholderTextColor={
+                                                    surfaces.textSecondary
+                                                }
+                                                style={[
+                                                    styles.ffaScoreInput,
+                                                    {
+                                                        color: surfaces.text,
+                                                        borderColor:
+                                                            surfaces.border,
+                                                        backgroundColor:
+                                                            surfaces.surfaceElevated,
+                                                    },
+                                                ]}
+                                            />
+                                        )}
                                 </View>
                             );
                         })}
-                    </ThemedView>
-                )}
-
-                {!isFfa && !league.config?.track_score && league.config?.track_wins_losses && (
-                    <View style={{ marginTop: 25 }}>
-                        <ThemedText style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>Kdo vyhrál?</ThemedText>
-                        <View style={{ flexDirection: 'row', gap: 10 }}>
-                            <Button mode={winner === 1 ? 'contained' : 'outlined'} onPress={() => setWinner(1)} style={{ flex: 1 }} buttonColor={winner === 1 ? '#FF00AA' : undefined}>Tým 1</Button>
-                            <Button mode={winner === 2 ? 'contained' : 'outlined'} onPress={() => setWinner(2)} style={{ flex: 1 }} buttonColor={winner === 2 ? '#00E5FF' : undefined}>Tým 2</Button>
-                            <Button mode={winner === 0 ? 'contained' : 'outlined'} onPress={() => setWinner(0)} style={{ flex: 1 }} buttonColor={winner === 0 ? '#666' : undefined}>Remíza</Button>
-                        </View>
                     </View>
                 )}
 
-                <Button 
-                    mode="contained" 
-                    onPress={handleSubmit} 
-                    loading={submitting}
-                    disabled={submitting}
-                    style={{ marginTop: 40, paddingVertical: 5 }}
-                    buttonColor="#FF00AA"
-                >
-                    {editingMatchId ? 'Uložit změny' : 'Uložit výsledek'}
-                </Button>
+                {!isFfa &&
+                    !league.config?.track_score &&
+                    league.config?.track_wins_losses && (
+                        <View style={styles.section}>
+                            <ThemedText
+                                style={[
+                                    styles.sectionLabel,
+                                    { color: surfaces.textSecondary },
+                                ]}
+                            >
+                                Kdo vyhrál?
+                            </ThemedText>
+                            <View style={styles.chipRow}>
+                                <FormChip
+                                    label="Tým 1"
+                                    active={winner === 1}
+                                    onPress={() => setWinner(1)}
+                                    activeColor={TEAM1}
+                                    inactiveColor={chipInactive}
+                                    inactiveBorder={chipInactiveBorder}
+                                />
+                                <FormChip
+                                    label="Tým 2"
+                                    active={winner === 2}
+                                    onPress={() => setWinner(2)}
+                                    activeColor={TEAM2}
+                                    inactiveColor={chipInactive}
+                                    inactiveBorder={chipInactiveBorder}
+                                />
+                                <FormChip
+                                    label="Remíza"
+                                    active={winner === 0}
+                                    onPress={() => setWinner(0)}
+                                    activeColor="#666"
+                                    inactiveColor={chipInactive}
+                                    inactiveBorder={chipInactiveBorder}
+                                />
+                            </View>
+                        </View>
+                    )}
 
-                <Button 
-                    mode="text" 
-                    onPress={() => router.back()} 
-                    style={{ marginTop: 10 }}
-                    textColor="#888"
+                <Pressable
+                    onPress={handleSubmit}
+                    disabled={submitting}
+                    style={({ pressed }) => [
+                        styles.saveBtn,
+                        {
+                            backgroundColor: submitting
+                                ? '#9AA0A6'
+                                : Brand.primary,
+                            opacity: pressed && !submitting ? 0.9 : 1,
+                        },
+                    ]}
                 >
-                    Zrušit
-                </Button>
+                    {submitting ? (
+                        <RNActivityIndicator color="#fff" />
+                    ) : (
+                        <ThemedText style={styles.saveBtnText}>
+                            {editingMatchId
+                                ? 'Uložit změny'
+                                : 'Uložit výsledek'}
+                        </ThemedText>
+                    )}
+                </Pressable>
+
+                <Pressable
+                    onPress={() => router.back()}
+                    disabled={submitting}
+                    style={styles.cancelBtn}
+                >
+                    <ThemedText
+                        style={{
+                            color: surfaces.textSecondary,
+                            fontWeight: '600',
+                        }}
+                    >
+                        Zrušit
+                    </ThemedText>
+                </Pressable>
             </ScrollView>
-        </ThemedView>
+        </ThemedSafeView>
     );
 }
 
 const styles = StyleSheet.create({
+    scroll: {
+        paddingHorizontal: 16,
+        paddingBottom: 48,
+    },
+    topBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 4,
+        minHeight: 44,
+    },
+    backBtn: {
+        padding: 4,
+        marginLeft: -4,
+    },
+    title: {
+        flex: 1,
+        fontSize: 24,
+        fontWeight: '800',
+        letterSpacing: -0.4,
+    },
+    subtitle: {
+        fontSize: 13,
+        marginBottom: 20,
+        lineHeight: 18,
+        marginLeft: 2,
+    },
+    teamsRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    teamCol: {
+        flex: 1,
+        borderRadius: 14,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+        paddingBottom: 4,
+    },
+    teamHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingTop: 12,
+        paddingBottom: 8,
+    },
+    teamBar: {
+        width: 4,
+        borderRadius: 2,
+        alignSelf: 'stretch',
+        minHeight: 18,
+    },
+    teamTitle: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '800',
+    },
     playerRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 5
+        gap: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    avatar: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarText: {
+        fontSize: 11,
+        fontWeight: '800',
+    },
+    section: {
+        marginTop: 20,
+        gap: 10,
+    },
+    sectionLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
+    },
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    scoreCard: {
+        marginTop: 16,
+        borderRadius: 14,
+        borderWidth: StyleSheet.hairlineWidth,
+        padding: 14,
+        gap: 4,
     },
     setRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 8,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        gap: 8,
+    },
+    setLabel: {
+        width: 48,
+        fontSize: 13,
+        fontWeight: '600',
     },
     setInput: {
         flex: 1,
-        height: 44,
-        backgroundColor: 'transparent',
+        textAlign: 'center',
+        fontSize: 22,
+        fontWeight: '800',
+        paddingVertical: 8,
+        borderRadius: 10,
+        borderWidth: 1,
+    },
+    setColon: {
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    setRemove: {
+        width: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    addSetBtn: {
+        marginTop: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1.5,
+    },
+    summaryRow: {
+        marginTop: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    summaryMain: {
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    simpleScoreRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    simpleScoreInput: {
+        fontSize: 24,
+        fontWeight: '800',
+        paddingVertical: 4,
+    },
+    ffaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    ffaScoreInput: {
+        width: 72,
+        textAlign: 'center',
+        fontSize: 18,
+        fontWeight: '800',
+        paddingVertical: 8,
+        borderRadius: 10,
+        borderWidth: 1,
+    },
+    saveBtn: {
+        marginTop: 28,
+        borderRadius: 14,
+        paddingVertical: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 50,
+    },
+    saveBtnText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    cancelBtn: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
     },
 });

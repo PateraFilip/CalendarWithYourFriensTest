@@ -51,8 +51,16 @@ export const submitMatch = async (data: SubmitMatchData) => {
     }
   }
 
-  // Edit: smaž starý zápas, založ nový, pak plný přepočet
+  // Edit: smaž starý zápas, založ nový se stejným played_at, pak plný přepočet
+  let preservedPlayedAt: string | null = null;
   if (data.replace_match_id) {
+    const { data: oldMatch } = await supabase
+      .from('league_matches')
+      .select('played_at')
+      .eq('id', data.replace_match_id)
+      .maybeSingle();
+    preservedPlayedAt = oldMatch?.played_at ?? null;
+
     const { error: delError } = await supabase
       .from('league_matches')
       .delete()
@@ -118,6 +126,7 @@ export const submitMatch = async (data: SubmitMatchData) => {
           league_id: data.league_id,
           created_by: data.created_by,
           metadata: data.metadata,
+          ...(preservedPlayedAt ? { played_at: preservedPlayedAt } : {}),
         },
       ])
       .select()

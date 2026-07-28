@@ -26,7 +26,7 @@ export function ExternalLink({
         target="_blank"
         rel="noopener noreferrer"
         style={{
-          color: '#FF00AA',
+          color: '#4175E1',
           fontWeight: 700,
           fontSize: 14,
           textDecoration: 'underline',
@@ -56,7 +56,7 @@ export function ExternalLink({
 
 const styles = StyleSheet.create({
   link: {
-    color: '#FF00AA',
+    color: '#4175E1',
     fontWeight: '700',
     fontSize: 14,
     textDecorationLine: 'underline',

@@ -1,333 +1,457 @@
-import { fetchUsers } from '@/services/users/get_users';
-import { fetchUserEvents, UserEvent } from '@/services/events/getUserEvents';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import { useAppData } from '@/contexts/AppDataContext';
-import { dedupeCalendarEvents, eventInstanceKey, eventsOverlappingDay, mergeDuplicateEvents, visibleSegmentOnDay } from '@/lib/calendarEvents';
-import { getEventParticipants } from '@/lib/eventParticipants';
-import { supabase } from '@/lib/supabaseClient';
+import { Brand, BrandSurfaces } from '@/constants/brand';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import {
+  eventInstanceKey,
+  eventsOverlappingDay,
+  visibleSegmentOnDay,
+} from '@/lib/calendarEvents';
+import { formatShortLocation } from '@/lib/formatLocation';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
+import 'dayjs/locale/cs';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '../themed-text';
 import { ThemedView } from '../themed-view';
 
-
+dayjs.locale('cs');
 
 interface Event {
-    id: number;
-    title: string;
-    start: Date;
-    end: Date;
-    user_id: number;
-    pocet_lidi: number;
-    pravidelnost: boolean;
-    is_group: boolean;
-    original_start?: Date;
-    original_end?: Date;
-}
-
-interface WeeklyEvent {
-    id: number;
-    title: string;
-    cas_od: Date;
-    cas_do: Date;
-    user_id: number;
-    den: string;
-}
-
-interface EventException {
-    id: number;
-    start: Date;
-    end: Date;
-    event_id: number;
-    typ: string;
-    puvodni_start: Date;
-    puvodni_end: Date;
+  id: number;
+  title: string;
+  start: Date;
+  end: Date;
+  user_id: number;
+  pocet_lidi: number;
+  pravidelnost: boolean;
+  is_group: boolean;
+  poloha?: string;
+  original_start?: Date;
+  original_end?: Date;
 }
 
 interface Color {
-    id: number;
-    name: string;
-    background_color: string;
-    text_color: string;
-    user_id: number;
+  id: number;
+  name: string;
+  background_color: string;
+  text_color: string;
+  user_id: number | string;
 }
 
 interface MonthCalendarProps {
-    events: Event[];
-    weeklyEvents: WeeklyEvent[];
-    eventsException: EventException[];
-    onPressDay?: (date: Date) => void;
-    onPressEvent?: (event: Event) => void;
-    defaultDate?: Date;
-    colors: Color[];
-    onVisibleDateChange?: (date: Date | ((prev: Date) => Date)) => void;
+  events: Event[];
+  weeklyEvents?: unknown[];
+  eventsException?: unknown[];
+  onPressDay?: (date: Date) => void;
+  onPressEvent?: (event: Event) => void;
+  defaultDate?: Date;
+  selectedDate?: Date | null;
+  colors: Color[];
+  onVisibleDateChange?: (date: Date | ((prev: Date) => Date)) => void;
 }
 
-interface User {
-    id: number;
-    username: string;
-    jmeno: string;
-    prijmeni: string;
-    email: string;
-    datum_narozeni: string
+const WEEKDAYS = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
+const MAX_DOTS = 4;
+
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
 }
 
-export default function MonthCalendar({ events, weeklyEvents, eventsException, onPressDay, onPressEvent, defaultDate, colors, onVisibleDateChange }: MonthCalendarProps) {
-    const currentMonth = defaultDate || new Date();
-    const SCREEN_HEIGHT = Dimensions.get('window').height;
-    const [users, setUsers] = useState<User[]>([]);
-    const [localUserEvents, setLocalUserEvents] = useState<UserEvent[]>([])
-    const { userEvents: appUserEvents } = useAppData()
-    const userEvents = useMemo(() => {
-        const map = new Map<string, UserEvent>()
-        for (const ue of [...(appUserEvents as UserEvent[] | undefined || []), ...localUserEvents]) {
-            map.set(`${ue.event_id}|${ue.user_id}|${ue.instance_date ?? ''}`, ue)
-        }
-        return Array.from(map.values())
-    }, [appUserEvents, localUserEvents])
-    const insets = useSafeAreaInsets();
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
 
-    const firstDayOfMonth = useMemo(() => new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1), [currentMonth]);
-    const borderColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text')
+function eventDotColor(e: Event, colors: Color[]) {
+  if (e.is_group) return Brand.groupEvent;
+  return (
+    colors.find((c) => String(c.user_id) === String(e.user_id))
+      ?.background_color || Brand.primary
+  );
+}
 
-    const days = useMemo(() => {
-        const startDay = (firstDayOfMonth.getDay() + 6) % 7; // pondělí = 0
-        const totalDays = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-        const daysArray: (Date | null)[] = [];
+export default function MonthCalendar({
+  events,
+  onPressDay,
+  onPressEvent,
+  defaultDate,
+  selectedDate: selectedDateProp,
+  colors,
+  onVisibleDateChange,
+}: MonthCalendarProps) {
+  const scheme = useColorScheme() ?? 'light';
+  const surfaces = BrandSurfaces[scheme];
+  const currentMonth = defaultDate || new Date();
 
-        for (let i = 0; i < startDay; i++) daysArray.push(null);
-        for (let i = 1; i <= totalDays; i++) daysArray.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
-        while (daysArray.length % 7 !== 0) daysArray.push(null);
+  const today = useMemo(() => startOfDay(new Date()), []);
 
-        return daysArray;
-    }, [currentMonth, firstDayOfMonth]);
+  const [internalSelected, setInternalSelected] = useState<Date>(() => {
+    const base = defaultDate || new Date();
+    return startOfDay(base);
+  });
 
-    const loadUsers = async () => {
-        try {
-            const data = await fetchUsers()
-            setUsers(data)
-        } catch (err) {
-            console.error(err)
-        }
-    }
+  const selectedDay = selectedDateProp
+    ? startOfDay(selectedDateProp)
+    : internalSelected;
 
-    const loadUserEvent = async () => {
-        try {
-            const data = await fetchUserEvents()
-            setLocalUserEvents(data)
-        } catch (err) {
-            console.error(err)
-        }
-    }
+  // Při změně měsíce drž vybraný den v zobrazeném měsíci (nebo dnešek)
+  useEffect(() => {
+    const inMonth =
+      selectedDay.getMonth() === currentMonth.getMonth() &&
+      selectedDay.getFullYear() === currentMonth.getFullYear();
+    if (inMonth) return;
 
-    useEffect(() => {
-        let mounted = true;
+    const pick =
+      today.getMonth() === currentMonth.getMonth() &&
+      today.getFullYear() === currentMonth.getFullYear()
+        ? today
+        : startOfDay(
+            new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
+          );
+    setInternalSelected(pick);
+    onPressDay?.(pick);
+  }, [currentMonth.getFullYear(), currentMonth.getMonth()]);
 
-        loadUsers(); // načtení na start
-
-        const channel = supabase.channel('realtime:public:users');
-
-        channel.on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'users'
-        }, (payload) => {
-            console.log('Change in users:', payload);
-            if (mounted) {
-                loadUsers(); // načti nové eventy
-            }
-        });
-
-        channel.subscribe();
-
-        return () => {
-            mounted = false;
-            supabase.removeChannel(channel);
-        };
-    }, []);
-
-    useEffect(() => {
-        let mounted = true;
-
-        loadUserEvent()
-
-        const channel = supabase.channel('realtime:public:user_events');
-
-        channel.on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'event_users'
-        }, (payload) => {
-            console.log('Change in events:', payload);
-            if (mounted) loadUserEvent(); // načti nové eventy
-        });
-
-        channel.subscribe();
-
-        return () => {
-            mounted = false;
-            supabase.removeChannel(channel);
-        };
-    }, []);
-
-    const handlePrevMonth = () => {
-        console.log('--- PREV MONTH CLICKED ---');
-        onVisibleDateChange?.((prev) => {
-            const newDate = new Date(prev.getFullYear(), prev.getMonth() - 1, 1);
-            console.log(`[CustomMonth] prev=${prev.toISOString()} -> new=${newDate.toISOString()}`);
-            return newDate;
-        });
-    };
-    const handleNextMonth = () => {
-        console.log('--- NEXT MONTH CLICKED ---');
-        onVisibleDateChange?.((prev) => {
-            const newDate = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
-            console.log(`[CustomMonth] prev=${prev.toISOString()} -> new=${newDate.toISOString()}`);
-            return newDate;
-        });
-    };
-
-    const eventsByDay = useMemo(() => {
-        const map = new Map<string, Event[]>();
-        
-        events.forEach(e => {
-            let startD = new Date(e.start);
-            startD.setHours(0,0,0,0);
-            const endD = new Date(e.end);
-            endD.setHours(23,59,59,999);
-
-            while (startD <= endD) {
-                // Přičteme timezone offset, aby toISOString vrátil lokální den
-                const localDate = new Date(startD.getTime() - startD.getTimezoneOffset() * 60000);
-                const dateStr = localDate.toISOString().split('T')[0];
-                if (!map.has(dateStr)) map.set(dateStr, []);
-                map.get(dateStr)!.push(e);
-                startD.setDate(startD.getDate() + 1);
-            }
-        });
-        
-        return map;
-    }, [events]);
-
-    const getEventsForDay = (day: Date) => {
-        const localDate = new Date(day.getTime() - day.getTimezoneOffset() * 60000);
-        const dateStr = localDate.toISOString().split('T')[0];
-        return eventsByDay.get(dateStr) || [];
-    };
-
-
-
-    return (
-        <ThemedView style={{ flex: 1 }}>
-            {/* Navigace */}
-            <ThemedView style={styles.navBar}>
-                <Pressable onPress={handlePrevMonth} style={styles.navButton}><ThemedText style={styles.navText}>← Předchozí</ThemedText></Pressable>
-                <ThemedText style={styles.headerTitle}>{currentMonth.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' })}</ThemedText>
-                <Pressable onPress={handleNextMonth} style={styles.navButton}><ThemedText style={styles.navText}>Další →</ThemedText></Pressable>
-            </ThemedView>
-
-            {/* Dny týdne */}
-            <ThemedView style={styles.weekDays}>
-                {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'].map((d, i) => (
-                    <ThemedView key={i} style={styles.weekDayCell}><ThemedText style={{ fontWeight: '600' }}>{d}</ThemedText></ThemedView>
-                ))}
-            </ThemedView>
-
-            <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-                {Array.from({ length: days.length / 7 }).map((_, rowIdx) => (
-                    <ThemedView key={`row-${rowIdx}`} style={{ flexDirection: 'row', minHeight: (SCREEN_HEIGHT - 170) / Math.ceil(days.length / 7) }}>
-                        {days.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, idx) => {
-                            if (!day) return <ThemedView key={`empty-${rowIdx}-${idx}`} style={styles.dayCell} />;
-                            const dayEvents = getEventsForDay(day);
-
-                            return (
-                                <Pressable key={`day-${day.toISOString()}`} onPress={() => onPressDay?.(day)} style={styles.dayCell}>
-                                    <ThemedView key={idx}>
-                                        <Pressable onPress={() => onPressDay?.(day)} style={{ padding: 2 }}>
-                                            <ThemedText style={{ fontWeight: '500' }}>{day.getDate()}</ThemedText>
-                                        </Pressable>
-
-                                        {dayEvents.map((e, i) => {
-                                            const colorObj = colors.find(c => c.user_id === e.user_id); // najde barvu pro daného uživatele
-                                            const backgroundColor = e.is_group ? '#FF00AA' : colorObj?.background_color ?? '#ccc'; // fallback pokud není barva
-                                            const textColor = e.is_group ? '#FFFFFF' : colorObj?.text_color ?? '#000';
-                                            const relevantUserEvents = e.is_group
-                                                ? getEventParticipants(userEvents, e)
-                                                : [];
-                                            const count = relevantUserEvents.length;
-                                            return (
-                                                <Pressable onPress={() => onPressEvent?.(e)} key={eventInstanceKey(e)} style={[styles.eventBadge, { backgroundColor: backgroundColor, borderWidth: 0.5, borderColor: e.is_group ? "yellow" : borderColor }]}>
-                                                    <ThemedText style={{ fontSize: 10, fontWeight: '600', color: textColor, lineHeight: 12 }} numberOfLines={1}>
-                                                        {e.title}
-                                                    </ThemedText>
-                                                    <ThemedText style={{ fontSize: 9, color: textColor, opacity: 0.8, lineHeight: 11 }} numberOfLines={1}>
-                                                        {(() => {
-                                                            const { eventStart, eventEnd } = visibleSegmentOnDay(e, day);
-                                                            return `${dayjs(eventStart).format('HH:mm')} - ${dayjs(eventEnd).format('HH:mm')}`;
-                                                        })()}
-                                                    </ThemedText>
-                                                    {e.is_group && (
-                                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
-                                                            <ThemedText style={{ fontSize: 8, color: textColor, marginRight: 2, lineHeight: 10 }} numberOfLines={1}>
-                                                                {count}/{e.pocet_lidi}
-                                                            </ThemedText>
-                                                            <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10, flex: 1 }} numberOfLines={1}>
-                                                              {relevantUserEvents.map((ue, idx) => {
-                                                                const participant = users.find(u => String(u.id) === String(ue.user_id));
-                                                                const name = participant ? participant.username : `User ${ue.user_id}`;
-                                                                const userColorObj = colors.find(c => String(c.user_id) === String(ue.user_id));
-                                                                const userColor = userColorObj?.background_color || '#ccc';
-                                                                return (
-                                                                  <ThemedText key={`${ue.event_id}-${ue.user_id}-${idx}`} style={{ fontSize: 8, color: textColor, lineHeight: 10 }}>
-                                                                    <ThemedText style={{ color: userColor, fontSize: 8, lineHeight: 10 }}>● </ThemedText>
-                                                                    {name}{idx < relevantUserEvents.length - 1 ? ', ' : ''}
-                                                                  </ThemedText>
-                                                                );
-                                                              })}
-                                                            </ThemedText>
-                                                        </View>
-                                                    )}
-                                                    {!e.is_group && (
-                                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0 }}>
-                                                            <View
-                                                                style={{
-                                                                    width: 6,
-                                                                    height: 6,
-                                                                    borderRadius: 2,
-                                                                    backgroundColor: backgroundColor,
-                                                                    marginRight: 1,
-                                                                    borderColor: textColor,
-                                                                    borderWidth: 0.5,
-                                                                }}
-                                                            />
-                                                            <ThemedText style={{ fontSize: 8, color: textColor, lineHeight: 10 }} numberOfLines={1}>
-                                                                {users.find(u => u.id === e.user_id)?.username ?? 'Neznámý'}
-                                                            </ThemedText>
-                                                        </View>
-                                                    )}
-                                                </Pressable>
-                                            )
-                                        })}
-                                    </ThemedView>
-                                </Pressable>
-                            );
-                        })}
-                    </ThemedView>
-                ))}
-            </ScrollView>
-        </ThemedView>
+  const days = useMemo(() => {
+    const first = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      1
     );
+    const startPad = (first.getDay() + 6) % 7;
+    const gridStart = new Date(first);
+    gridStart.setDate(first.getDate() - startPad);
+
+    const cells: Date[] = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      cells.push(startOfDay(d));
+    }
+    // Zkrať na 5 týdnů, pokud 6. řádek je celý mimo měsíc
+    const lastRowStart = 35;
+    const lastRowInMonth = cells
+      .slice(lastRowStart)
+      .some(
+        (d) =>
+          d.getMonth() === currentMonth.getMonth() &&
+          d.getFullYear() === currentMonth.getFullYear()
+      );
+    return lastRowInMonth ? cells : cells.slice(0, 35);
+  }, [currentMonth]);
+
+  const weekCount = days.length / 7;
+
+  const selectDay = (day: Date) => {
+    const d = startOfDay(day);
+    setInternalSelected(d);
+    onPressDay?.(d);
+
+    // Klik na den z jiného měsíce → přepni měsíc
+    if (
+      d.getMonth() !== currentMonth.getMonth() ||
+      d.getFullYear() !== currentMonth.getFullYear()
+    ) {
+      onVisibleDateChange?.(d);
+    }
+  };
+
+  const selectedEvents = useMemo(() => {
+    return eventsOverlappingDay(events, selectedDay).sort(
+      (a, b) => a.start.getTime() - b.start.getTime()
+    );
+  }, [events, selectedDay]);
+
+  const dateHeader = (() => {
+    const raw = dayjs(selectedDay).locale('cs').format('dddd D. MMMM YYYY');
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  })();
+
+  return (
+    <ThemedView style={[styles.root, { backgroundColor: surfaces.background }]}>
+      <View style={styles.weekDays}>
+        {WEEKDAYS.map((d) => (
+          <View key={d} style={styles.weekDayCell}>
+            <ThemedText
+              style={[styles.weekDayLabel, { color: surfaces.textSecondary }]}
+            >
+              {d}
+            </ThemedText>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.grid}>
+        {Array.from({ length: weekCount }).map((_, rowIdx) => (
+          <View key={`row-${rowIdx}`} style={styles.weekRow}>
+            {days.slice(rowIdx * 7, rowIdx * 7 + 7).map((day) => {
+              const inMonth =
+                day.getMonth() === currentMonth.getMonth() &&
+                day.getFullYear() === currentMonth.getFullYear();
+              const isToday = sameDay(day, today);
+              const isSelected = sameDay(day, selectedDay);
+              const dayEvents = eventsOverlappingDay(events, day);
+
+              const dotColors: string[] = [];
+              for (const e of dayEvents) {
+                const c = eventDotColor(e, colors);
+                if (!dotColors.includes(c)) dotColors.push(c);
+                if (dotColors.length >= MAX_DOTS) break;
+              }
+
+              return (
+                <Pressable
+                  key={day.toISOString()}
+                  onPress={() => selectDay(day)}
+                  style={styles.dayCell}
+                >
+                  <View
+                    style={[
+                      styles.dayNumberWrap,
+                      isToday && styles.dayNumberWrapToday,
+                      isSelected &&
+                        !isToday && {
+                          backgroundColor: Brand.primarySoft,
+                          borderWidth: 1.5,
+                          borderColor: Brand.primary,
+                        },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.dayNumber,
+                        {
+                          color: isToday
+                            ? '#fff'
+                            : inMonth
+                              ? surfaces.text
+                              : surfaces.textSecondary,
+                        },
+                        !inMonth && { opacity: 0.45 },
+                        isToday && styles.dayNumberToday,
+                      ]}
+                    >
+                      {day.getDate()}
+                    </ThemedText>
+                  </View>
+
+                  <View style={styles.dotsRow}>
+                    {dotColors.map((c, i) => (
+                      <View
+                        key={`${day.toISOString()}-dot-${i}`}
+                        style={[styles.dot, { backgroundColor: c }]}
+                      />
+                    ))}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+
+      <View
+        style={[styles.agendaHeader, { borderTopColor: surfaces.border }]}
+      >
+        <ThemedText style={[styles.agendaDate, { color: Brand.primary }]}>
+          {dateHeader}
+        </ThemedText>
+      </View>
+
+      <ScrollView
+        style={styles.agendaScroll}
+        contentContainerStyle={styles.agendaContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {selectedEvents.length === 0 ? (
+          <ThemedText
+            style={{
+              color: surfaces.textSecondary,
+              textAlign: 'center',
+              marginTop: 24,
+              fontSize: 14,
+            }}
+          >
+            Žádné události
+          </ThemedText>
+        ) : (
+          selectedEvents.map((e) => {
+            const barColor = eventDotColor(e, colors);
+            const { eventStart, eventEnd } = visibleSegmentOnDay(e, selectedDay);
+            const timeLabel = `${dayjs(eventStart).format('H:mm')} – ${dayjs(eventEnd).format('H:mm')}`;
+            const shortPoloha = formatShortLocation(e.poloha);
+
+            return (
+              <Pressable
+                key={eventInstanceKey(e)}
+                onPress={() => onPressEvent?.(e)}
+                style={({ pressed }) => [
+                  styles.eventRow,
+                  pressed && {
+                    backgroundColor:
+                      scheme === 'dark'
+                        ? 'rgba(255,255,255,0.04)'
+                        : 'rgba(0,0,0,0.03)',
+                  },
+                ]}
+              >
+                <View style={[styles.colorBar, { backgroundColor: barColor }]} />
+                <View style={styles.eventBody}>
+                  <ThemedText
+                    style={[styles.eventTime, { color: surfaces.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {timeLabel}
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.eventTitle, { color: surfaces.text }]}
+                    numberOfLines={2}
+                  >
+                    {e.title}
+                  </ThemedText>
+                  {!!shortPoloha && (
+                    <View style={styles.metaRow}>
+                      <MaterialCommunityIcons
+                        name="map-marker-outline"
+                        size={14}
+                        color={surfaces.textSecondary}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.eventMeta,
+                          { color: surfaces.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {shortPoloha}
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
+              </Pressable>
+            );
+          })
+        )}
+      </ScrollView>
+    </ThemedView>
+  );
 }
 
 const styles = StyleSheet.create({
-    navBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 8 },
-    navButton: { padding: 6 },
-    navText: { fontWeight: '500' },
-    headerTitle: { fontSize: 16, fontWeight: 'bold', textTransform: 'capitalize' },
-    weekDays: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#ccc' },
-    weekDayCell: { flex: 1, padding: 6, alignItems: 'center', borderRightWidth: 0.5, borderColor: '#ccc' },
-    dayCell: { width: `${100 / 7}%`, borderWidth: 0.5, borderColor: '#ccc', flex: 1 },
-    eventBadge: { borderRadius: 6, paddingHorizontal: 2, height: 40, marginVertical: 0, justifyContent: 'center' }
+  root: { flex: 1 },
+  weekDays: {
+    flexDirection: 'row',
+    paddingHorizontal: 4,
+    paddingBottom: 6,
+  },
+  weekDayCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weekDayLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  grid: {
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
+  weekRow: {
+    flexDirection: 'row',
+  },
+  dayCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    minHeight: 52,
+  },
+  dayNumberWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayNumberWrapToday: {
+    backgroundColor: Brand.primary,
+  },
+  dayNumber: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  dayNumberToday: {
+    fontWeight: '800',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 3,
+    marginTop: 4,
+    minHeight: 6,
+    justifyContent: 'center',
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  agendaHeader: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  agendaDate: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  agendaScroll: {
+    flex: 1,
+  },
+  agendaContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 100,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingRight: 10,
+    marginBottom: 4,
+    gap: 12,
+  },
+  colorBar: {
+    width: 4,
+    borderRadius: 2,
+    marginLeft: 4,
+    alignSelf: 'stretch',
+  },
+  eventBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  eventTime: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  eventMeta: {
+    flex: 1,
+    fontSize: 13,
+  },
 });

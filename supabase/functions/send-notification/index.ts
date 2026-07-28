@@ -114,14 +114,32 @@ serve(async (req) => {
       }
     }
 
-    // 1. Žádosti o přátelství
-    if (table === 'friendships' && payload.type === 'INSERT') {
+    // 1. Žádosti o přátelství (INSERT) + přijetí (UPDATE pending → accepted)
+    if (table === 'friendships') {
       // friend_id = ten, komu žádost přišla. user_id = ten, kdo ji poslal.
-      if (record.status === 'pending') {
+      if (payload.type === 'INSERT' && record.status === 'pending') {
         const { data: user } = await supabaseClient.from('users').select('notify_friend_requests').eq('id', record.friend_id).single()
         if (user?.notify_friend_requests !== false) {
           const { data: fromUser } = await supabaseClient.from('users').select('username').eq('id', record.user_id).single()
           await notifyUser(record.friend_id, "Nová žádost o přátelství", `${fromUser?.username || 'Někdo'} ti poslal žádost o přátelství!`, { type: 'friend_request' });
+        }
+      }
+
+      if (
+        payload.type === 'UPDATE' &&
+        record.status === 'accepted' &&
+        payload.old_record?.status === 'pending'
+      ) {
+        // Upozorni odesílatele žádosti, že ji druhá strana přijala
+        const { data: user } = await supabaseClient.from('users').select('notify_friend_requests').eq('id', record.user_id).single()
+        if (user?.notify_friend_requests !== false) {
+          const { data: accepter } = await supabaseClient.from('users').select('username').eq('id', record.friend_id).single()
+          await notifyUser(
+            record.user_id,
+            "Žádost přijata",
+            `${accepter?.username || 'Někdo'} přijal(a) tvoji žádost o přátelství!`,
+            { type: 'friend_accept' }
+          );
         }
       }
     }

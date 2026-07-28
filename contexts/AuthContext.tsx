@@ -257,10 +257,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const refreshUser = async () => {
         if (!user?.id) return;
-        const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', String(user.id))
+            .maybeSingle();
+        if (error) {
+            console.warn('[auth] refreshUser:', error.message);
+            return;
+        }
         if (data) {
-            setUser(data as User);
-            await saveStorage('user', JSON.stringify(data));
+            const next = {
+                ...(data as User),
+                auth_user_id: user.auth_user_id || String(user.id),
+            };
+            setUser(next);
+            await saveStorage('user', JSON.stringify(next));
         }
     }
 

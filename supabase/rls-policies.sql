@@ -71,7 +71,7 @@ ALTER TABLE colors ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "colors_read" ON colors;
 CREATE POLICY "colors_read" ON colors FOR SELECT USING (auth.uid() IS NOT NULL);
 DROP POLICY IF EXISTS "colors_update" ON colors;
-CREATE POLICY "colors_update" ON colors FOR UPDATE USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+CREATE POLICY "colors_update" ON colors FOR UPDATE USING (user_id = auth.uid() OR user_id IS NULL) WITH CHECK (user_id = auth.uid() OR user_id IS NULL);
 DROP POLICY IF EXISTS "colors_insert" ON colors;
 CREATE POLICY "colors_insert" ON colors FOR INSERT WITH CHECK (user_id = auth.uid());
 

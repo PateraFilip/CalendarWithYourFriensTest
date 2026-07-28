@@ -1,5 +1,6 @@
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
+import { Brand } from '@/constants/brand';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/useAuth';
 import React, { useState } from 'react';
@@ -13,14 +14,15 @@ export default function ChatsScreen() {
     const { user } = useAuth();
     const { unreadGlobalCount, unreadEventRooms } = useUnreadMessages();
     const [activeTab, setActiveTab] = useState<'notifications' | 'events'>('notifications');
-    const buttonColor = useThemeColor({ light: '#000', dark: '#fff' }, 'text');
+    const secondary = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'text');
 
     return (
         <ThemedSafeView style={styles.container}>
             <View style={styles.headerContainer}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <ThemedText type="title">Chaty a oznámení</ThemedText>
-                </View>
+                <ThemedText style={styles.title}>Chaty</ThemedText>
+                <ThemedText style={[styles.subtitle, { color: secondary }]}>
+                    Oznámení a konverzace k událostem
+                </ThemedText>
 
                 <SegmentedButtons
                     value={activeTab}
@@ -38,7 +40,7 @@ export default function ChatsScreen() {
                         },
                     ]}
                     style={styles.segmentedButtons}
-                    theme={{ colors: { secondaryContainer: buttonColor } }}
+                    theme={{ colors: { secondaryContainer: Brand.primarySoft } }}
                 />
             </View>
 
@@ -73,8 +75,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 16,
     },
-    segmentedButtons: {
+    title: {
+        fontSize: 28,
+        fontWeight: '700',
+        lineHeight: 36,
+    },
+    subtitle: {
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 4,
         marginBottom: 16,
+    },
+    segmentedButtons: {
+        marginBottom: 8,
     },
     tabContentChat: {
         flex: 1,
