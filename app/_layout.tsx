@@ -3,6 +3,7 @@ import { Colors } from '@/constants/theme'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 import { useNotificationHandler } from '@/hooks/useNotificationHandler'
+import { supabaseConfigError } from '@/lib/supabaseClient'
 import {
     DarkTheme,
     DefaultTheme,
@@ -12,7 +13,7 @@ import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useMemo } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
-import { ActivityIndicator, View } from 'react-native'
+import { ActivityIndicator, Text, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { MD3DarkTheme, MD3LightTheme, Provider } from 'react-native-paper'
 import 'react-native-reanimated'
@@ -103,6 +104,34 @@ export default function RootLayout() {
             },
         }
     }, [scheme])
+
+    if (supabaseConfigError) {
+        return (
+            <View
+                style={{
+                    flex: 1,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    padding: 24,
+                    backgroundColor: Colors.light.background,
+                }}
+            >
+                <Text
+                    style={{
+                        fontSize: 18,
+                        fontWeight: '700',
+                        marginBottom: 8,
+                        textAlign: 'center',
+                    }}
+                >
+                    Web není nakonfigurovaný
+                </Text>
+                <Text style={{ fontSize: 14, textAlign: 'center', opacity: 0.8, lineHeight: 20 }}>
+                    {supabaseConfigError}
+                </Text>
+            </View>
+        )
+    }
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
