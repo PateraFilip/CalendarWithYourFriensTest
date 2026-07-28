@@ -40,7 +40,9 @@ import { useAppDataOptional } from '@/contexts/AppDataContext'
 
 import { getSafeDates } from '@/lib/eventDates'
 import { showAlert, showConfirm } from '@/lib/alert'
+import { safeGoBack } from '@/lib/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { BackButton } from '@/components/BackButton'
 
 import dayjs from 'dayjs'
 import 'dayjs/locale/cs'
@@ -1759,7 +1761,7 @@ export default function EventDetail() {
             console.error('refreshTimeline after save:', e)
         }
 
-        router.back()
+        safeGoBack(router, '/(tabs)')
       } catch (e: any) {
         console.error('handleSave error:', e)
         showAlert('Chyba při ukládání', e?.message || 'Změny se nepodařilo uložit.')
@@ -1792,7 +1794,7 @@ export default function EventDetail() {
             async () => {
                 await deleteEvent(id)
                 if (id === eventObj.id) {
-                    router.back()
+                    safeGoBack(router, '/(tabs)')
                 } else {
                     loadRelatedEvents()
                 }
@@ -1812,7 +1814,7 @@ export default function EventDetail() {
                 'Opravdu chcete tuto událost smazat?',
                 async () => {
                     await deleteEvent(eventObj.series_id || eventObj.id)
-                    router.back()
+                    safeGoBack(router, '/(tabs)')
                 },
                 { confirmLabel: 'Smazat', destructive: true }
             )
@@ -1838,7 +1840,7 @@ export default function EventDetail() {
                     puvodni_cas_do: eventObj.end,
                 })
             }
-            router.back()
+            safeGoBack(router, '/(tabs)')
         } catch (e: any) {
             console.error(e)
             showAlert('Chyba', e?.message || 'Nepodařilo se smazat termín.')
@@ -1848,7 +1850,7 @@ export default function EventDetail() {
     const handleDeleteSeries = async () => {
         setDeleteDialogVisible(false)
         await deleteEvent(eventObj.series_id || eventObj.id)
-        router.back()
+        safeGoBack(router, '/(tabs)')
     }
 
     const handleDeleteAllMultiDate = async () => {
@@ -1860,7 +1862,7 @@ export default function EventDetail() {
                     await deleteEvent(ev.id)
                 }
                 setMultiDateDeleteModalVisible(false)
-                router.back()
+                safeGoBack(router, '/(tabs)')
             },
             { confirmLabel: 'Smazat', destructive: true }
         )
@@ -2252,17 +2254,11 @@ export default function EventDetail() {
                 style={[styles.container, { backgroundColor: surfaces.background }]}
             >
                 <View style={styles.topBar}>
-                    <Pressable
-                        onPress={() => router.back()}
-                        hitSlop={12}
+                    <BackButton
+                        fallbackHref="/(tabs)"
+                        color={surfaces.text}
                         style={styles.iconBtn}
-                    >
-                        <MaterialCommunityIcons
-                            name="arrow-left"
-                            size={24}
-                            color={surfaces.text}
-                        />
-                    </Pressable>
+                    />
                     <View style={{ flex: 1 }} />
                     {isOwner && (
                         <Pressable

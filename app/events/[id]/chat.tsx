@@ -5,6 +5,7 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import ChatScreen from '@/components/ChatScreen';
 import MuteChatButton from '@/components/MuteChatButton';
 import AddFriendsToChatButton from '@/components/AddFriendsToChatButton';
+import { BackButton } from '@/components/BackButton';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemedText } from '@/components/themed-text';
 import dayjs from 'dayjs';
@@ -32,6 +33,14 @@ export default function EventChatScreen() {
         headerTitle += ` (${dayjs(instanceDateStr).format('D. M. YYYY')})`;
     }
 
+    const eventFallback = {
+        pathname: '/events/[eventId]' as const,
+        params: {
+            eventId: String(seriesId),
+            ...(instanceDateStr ? { instance_date: instanceDateStr } : {}),
+        },
+    };
+
     return (
         <SafeAreaView edges={['bottom', 'left', 'right']} style={[styles.container, { backgroundColor: '#151718' }]}>
             <Stack.Screen 
@@ -39,6 +48,13 @@ export default function EventChatScreen() {
                     headerShown: true,
                     title: headerTitle,
                     headerBackTitle: 'Zpět',
+                    headerLeft: () => (
+                        <BackButton
+                            fallbackHref={eventFallback}
+                            color="#00AAFF"
+                            size={24}
+                        />
+                    ),
                     headerRight: () => (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <AddFriendsToChatButton

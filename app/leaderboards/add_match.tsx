@@ -10,6 +10,7 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { FormChip } from '@/components/formUi';
+import { BackButton } from '@/components/BackButton';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppDataOptional } from '@/contexts/AppDataContext';
@@ -25,6 +26,7 @@ import { submitMatch, SubmitMatchData } from '@/services/leagues/submit_match';
 import { buildSetsMetadata, summarizeSets } from '@/services/leagues/match_sets';
 import { supabase } from '@/lib/supabaseClient';
 import { showAlert, showAlertThen } from '@/lib/alert';
+import { safeGoBack } from '@/lib/navigation';
 import { Brand, BrandSurfaces } from '@/constants/brand';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -395,7 +397,11 @@ export default function AddMatchScreen() {
             showAlertThen(
                 'Úspěch',
                 editingMatchId ? 'Zápas byl upraven.' : 'Výsledek byl zapsán!',
-                () => router.back()
+                () =>
+                    safeGoBack(
+                        router,
+                        `/leaderboards/${id}` as `/leaderboards/${string}`
+                    )
             );
         } catch (e: any) {
             console.error(e);
@@ -489,17 +495,13 @@ export default function AddMatchScreen() {
                 keyboardShouldPersistTaps="handled"
             >
                 <View style={styles.topBar}>
-                    <Pressable
-                        onPress={() => router.back()}
-                        hitSlop={12}
+                    <BackButton
+                        fallbackHref={
+                            `/leaderboards/${id}` as `/leaderboards/${string}`
+                        }
+                        color={surfaces.text}
                         style={styles.backBtn}
-                    >
-                        <MaterialCommunityIcons
-                            name="arrow-left"
-                            size={24}
-                            color={surfaces.text}
-                        />
-                    </Pressable>
+                    />
                     <ThemedText
                         style={[styles.title, { color: surfaces.text }]}
                     >
@@ -1085,7 +1087,12 @@ export default function AddMatchScreen() {
                 </Pressable>
 
                 <Pressable
-                    onPress={() => router.back()}
+                    onPress={() =>
+                        safeGoBack(
+                            router,
+                            `/leaderboards/${id}` as `/leaderboards/${string}`
+                        )
+                    }
                     disabled={submitting}
                     style={styles.cancelBtn}
                 >

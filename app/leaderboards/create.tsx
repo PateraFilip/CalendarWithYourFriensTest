@@ -1,4 +1,5 @@
 import { LeagueCover } from '@/components/LeagueCover';
+import { BackButton } from '@/components/BackButton';
 import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { ThemedText } from '@/components/themed-text';
@@ -168,14 +169,12 @@ export default function CreateLeaderboardScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
+        <BackButton
+          fallbackHref="/(tabs)/tabulky"
+          color={surfaces.text}
           style={styles.backBtn}
           accessibilityLabel="Zpět"
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={surfaces.text} />
-        </Pressable>
+        />
         <ThemedText style={[styles.topTitle, { color: surfaces.text }]}>
           Nová tabulka
         </ThemedText>

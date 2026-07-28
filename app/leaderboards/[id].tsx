@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
 import { LeagueCover } from '@/components/LeagueCover';
+import { BackButton } from '@/components/BackButton';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalSearchParams, router, useFocusEffect, Stack } from 'expo-router';
@@ -30,6 +31,7 @@ import {
 } from '@/services/leagues/derived_stats';
 import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
 import { showAlert, showConfirm } from '@/lib/alert';
+import { safeGoBack } from '@/lib/navigation';
 import { Button, ActivityIndicator, FAB, Menu, Switch } from 'react-native-paper';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
@@ -339,7 +341,11 @@ export default function LeaderboardDetailScreen() {
                 <ThemedText style={[styles.forbiddenText, { color: surfaces.text }]}>
                     Tuto tabulku nevidíš — je jen pro přátele a přátele přátel zakladatele / hráčů.
                 </ThemedText>
-                <Button mode="contained" onPress={() => router.back()} buttonColor={Brand.primary}>
+                <Button
+                    mode="contained"
+                    onPress={() => safeGoBack(router, '/(tabs)/tabulky')}
+                    buttonColor={Brand.primary}
+                >
                     Zpět
                 </Button>
             </ThemedSafeView>
@@ -1175,9 +1181,11 @@ export default function LeaderboardDetailScreen() {
             <Stack.Screen options={{ headerShown: false }} />
 
             <View style={styles.header}>
-                <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-                    <MaterialCommunityIcons name="arrow-left" size={24} color={surfaces.text} />
-                </Pressable>
+                <BackButton
+                    fallbackHref="/(tabs)/tabulky"
+                    color={surfaces.text}
+                    style={styles.backBtn}
+                />
 
                 <Pressable
                     onPress={isCreator ? handleChangeCover : undefined}
