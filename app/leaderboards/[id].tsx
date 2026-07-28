@@ -67,6 +67,7 @@ export default function LeaderboardDetailScreen() {
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
     const [uploadingCover, setUploadingCover] = useState(false);
     const [savingSetsConfig, setSavingSetsConfig] = useState(false);
+    const [deletingMatchId, setDeletingMatchId] = useState<number | null>(null);
 
     const isCreator = String(league?.created_by) === String(user?.id);
 
@@ -303,16 +304,20 @@ export default function LeaderboardDetailScreen() {
     }, [matchFilter, players]);
 
     const handleDeleteMatch = (matchId: number) => {
+        if (deletingMatchId != null) return;
         showConfirm(
             'Smazat zápas',
             'Opravdu smazat? Statistiky a ELO se přepočítají.',
             async () => {
+                setDeletingMatchId(matchId);
                 try {
                     await deleteMatch(matchId, Number(id));
                     await loadData();
                 } catch (e) {
                     console.error(e);
                     showAlert('Chyba', 'Zápas se nepodařilo smazat.');
+                } finally {
+                    setDeletingMatchId(null);
                 }
             },
             { confirmLabel: 'Smazat', destructive: true }
@@ -872,32 +877,66 @@ export default function LeaderboardDetailScreen() {
                                         {dayjs(item.played_at).format('D. MMMM YYYY · HH:mm')}
                                     </ThemedText>
                                     <View style={styles.matchActions}>
-                                        <Pressable
-                                            hitSlop={8}
-                                            onPress={() =>
-                                                router.push(
-                                                    `/leaderboards/add_match?id=${league.id}&matchId=${item.id}`
-                                                )
-                                            }
-                                            style={styles.matchIconBtn}
-                                        >
-                                            <MaterialCommunityIcons
-                                                name="pencil-outline"
-                                                size={18}
-                                                color={Brand.primary}
-                                            />
-                                        </Pressable>
-                                        <Pressable
-                                            hitSlop={8}
-                                            onPress={() => handleDeleteMatch(item.id)}
-                                            style={styles.matchIconBtn}
-                                        >
-                                            <MaterialCommunityIcons
-                                                name="trash-can-outline"
-                                                size={18}
-                                                color={Brand.danger}
-                                            />
-                                        </Pressable>
+                                        {deletingMatchId === item.id ? (
+                                            <View style={styles.matchDeleting}>
+                                                <ActivityIndicator
+                                                    size={16}
+                                                    color={Brand.danger}
+                                                />
+                                                <ThemedText
+                                                    style={{
+                                                        fontSize: 12,
+                                                        fontWeight: '600',
+                                                        color: surfaces.textSecondary,
+                                                    }}
+                                                >
+                                                    Mazání…
+                                                </ThemedText>
+                                            </View>
+                                        ) : (
+                                            <>
+                                                <Pressable
+                                                    hitSlop={8}
+                                                    disabled={deletingMatchId != null}
+                                                    onPress={() =>
+                                                        router.push(
+                                                            `/leaderboards/add_match?id=${league.id}&matchId=${item.id}`
+                                                        )
+                                                    }
+                                                    style={[
+                                                        styles.matchIconBtn,
+                                                        deletingMatchId != null && {
+                                                            opacity: 0.35,
+                                                        },
+                                                    ]}
+                                                >
+                                                    <MaterialCommunityIcons
+                                                        name="pencil-outline"
+                                                        size={18}
+                                                        color={Brand.primary}
+                                                    />
+                                                </Pressable>
+                                                <Pressable
+                                                    hitSlop={8}
+                                                    disabled={deletingMatchId != null}
+                                                    onPress={() =>
+                                                        handleDeleteMatch(item.id)
+                                                    }
+                                                    style={[
+                                                        styles.matchIconBtn,
+                                                        deletingMatchId != null && {
+                                                            opacity: 0.35,
+                                                        },
+                                                    ]}
+                                                >
+                                                    <MaterialCommunityIcons
+                                                        name="trash-can-outline"
+                                                        size={18}
+                                                        color={Brand.danger}
+                                                    />
+                                                </Pressable>
+                                            </>
+                                        )}
                                     </View>
                                 </View>
 
@@ -1418,6 +1457,14 @@ const styles = StyleSheet.create({
     matchActions: {
         flexDirection: 'row',
         gap: 4,
+        alignItems: 'center',
+    },
+    matchDeleting: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 4,
+        minHeight: 32,
     },
     matchIconBtn: {
         padding: 6,
