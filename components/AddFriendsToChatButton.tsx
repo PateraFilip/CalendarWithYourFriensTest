@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, TouchableOpacity } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { ThemedText } from '@/components/themed-text';
 import { ParticipantsDialog, SelectableUserId } from '@/components/ParticipantsDialog';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { showAlert } from '@/lib/alert';
 import { supabase } from '@/lib/supabaseClient';
 import { fetchMyFriendships } from '@/services/friends/friendships';
 import {
@@ -88,7 +89,7 @@ export default function AddFriendsToChatButton({
       setSelected(friends.filter((u: any) => inChat.has(String(u.id))).map((u: any) => u.id));
     } catch (e) {
       console.error(e);
-      Alert.alert('Chyba', 'Nepodařilo se načíst přátele.');
+      showAlert('Chyba', 'Nepodařilo se načíst přátele.');
       setVisible(false);
     } finally {
       setLoading(false);
@@ -117,7 +118,7 @@ export default function AddFriendsToChatButton({
       setVisible(false);
       void appData?.refreshTimeline?.(false);
       if (added.length > 0) {
-        Alert.alert(
+        showAlert(
           'Hotovo',
           added.length === 1
             ? 'Přítel byl přidán do chatu.'
@@ -126,7 +127,7 @@ export default function AddFriendsToChatButton({
       }
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Chyba', e?.message || 'Nepodařilo se přidat přátele.');
+      showAlert('Chyba', e?.message || 'Nepodařilo se přidat přátele.');
     } finally {
       setSaving(false);
     }

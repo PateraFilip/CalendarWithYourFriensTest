@@ -29,6 +29,8 @@ interface EventException {
 type MonthBundle = {
   events: Event[];
   exceptions: EventException[];
+  /** true = kompletní měsíc z DB / plně pokryté AppData; false = nepoužívat jako cache hit */
+  complete: boolean;
 };
 
 /** Module-level cache so adjacent months survive remounts / rapid swipes. */
@@ -73,8 +75,12 @@ function filterExceptionsForMonth(
   });
 }
 
-/** Naplní cache jen měsíci, které AppData pokrývá celé — jinak vznikne „díra“
- *  (např. range od 28. 6. → červen se uloží jen s pár dny a už se nenačte z DB). */
+function getCompleteCache(key: string): MonthBundle | undefined {
+  const cached = monthEventsCache.get(key);
+  return cached?.complete ? cached : undefined;
+}
+
+/** Naplní cache jen měsíci, které AppData pokrývá celé. */
 function seedCacheFromAppData(
   events: Event[],
   exceptions: EventException[],
@@ -85,14 +91,16 @@ function seedCacheFromAppData(
   const last = dayjs(range.to).startOf('month');
   while (cursor.isBefore(last) || cursor.isSame(last, 'month')) {
     if (!monthCoveredByRange(cursor.toDate(), range)) {
+      // Neúplný hraniční měsíc — ať se načte z DB, neuložit jako complete
+      monthEventsCache.delete(monthCacheKey(cursor.toDate()));
       cursor = cursor.add(1, 'month');
       continue;
     }
     const key = monthCacheKey(cursor.toDate());
-    // Vždy přepsat z AppData — jinak po editaci (poloha, název…) zůstane stará cache
     monthEventsCache.set(key, {
       events: filterEventsForMonth(events, cursor.toDate()),
       exceptions: filterExceptionsForMonth(exceptions, cursor.toDate()),
+      complete: true,
     });
     cursor = cursor.add(1, 'month');
   }
@@ -121,6 +129,7 @@ async function fetchMonthBundle(
       const result: MonthBundle = {
         events: bundle.events as Event[],
         exceptions: bundle.exceptions as EventException[],
+        complete: true,
       };
       monthEventsCache.set(key, result);
       return result;
@@ -138,10 +147,14 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
   const [localEvents, setLocalEvents] = useState<Event[]>([]);
   const [eventException, setEventException] = useState<EventException[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  /** Bump při zápisu do module cache → ať useMemo vidí complete fetch. */
+  const [cacheTick, setCacheTick] = useState(0);
 
   const selectedDateRef = useRef(selectedDate);
   const appRangeRef = useRef(appData?.eventsRange);
   const friendshipsRef = useRef(appData?.friendships);
+  const invitedSeriesIdsRef = useRef<number[] | undefined>(undefined);
+
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
@@ -151,6 +164,12 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
   useEffect(() => {
     friendshipsRef.current = appData?.friendships;
   }, [appData?.friendships]);
+
+  // Sync invited series from friendships/AppData when available via loadAll side channel
+  useEffect(() => {
+    // AppData neexportuje invitedSeriesIds — fetchMonthBundle si je případně načte sám
+    invitedSeriesIdsRef.current = undefined;
+  }, [appData?.lastFetchedAt]);
 
   const monthKey = selectedDate ? monthCacheKey(selectedDate) : '';
 
@@ -162,23 +181,27 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
       return filterEventsForMonth((appData?.events || []) as Event[], d);
     }
 
-    const cached = monthEventsCache.get(monthKey);
+    const cached = getCompleteCache(monthKey);
     if (cached) return filterEventsForMonth(cached.events, d);
 
-    // Optimistic: i částečný overlap z AppData, ať grid není prázdný při swipe
-    const fromApp = filterEventsForMonth(
-      (appData?.events || []) as Event[],
-      d
-    );
-    if (fromApp.length > 0) return fromApp;
-
+    // Žádný partial AppData řez — to dřív „zalepilo“ červen jen pár dny z konce
+    // a vypadalo to, že cyklus v měsíci chybí.
     return filterEventsForMonth(localEvents, d);
-  }, [appData?.events, coveredByApp, localEvents, d, monthKey]);
+  }, [appData?.events, coveredByApp, localEvents, d, monthKey, cacheTick]);
 
   const applyBundle = useCallback((bundle: MonthBundle) => {
     setLocalEvents(bundle.events);
     setEventException(bundle.exceptions);
+    setCacheTick((t) => t + 1);
   }, []);
+
+  const fetchOpts = useCallback(
+    () => ({
+      friendships: friendshipsRef.current,
+      invitedSeriesIds: invitedSeriesIdsRef.current,
+    }),
+    []
+  );
 
   const prefetchAdjacentMonths = useCallback(
     (center: Date) => {
@@ -187,37 +210,33 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
         if (offset === 0) continue;
         const neighbor = dayjs(center).add(offset, 'month').toDate();
         const key = monthCacheKey(neighbor);
-        if (monthEventsCache.has(key) || monthInflight.has(key)) continue;
-        if (monthCoveredByRange(neighbor, appRangeRef.current)) {
-          // Už v AppData — seed řeší effect; není potřeba DB
-          continue;
-        }
+        if (getCompleteCache(key) || monthInflight.has(key)) continue;
+        if (monthCoveredByRange(neighbor, appRangeRef.current)) continue;
 
-        void fetchMonthBundle(user.id, neighbor, {
-          friendships: friendshipsRef.current,
-        }).catch((err) => console.error(err));
+        void fetchMonthBundle(user.id, neighbor, fetchOpts())
+          .then(() => setCacheTick((t) => t + 1))
+          .catch((err) => console.error(err));
       }
     },
-    [user?.id]
+    [user?.id, fetchOpts]
   );
 
   const loadEvents = useCallback(
-    async (opts?: { silent?: boolean }) => {
+    async (opts?: { silent?: boolean; force?: boolean }) => {
       try {
         const date = selectedDateRef.current ?? new Date();
         if (!user?.id) return;
 
         const key = monthCacheKey(date);
 
-        // Uvnitř AppData okna — jen prefetch kolem, žádný DB fetch
         if (monthCoveredByRange(date, appRangeRef.current)) {
           setIsLoading(false);
           prefetchAdjacentMonths(date);
           return;
         }
 
-        const cached = monthEventsCache.get(key);
-        if (cached) {
+        const cached = getCompleteCache(key);
+        if (cached && !opts?.force) {
           applyBundle(cached);
           setIsLoading(false);
           prefetchAdjacentMonths(date);
@@ -226,10 +245,7 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
 
         if (!opts?.silent) setIsLoading(true);
 
-        const bundle = await fetchMonthBundle(user.id, date, {
-          friendships: friendshipsRef.current,
-        });
-        // Only apply if still on the same month (rapid swipe).
+        const bundle = await fetchMonthBundle(user.id, date, fetchOpts());
         const stillHere =
           monthCacheKey(selectedDateRef.current ?? new Date()) === key;
         if (stillHere) applyBundle(bundle);
@@ -241,10 +257,10 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
         if (!opts?.silent) setIsLoading(false);
       }
     },
-    [user?.id, applyBundle, prefetchAdjacentMonths]
+    [user?.id, applyBundle, prefetchAdjacentMonths, fetchOpts]
   );
 
-  // Seed / refresh cache when AppData má nová data — vždy přepsat (editace polohy atd.)
+  // Po každém AppData refreshi — dropnout starou cache a znovu prefetch okolí
   useEffect(() => {
     if (!appData?.lastFetchedAt) return;
     monthEventsCache.clear();
@@ -255,27 +271,30 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
         appData.eventsRange
       );
     }
+    setCacheTick((t) => t + 1);
+
     const date = selectedDateRef.current ?? new Date();
     if (!monthCoveredByRange(date, appData.eventsRange) && user?.id) {
-      void loadEvents({ silent: true });
+      void loadEvents({ silent: true, force: true });
     } else if (monthCoveredByRange(date, appData.eventsRange)) {
       const key = monthCacheKey(date);
-      const cached = monthEventsCache.get(key);
+      const cached = getCompleteCache(key);
       if (cached) applyBundle(cached);
+      prefetchAdjacentMonths(date);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appData?.lastFetchedAt]);
 
   useEffect(() => {
     if (coveredByApp) {
-      const cached = monthEventsCache.get(monthKey);
+      const cached = getCompleteCache(monthKey);
       if (cached) applyBundle(cached);
       setIsLoading(false);
       prefetchAdjacentMonths(d);
       return;
     }
 
-    const cached = monthEventsCache.get(monthKey);
+    const cached = getCompleteCache(monthKey);
     if (cached) {
       applyBundle(cached);
       setIsLoading(false);
@@ -283,7 +302,6 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
       return;
     }
 
-    // Okamžitě zkus AppData řez (optimistic), pak doplň z DB
     void loadEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, monthKey, coveredByApp]);
@@ -300,7 +318,7 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
       );
     }
     if (eventException.length > 0) return eventException;
-    const cached = monthEventsCache.get(monthKey);
+    const cached = getCompleteCache(monthKey);
     if (cached?.exceptions?.length) return cached.exceptions;
     return filterExceptionsForMonth(
       (appData?.eventExceptions || []) as EventException[],
@@ -312,12 +330,13 @@ export function useCalendarEvents(user: any, selectedDate: Date | null) {
     eventException,
     monthKey,
     d,
+    cacheTick,
   ]);
 
   return {
     events,
     eventException: mergedExceptions,
-    isLoading: isLoading && !coveredByApp && !monthEventsCache.has(monthKey),
+    isLoading: isLoading && !coveredByApp && !getCompleteCache(monthKey),
     loadEvents,
   };
 }

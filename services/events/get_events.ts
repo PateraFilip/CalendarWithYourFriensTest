@@ -377,13 +377,18 @@ async function fetchEventsFromSupabase(
           continue;
         }
 
-        const dayOffset = cursor.diff(anchor, 'day');
+        const dayOffset = cursor
+          .startOf('day')
+          .diff(anchor.startOf('day'), 'day');
         if (dayOffset < 0) {
           cursor = cursor.add(1, 'day');
           continue;
         }
 
-        const slot = rule.pattern[dayOffset % rule.cycle_days];
+        // Kalendářní den (ne 24h diff) — přes DST jinak ujede slot v týdnu
+        const cycleIndex =
+          ((dayOffset % rule.cycle_days) + rule.cycle_days) % rule.cycle_days;
+        const slot = rule.pattern[cycleIndex];
         if (!slot?.work) {
           cursor = cursor.add(1, 'day');
           continue;

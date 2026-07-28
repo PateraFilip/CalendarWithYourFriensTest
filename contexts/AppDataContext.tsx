@@ -308,8 +308,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           setBooting(false);
           // refreshing necháme true do konce fáze 2 (jen indikátor na pozadí)
 
-          // ── Fáze 2: ~měsíc historie + rok dopředu + chaty na pozadí ──
-          const rangeStart = dayjs().subtract(30, 'day');
+          // ── Fáze 2: 3 měsíce historie (celé měsíce) + rok dopředu + chaty ──
+          // Celé měsíce dozadu — ať květen/červen při červencovém refreshi
+          // nejsou „oříznuté“ jen na posledních 30 dní.
+          const rangeStart = dayjs().subtract(3, 'month').startOf('month');
           const rangeEnd = dayjs().add(TIMELINE_DAYS, 'day');
 
           const [fullBundle, usersRes, messagedRes] = await Promise.all([

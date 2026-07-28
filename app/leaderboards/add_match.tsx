@@ -4,7 +4,6 @@ import {
     ScrollView,
     Pressable,
     StyleSheet,
-    Alert,
     TextInput as RNTextInput,
     ActivityIndicator as RNActivityIndicator,
 } from 'react-native';
@@ -25,6 +24,7 @@ import { fetchUsers } from '@/services/users/get_users';
 import { submitMatch, SubmitMatchData } from '@/services/leagues/submit_match';
 import { buildSetsMetadata, summarizeSets } from '@/services/leagues/match_sets';
 import { supabase } from '@/lib/supabaseClient';
+import { showAlert, showAlertThen } from '@/lib/alert';
 import { Brand, BrandSurfaces } from '@/constants/brand';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -186,7 +186,7 @@ export default function AddMatchScreen() {
                 }
             } catch (e) {
                 console.error(e);
-                Alert.alert('Chyba', 'Nepodařilo se načíst data.');
+                showAlert('Chyba', 'Nepodařilo se načíst data.');
             } finally {
                 setLoading(false);
             }
@@ -266,7 +266,7 @@ export default function AddMatchScreen() {
 
             if (league.team_size > 0) {
                 if (team1Players.length === 0 || team2Players.length === 0) {
-                    Alert.alert(
+                    showAlert(
                         'Pozor',
                         'Oba týmy musí mít alespoň jednoho hráče!'
                     );
@@ -293,12 +293,12 @@ export default function AddMatchScreen() {
                         );
 
                     if (parsedSets.length === 0) {
-                        Alert.alert('Pozor', 'Zadejte alespoň jeden set.');
+                        showAlert('Pozor', 'Zadejte alespoň jeden set.');
                         setSubmitting(false);
                         return;
                     }
                     if (parsedSets.some((s) => s.team1 === s.team2)) {
-                        Alert.alert(
+                        showAlert(
                             'Pozor',
                             'Set nemůže skončit remízou — upravte gamy.'
                         );
@@ -351,7 +351,7 @@ export default function AddMatchScreen() {
                 ];
             } else {
                 if (ffaParticipants.length < 1) {
-                    Alert.alert('Pozor', 'Vyberte alespoň jednoho účastníka.');
+                    showAlert('Pozor', 'Vyberte alespoň jednoho účastníka.');
                     setSubmitting(false);
                     return;
                 }
@@ -392,10 +392,10 @@ export default function AddMatchScreen() {
             }
 
             await submitMatch(data);
-            Alert.alert(
+            showAlertThen(
                 'Úspěch',
                 editingMatchId ? 'Zápas byl upraven.' : 'Výsledek byl zapsán!',
-                [{ text: 'OK', onPress: () => router.back() }]
+                () => router.back()
             );
         } catch (e: any) {
             console.error(e);
@@ -404,7 +404,7 @@ export default function AddMatchScreen() {
                 e?.error_description ||
                 e?.details ||
                 'Nepodařilo se uložit výsledek.';
-            Alert.alert('Chyba', String(msg));
+            showAlert('Chyba', String(msg));
         } finally {
             setSubmitting(false);
         }
@@ -673,54 +673,56 @@ export default function AddMatchScreen() {
                                 >
                                     Set {index + 1}
                                 </ThemedText>
-                                <RNTextInput
-                                    value={set.team1}
-                                    onChangeText={(v) =>
-                                        updateSet(index, 'team1', v)
-                                    }
-                                    keyboardType="number-pad"
-                                    placeholder="0"
-                                    placeholderTextColor={
-                                        surfaces.textSecondary
-                                    }
-                                    style={[
-                                        styles.setInput,
-                                        {
-                                            color: TEAM1,
-                                            borderColor: surfaces.border,
-                                            backgroundColor:
-                                                surfaces.surfaceElevated,
-                                        },
-                                    ]}
-                                />
-                                <ThemedText
-                                    style={[
-                                        styles.setColon,
-                                        { color: surfaces.textSecondary },
-                                    ]}
-                                >
-                                    :
-                                </ThemedText>
-                                <RNTextInput
-                                    value={set.team2}
-                                    onChangeText={(v) =>
-                                        updateSet(index, 'team2', v)
-                                    }
-                                    keyboardType="number-pad"
-                                    placeholder="0"
-                                    placeholderTextColor={
-                                        surfaces.textSecondary
-                                    }
-                                    style={[
-                                        styles.setInput,
-                                        {
-                                            color: TEAM2,
-                                            borderColor: surfaces.border,
-                                            backgroundColor:
-                                                surfaces.surfaceElevated,
-                                        },
-                                    ]}
-                                />
+                                <View style={styles.setInputs}>
+                                    <RNTextInput
+                                        value={set.team1}
+                                        onChangeText={(v) =>
+                                            updateSet(index, 'team1', v)
+                                        }
+                                        keyboardType="number-pad"
+                                        placeholder="0"
+                                        placeholderTextColor={
+                                            surfaces.textSecondary
+                                        }
+                                        style={[
+                                            styles.setInput,
+                                            {
+                                                color: TEAM1,
+                                                borderColor: surfaces.border,
+                                                backgroundColor:
+                                                    surfaces.surfaceElevated,
+                                            },
+                                        ]}
+                                    />
+                                    <ThemedText
+                                        style={[
+                                            styles.setColon,
+                                            { color: surfaces.textSecondary },
+                                        ]}
+                                    >
+                                        :
+                                    </ThemedText>
+                                    <RNTextInput
+                                        value={set.team2}
+                                        onChangeText={(v) =>
+                                            updateSet(index, 'team2', v)
+                                        }
+                                        keyboardType="number-pad"
+                                        placeholder="0"
+                                        placeholderTextColor={
+                                            surfaces.textSecondary
+                                        }
+                                        style={[
+                                            styles.setInput,
+                                            {
+                                                color: TEAM2,
+                                                borderColor: surfaces.border,
+                                                backgroundColor:
+                                                    surfaces.surfaceElevated,
+                                            },
+                                        ]}
+                                    />
+                                </View>
                                 {sets.length > 1 ? (
                                     <Pressable
                                         onPress={() =>
@@ -1206,27 +1208,42 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         borderBottomWidth: StyleSheet.hairlineWidth,
         gap: 8,
+        width: '100%',
+        minWidth: 0,
     },
     setLabel: {
-        width: 48,
+        width: 52,
+        flexShrink: 0,
         fontSize: 13,
         fontWeight: '600',
     },
-    setInput: {
+    setInputs: {
         flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        minWidth: 0,
+    },
+    setInput: {
+        width: 72,
+        flexShrink: 0,
         textAlign: 'center',
         fontSize: 22,
         fontWeight: '800',
         paddingVertical: 8,
+        paddingHorizontal: 4,
         borderRadius: 10,
         borderWidth: 1,
     },
     setColon: {
         fontSize: 20,
         fontWeight: '700',
+        flexShrink: 0,
     },
     setRemove: {
         width: 28,
+        flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -1256,11 +1273,15 @@ const styles = StyleSheet.create({
         gap: 12,
         paddingVertical: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
+        minWidth: 0,
+        width: '100%',
     },
     simpleScoreInput: {
         fontSize: 24,
         fontWeight: '800',
         paddingVertical: 4,
+        maxWidth: 160,
+        width: '100%',
     },
     ffaRow: {
         flexDirection: 'row',
@@ -1268,9 +1289,12 @@ const styles = StyleSheet.create({
         gap: 10,
         paddingVertical: 10,
         borderBottomWidth: StyleSheet.hairlineWidth,
+        minWidth: 0,
+        width: '100%',
     },
     ffaScoreInput: {
         width: 72,
+        flexShrink: 0,
         textAlign: 'center',
         fontSize: 18,
         fontWeight: '800',

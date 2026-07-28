@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet, FlatList, Alert, Pressable } from 'react-native';
+import { View, ScrollView, TouchableOpacity, StyleSheet, FlatList, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
@@ -29,6 +29,7 @@ import {
     type EloSnap,
 } from '@/services/leagues/derived_stats';
 import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
+import { showAlert, showConfirm } from '@/lib/alert';
 import { Button, ActivityIndicator, FAB, Menu, Switch } from 'react-native-paper';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
@@ -79,7 +80,7 @@ export default function LeaderboardDetailScreen() {
             setLeague(updated);
         } catch (e) {
             console.error(e);
-            Alert.alert('Nastavení', 'Nepodařilo se uložit nastavení setů.');
+            showAlert('Nastavení', 'Nepodařilo se uložit nastavení setů.');
         } finally {
             setSavingSetsConfig(false);
         }
@@ -96,7 +97,7 @@ export default function LeaderboardDetailScreen() {
             setLeague({ ...league, image_url: url });
         } catch (e) {
             console.error(e);
-            Alert.alert('Obrázek', 'Nahrání selhalo. Zkontroluj, že v Supabase běží migrace league-covers.');
+            showAlert('Obrázek', 'Nahrání selhalo. Zkontroluj, že v Supabase běží migrace league-covers.');
         } finally {
             setUploadingCover(false);
         }
@@ -150,7 +151,7 @@ export default function LeaderboardDetailScreen() {
                     pairRatings = await fetchLeaguePairRatings(leagueId);
                 } catch (pairErr: any) {
                     console.error(pairErr);
-                    Alert.alert(
+                    showAlert(
                         'Párová hodnocení',
                         pairErr?.message || 'Nepodařilo se načíst hodnocení týmů.'
                     );
@@ -302,22 +303,20 @@ export default function LeaderboardDetailScreen() {
     }, [matchFilter, players]);
 
     const handleDeleteMatch = (matchId: number) => {
-        Alert.alert('Smazat zápas', 'Opravdu smazat? Statistiky a ELO se přepočítají.', [
-            { text: 'Zrušit', style: 'cancel' },
-            {
-                text: 'Smazat',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        await deleteMatch(matchId, Number(id));
-                        await loadData();
-                    } catch (e) {
-                        console.error(e);
-                        Alert.alert('Chyba', 'Zápas se nepodařilo smazat.');
-                    }
-                },
+        showConfirm(
+            'Smazat zápas',
+            'Opravdu smazat? Statistiky a ELO se přepočítají.',
+            async () => {
+                try {
+                    await deleteMatch(matchId, Number(id));
+                    await loadData();
+                } catch (e) {
+                    console.error(e);
+                    showAlert('Chyba', 'Zápas se nepodařilo smazat.');
+                }
             },
-        ]);
+            { confirmLabel: 'Smazat', destructive: true }
+        );
     };
 
     if (loading) {

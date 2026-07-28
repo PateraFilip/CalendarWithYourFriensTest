@@ -39,6 +39,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppDataOptional } from '@/contexts/AppDataContext'
 
 import { getSafeDates } from '@/lib/eventDates'
+import { showAlert, showConfirm } from '@/lib/alert'
 import { supabase } from '@/lib/supabaseClient'
 
 import dayjs from 'dayjs'
@@ -52,7 +53,6 @@ import React, { useEffect, useState } from 'react'
 
 import {
     ActivityIndicator,
-    Alert,
     Linking,
     LogBox,
     Pressable,
@@ -1762,7 +1762,7 @@ export default function EventDetail() {
         router.back()
       } catch (e: any) {
         console.error('handleSave error:', e)
-        Alert.alert('Chyba při ukládání', e?.message || 'Změny se nepodařilo uložit.')
+        showAlert('Chyba při ukládání', e?.message || 'Změny se nepodařilo uložit.')
       } finally {
         setActionBusy(false)
       }
@@ -1786,21 +1786,19 @@ export default function EventDetail() {
     }
 
     const handleDeleteRelatedEvent = (id: number) => {
-        Alert.alert('Smazat instanci', 'Opravdu chcete tuto událost smazat?', [
-            { text: 'Zrušit', style: 'cancel' },
-            {
-                text: 'Smazat',
-                style: 'destructive',
-                onPress: async () => {
-                    await deleteEvent(id)
-                    if (id === eventObj.id) {
-                        router.back()
-                    } else {
-                        loadRelatedEvents()
-                    }
-                },
+        showConfirm(
+            'Smazat instanci',
+            'Opravdu chcete tuto událost smazat?',
+            async () => {
+                await deleteEvent(id)
+                if (id === eventObj.id) {
+                    router.back()
+                } else {
+                    loadRelatedEvents()
+                }
             },
-        ])
+            { confirmLabel: 'Smazat', destructive: true }
+        )
     }
 
     const handleMainDeletePress = () => {
@@ -1809,20 +1807,14 @@ export default function EventDetail() {
         } else if (isRepeatingNonPattern) {
             setMultiDateDeleteModalVisible(true)
         } else {
-            Alert.alert(
+            showConfirm(
                 'Smazat událost',
                 'Opravdu chcete tuto událost smazat?',
-                [
-                    { text: 'Zrušit', style: 'cancel' },
-                    {
-                        text: 'Smazat',
-                        style: 'destructive',
-                        onPress: async () => {
-                            await deleteEvent(eventObj.series_id || eventObj.id)
-                            router.back()
-                        },
-                    },
-                ]
+                async () => {
+                    await deleteEvent(eventObj.series_id || eventObj.id)
+                    router.back()
+                },
+                { confirmLabel: 'Smazat', destructive: true }
             )
         }
     }
@@ -1849,7 +1841,7 @@ export default function EventDetail() {
             router.back()
         } catch (e: any) {
             console.error(e)
-            Alert.alert('Chyba', e?.message || 'Nepodařilo se smazat termín.')
+            showAlert('Chyba', e?.message || 'Nepodařilo se smazat termín.')
         }
     }
 
@@ -1860,23 +1852,17 @@ export default function EventDetail() {
     }
 
     const handleDeleteAllMultiDate = async () => {
-        Alert.alert(
+        showConfirm(
             'Smazat všechny',
             'Opravdu chcete smazat všechny termíny této události?',
-            [
-                { text: 'Zrušit', style: 'cancel' },
-                {
-                    text: 'Smazat',
-                    style: 'destructive',
-                    onPress: async () => {
-                        for (const ev of relatedEvents) {
-                            await deleteEvent(ev.id)
-                        }
-                        setMultiDateDeleteModalVisible(false)
-                        router.back()
-                    },
-                },
-            ]
+            async () => {
+                for (const ev of relatedEvents) {
+                    await deleteEvent(ev.id)
+                }
+                setMultiDateDeleteModalVisible(false)
+                router.back()
+            },
+            { confirmLabel: 'Smazat', destructive: true }
         )
     }
 
