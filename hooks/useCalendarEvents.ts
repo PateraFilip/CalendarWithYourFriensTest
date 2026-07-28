@@ -73,7 +73,8 @@ function filterExceptionsForMonth(
   });
 }
 
-/** Naplní cache měsíčními řezy z AppData — přepínání v načteném okně bez DB. */
+/** Naplní cache jen měsíci, které AppData pokrývá celé — jinak vznikne „díra“
+ *  (např. range od 28. 6. → červen se uloží jen s pár dny a už se nenačte z DB). */
 function seedCacheFromAppData(
   events: Event[],
   exceptions: EventException[],
@@ -83,6 +84,10 @@ function seedCacheFromAppData(
   let cursor = dayjs(range.from).startOf('month');
   const last = dayjs(range.to).startOf('month');
   while (cursor.isBefore(last) || cursor.isSame(last, 'month')) {
+    if (!monthCoveredByRange(cursor.toDate(), range)) {
+      cursor = cursor.add(1, 'month');
+      continue;
+    }
     const key = monthCacheKey(cursor.toDate());
     // Vždy přepsat z AppData — jinak po editaci (poloha, název…) zůstane stará cache
     monthEventsCache.set(key, {
