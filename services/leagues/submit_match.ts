@@ -117,8 +117,12 @@ export const submitMatch = async (data: SubmitMatchData) => {
     }
   }
 
-  // Při editaci vždy přepočítáme celou ligu (kvůli ELO pořadí)
-  if (data.replace_match_id) {
+  // Edit, nebo nový zápas se sety + Elo → plný chronologický přepočet
+  const needsFullRecompute =
+    !!data.replace_match_id ||
+    (!!league.config?.track_elo && data.metadata?.scoring_mode === 'sets');
+
+  if (needsFullRecompute) {
     const { data: matchEntry, error: matchError } = await supabase
       .from('league_matches')
       .insert([

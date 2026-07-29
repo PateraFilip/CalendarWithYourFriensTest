@@ -1,4 +1,10 @@
-import { eloActualFromSetsAndGames, MatchSetsMetadata } from '@/services/leagues/match_sets';
+import {
+  computeSequentialSetElo,
+  ELO_K_MATCH,
+  MatchSetScore,
+  MatchSetsMetadata,
+  setsFromMetadata,
+} from '@/services/leagues/match_sets';
 import { emptyPairStats, makePairKey, PairStatRow } from '@/services/leagues/pair_ratings';
 
 export type MatchTeamInput = {
@@ -32,17 +38,25 @@ export type PlayerStatRow = {
   games_against?: number;
 };
 
+export type ApplyMatchOptions = {
+  /** Sety z předchozích zápasů ligy (pro odhad cíle setu). */
+  priorSets?: MatchSetScore[];
+};
+
 /** Aplikuje jeden zápas na in-memory mapu statistik hráčů. */
 export function applyMatchToPlayerMap(
   league: { team_size: number; config?: any },
   teams: MatchTeamInput[],
   metadata: any,
-  playerStatsMap: Map<string, PlayerStatRow>
+  playerStatsMap: Map<string, PlayerStatRow>,
+  options?: ApplyMatchOptions
 ): { ratingChanges: Map<string, number> } {
   const config = league.config || {};
   const teamsCopy: MatchTeamInput[] = teams.map((t) => ({ ...t, user_ids: [...t.user_ids] }));
   const setsMeta =
     metadata?.scoring_mode === 'sets' ? (metadata as MatchSetsMetadata) : null;
+  const matchSets = setsFromMetadata(metadata);
+  const priorSets = options?.priorSets ?? [];
 
   let team1Change = 0;
   let team2Change = 0;
@@ -50,6 +64,7 @@ export function applyMatchToPlayerMap(
 
   if (config.track_elo) {
     if (league.team_size > 0 && teamsCopy.length === 2) {
+      teamsCopy.sort((a, b) => a.team_index - b.team_index);
       const team1 = teamsCopy[0];
       const team2 = teamsCopy[1];
       const r1 =
@@ -59,26 +74,21 @@ export function applyMatchToPlayerMap(
         team2.user_ids.reduce((sum, uid) => sum + (playerStatsMap.get(uid)?.rating || 1500), 0) /
         (team2.user_ids.length || 1);
 
-      const e1 = 1 / (1 + Math.pow(10, (r2 - r1) / 400));
-      const e2 = 1 / (1 + Math.pow(10, (r1 - r2) / 400));
-
-      let s1 = team1.is_draw ? 0.5 : team1.is_winner ? 1 : 0;
-      let s2 = team2.is_draw ? 0.5 : team2.is_winner ? 1 : 0;
-
-      if (setsMeta) {
-        const eloS = eloActualFromSetsAndGames(
-          setsMeta.sets_won.team1,
-          setsMeta.sets_won.team2,
-          setsMeta.games.team1,
-          setsMeta.games.team2
-        );
-        s1 = eloS.s1;
-        s2 = eloS.s2;
+      if (setsMeta && matchSets.length > 0) {
+        const { change1, change2 } = computeSequentialSetElo({
+          sets: matchSets,
+          r1,
+          r2,
+          priorSets,
+        });
+        team1Change = change1;
+        team2Change = change2;
+      } else {
+        const e1 = 1 / (1 + Math.pow(10, (r2 - r1) / 400));
+        const s1 = team1.is_draw ? 0.5 : team1.is_winner ? 1 : 0;
+        team1Change = ELO_K_MATCH * (s1 - e1);
+        team2Change = -team1Change;
       }
-
-      const K = 32;
-      team1Change = K * (s1 - e1);
-      team2Change = K * (s2 - e2);
     } else if (league.team_size === 0 && teamsCopy.length > 0) {
       if (config.lower_is_better) {
         teamsCopy.sort((a, b) => a.score - b.score);
@@ -104,7 +114,7 @@ export function applyMatchToPlayerMap(
       });
 
       if (teamsCopy.length > 1) {
-        const K = 32;
+        const K = ELO_K_MATCH;
         const N = teamsCopy.length;
         teamsCopy.forEach((teamA) => {
           let totalChange = 0;
@@ -227,7 +237,8 @@ export function applyMatchToPairMap(
   league: { team_size: number; config?: any },
   teams: MatchTeamInput[],
   metadata: any,
-  pairStatsMap: Map<string, PairStatRow>
+  pairStatsMap: Map<string, PairStatRow>,
+  options?: ApplyMatchOptions
 ): void {
   const config = league.config || {};
   if (league.team_size <= 1 || teams.length !== 2) return;
@@ -249,6 +260,8 @@ export function applyMatchToPairMap(
 
   const setsMeta =
     metadata?.scoring_mode === 'sets' ? (metadata as MatchSetsMetadata) : null;
+  const matchSets = setsFromMetadata(metadata);
+  const priorSets = options?.priorSets ?? [];
 
   let change1 = 0;
   let change2 = 0;
@@ -256,26 +269,23 @@ export function applyMatchToPairMap(
   if (trackElo) {
     const r1 = p1.rating || 1500;
     const r2 = p2.rating || 1500;
-    const e1 = 1 / (1 + Math.pow(10, (r2 - r1) / 400));
-    const e2 = 1 / (1 + Math.pow(10, (r1 - r2) / 400));
 
-    let s1 = team1.is_draw ? 0.5 : team1.is_winner ? 1 : 0;
-    let s2 = team2.is_draw ? 0.5 : team2.is_winner ? 1 : 0;
-
-    if (setsMeta) {
-      const eloS = eloActualFromSetsAndGames(
-        setsMeta.sets_won.team1,
-        setsMeta.sets_won.team2,
-        setsMeta.games.team1,
-        setsMeta.games.team2
-      );
-      s1 = eloS.s1;
-      s2 = eloS.s2;
+    if (setsMeta && matchSets.length > 0) {
+      const elo = computeSequentialSetElo({
+        sets: matchSets,
+        r1,
+        r2,
+        priorSets,
+      });
+      change1 = elo.change1;
+      change2 = elo.change2;
+    } else {
+      const e1 = 1 / (1 + Math.pow(10, (r2 - r1) / 400));
+      const s1 = team1.is_draw ? 0.5 : team1.is_winner ? 1 : 0;
+      change1 = ELO_K_MATCH * (s1 - e1);
+      change2 = -change1;
     }
 
-    const K = 32;
-    change1 = K * (s1 - e1);
-    change2 = K * (s2 - e2);
     p1.rating = r1 + change1;
     p2.rating = r2 + change2;
   }

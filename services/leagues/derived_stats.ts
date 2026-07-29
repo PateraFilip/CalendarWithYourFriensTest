@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { applyMatchToPairMap } from '@/services/leagues/match_engine';
+import { MatchSetScore, setsFromMetadata } from '@/services/leagues/match_sets';
 import { emptyPairStats, makePairKey, PairStatRow } from '@/services/leagues/pair_ratings';
 
 export type EnrichedPlayer = {
@@ -122,6 +123,7 @@ export function buildMatchEloHistory(
 
   const playerRatings = new Map<string, number>();
   const pairStatsMap = new Map<string, PairStatRow>();
+  const priorSets: MatchSetScore[] = [];
 
   const chronological = [...matches].sort((a, b) => {
     const ta = new Date(a.played_at || a.created_at).getTime();
@@ -175,7 +177,9 @@ export function buildMatchEloHistory(
         const before1 = pairStatsMap.get(key1)!.rating;
         const before2 = pairStatsMap.get(key2)!.rating;
 
-        applyMatchToPairMap(league, teams, match.metadata, pairStatsMap);
+        applyMatchToPairMap(league, teams, match.metadata, pairStatsMap, {
+          priorSets: [...priorSets],
+        });
 
         const after1 = pairStatsMap.get(key1)!.rating;
         const after2 = pairStatsMap.get(key2)!.rating;
@@ -184,6 +188,7 @@ export function buildMatchEloHistory(
       }
     }
 
+    priorSets.push(...setsFromMetadata(match.metadata));
     result.set(Number(match.id), { players: playersSnap, pairs: pairsSnap });
   }
 
