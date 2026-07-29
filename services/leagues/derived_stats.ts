@@ -1,5 +1,11 @@
 import dayjs from 'dayjs';
-import { applyMatchToPairMap } from '@/services/leagues/match_engine';
+import {
+  applyMatchToPairMap,
+  applyMatchToPlayerMap,
+  emptyPlayerStats,
+  teamsFromMatchParticipants,
+  type PlayerStatRow,
+} from '@/services/leagues/match_engine';
 import { MatchSetScore, setsFromMetadata } from '@/services/leagues/match_sets';
 import { emptyPairStats, makePairKey, PairStatRow } from '@/services/leagues/pair_ratings';
 
@@ -111,8 +117,8 @@ export type MatchEloSnapshot = {
 };
 
 /**
- * ELO po každém zápase (a změna). Hráči z uloženého rating_change;
- * páry/týmy přehráním stejné logiky jako match engine.
+ * ELO po každém zápase — hráči i páry přehráním stejné logiky jako match engine
+ * (včetně sekvenčního Elo po setech).
  */
 export function buildMatchEloHistory(
   matches: any[],
@@ -121,7 +127,7 @@ export function buildMatchEloHistory(
   const result = new Map<number, MatchEloSnapshot>();
   if (!league?.config?.track_elo) return result;
 
-  const playerRatings = new Map<string, number>();
+  const playerStatsMap = new Map<string, PlayerStatRow>();
   const pairStatsMap = new Map<string, PairStatRow>();
   const priorSets: MatchSetScore[] = [];
 
@@ -139,35 +145,37 @@ export function buildMatchEloHistory(
 
     for (const p of parts) {
       const uid = String(p.user_id);
-      const before = playerRatings.get(uid) ?? 1500;
-      const change = Number(p.rating_change) || 0;
-      const after = before + change;
-      playersSnap.set(uid, { before, after, change });
-      playerRatings.set(uid, after);
+      if (!playerStatsMap.has(uid)) {
+        playerStatsMap.set(uid, emptyPlayerStats(uid, true));
+      }
+    }
+
+    const teams = teamsFromMatchParticipants(parts);
+    teams.sort((a, b) => a.team_index - b.team_index);
+    const applyOpts = { priorSets: [...priorSets] };
+
+    const beforeByUser = new Map<string, number>();
+    for (const p of parts) {
+      const uid = String(p.user_id);
+      beforeByUser.set(uid, playerStatsMap.get(uid)?.rating ?? 1500);
+    }
+
+    const { ratingChanges } = applyMatchToPlayerMap(
+      league,
+      teams,
+      match.metadata,
+      playerStatsMap,
+      applyOpts
+    );
+
+    for (const p of parts) {
+      const uid = String(p.user_id);
+      const before = beforeByUser.get(uid) ?? 1500;
+      const change = ratingChanges.get(uid) || 0;
+      playersSnap.set(uid, { before, after: before + change, change });
     }
 
     if (league.team_size > 1) {
-      const byTeam = new Map<number, any[]>();
-      for (const p of parts) {
-        const t = Number(p.team);
-        if (!byTeam.has(t)) byTeam.set(t, []);
-        byTeam.get(t)!.push(p);
-      }
-
-      const teams = [...byTeam.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([teamIndex, participants]) => {
-          const anyWinner = parts.some((x: any) => x.is_winner);
-          const isWinner = !!participants[0]?.is_winner;
-          return {
-            team_index: teamIndex,
-            user_ids: participants.map((x: any) => String(x.user_id)),
-            score: Number(participants[0]?.score) || 0,
-            is_winner: isWinner,
-            is_draw: !anyWinner,
-          };
-        });
-
       if (teams.length === 2 && teams.every((t) => t.user_ids.length >= 2)) {
         const key1 = makePairKey(teams[0].user_ids);
         const key2 = makePairKey(teams[1].user_ids);
@@ -177,9 +185,7 @@ export function buildMatchEloHistory(
         const before1 = pairStatsMap.get(key1)!.rating;
         const before2 = pairStatsMap.get(key2)!.rating;
 
-        applyMatchToPairMap(league, teams, match.metadata, pairStatsMap, {
-          priorSets: [...priorSets],
-        });
+        applyMatchToPairMap(league, teams, match.metadata, pairStatsMap, applyOpts);
 
         const after1 = pairStatsMap.get(key1)!.rating;
         const after2 = pairStatsMap.get(key2)!.rating;
