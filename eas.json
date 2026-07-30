@@ -6,6 +6,7 @@
   "build": {
     "apk": {
       "distribution": "internal",
+      "environment": "preview",
       "env": {
         "ORG_GRADLE_PROJECT_reactNativeArchitectures": "arm64-v8a"
       },

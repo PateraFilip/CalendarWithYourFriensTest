@@ -6,7 +6,7 @@ import {
   teamsFromMatchParticipants,
   type PlayerStatRow,
 } from '@/services/leagues/match_engine';
-import { MatchSetScore, setsFromMetadata } from '@/services/leagues/match_sets';
+import { MatchSetScore, roundElo, setsFromMetadata } from '@/services/leagues/match_sets';
 import { emptyPairStats, makePairKey, PairStatRow } from '@/services/leagues/pair_ratings';
 
 export type EnrichedPlayer = {
@@ -171,8 +171,12 @@ export function buildMatchEloHistory(
     for (const p of parts) {
       const uid = String(p.user_id);
       const before = beforeByUser.get(uid) ?? 1500;
-      const change = ratingChanges.get(uid) || 0;
-      playersSnap.set(uid, { before, after: before + change, change });
+      const change = roundElo(ratingChanges.get(uid) || 0);
+      playersSnap.set(uid, {
+        before: roundElo(before),
+        after: roundElo(before + change),
+        change,
+      });
     }
 
     if (league.team_size > 1) {
@@ -189,8 +193,16 @@ export function buildMatchEloHistory(
 
         const after1 = pairStatsMap.get(key1)!.rating;
         const after2 = pairStatsMap.get(key2)!.rating;
-        pairsSnap.set(key1, { before: before1, after: after1, change: after1 - before1 });
-        pairsSnap.set(key2, { before: before2, after: after2, change: after2 - before2 });
+        pairsSnap.set(key1, {
+          before: roundElo(before1),
+          after: roundElo(after1),
+          change: roundElo(after1 - before1),
+        });
+        pairsSnap.set(key2, {
+          before: roundElo(before2),
+          after: roundElo(after2),
+          change: roundElo(after2 - before2),
+        });
       }
     }
 

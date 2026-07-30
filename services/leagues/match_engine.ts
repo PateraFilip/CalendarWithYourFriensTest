@@ -3,6 +3,7 @@ import {
   ELO_K_MATCH,
   MatchSetScore,
   MatchSetsMetadata,
+  roundElo,
   setsFromMetadata,
 } from '@/services/leagues/match_sets';
 import { emptyPairStats, makePairKey, PairStatRow } from '@/services/leagues/pair_ratings';
@@ -88,6 +89,8 @@ export function applyMatchToPlayerMap(
         const s1 = team1.is_draw ? 0.5 : team1.is_winner ? 1 : 0;
         team1Change = ELO_K_MATCH * (s1 - e1);
         team2Change = -team1Change;
+        team1Change = roundElo(team1Change);
+        team2Change = roundElo(team2Change);
       }
     } else if (league.team_size === 0 && teamsCopy.length > 0) {
       if (config.lower_is_better) {
@@ -137,7 +140,7 @@ export function applyMatchToPlayerMap(
             }
             totalChange += K * (sA - eA);
           });
-          ffaRatingChanges.set(teamA.team_index, totalChange / (N - 1));
+          ffaRatingChanges.set(teamA.team_index, roundElo(totalChange / (N - 1)));
         });
       }
     }
@@ -178,14 +181,14 @@ export function applyMatchToPlayerMap(
       const stats = playerStatsMap.get(userId);
       if (!stats) return;
 
-      ratingChanges.set(userId, ratingChange);
+      ratingChanges.set(userId, roundElo(ratingChange));
 
       let baseRating = stats.rating;
       if (config.track_elo && (baseRating === 0 || baseRating === null)) {
         baseRating = 1500;
       }
 
-      stats.rating = (baseRating || 0) + ratingChange;
+      stats.rating = roundElo((baseRating || 0) + ratingChange);
       stats.matches_played += 1;
       stats.total_score += scoreFor;
       stats.score_for += scoreFor;
@@ -286,8 +289,10 @@ export function applyMatchToPairMap(
       change2 = -change1;
     }
 
-    p1.rating = r1 + change1;
-    p2.rating = r2 + change2;
+    change1 = roundElo(change1);
+    change2 = roundElo(change2);
+    p1.rating = roundElo(r1 + change1);
+    p2.rating = roundElo(r2 + change2);
   }
 
   p1.last_rating_change = change1;

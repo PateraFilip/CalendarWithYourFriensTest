@@ -30,6 +30,7 @@ import {
     type EloSnap,
 } from '@/services/leagues/derived_stats';
 import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
+import { formatElo, formatEloChange } from '@/services/leagues/match_sets';
 import { showAlert, showConfirm } from '@/lib/alert';
 import { safeGoBack } from '@/lib/navigation';
 import { Button, ActivityIndicator, FAB, Menu, Switch } from 'react-native-paper';
@@ -445,7 +446,7 @@ export default function LeaderboardDetailScreen() {
     };
 
     const playerPrimaryValue = (p: any, en?: ReturnType<typeof enrichedMap.get>) => {
-        if (league?.config?.track_elo) return String(Math.round(p.rating));
+        if (league?.config?.track_elo) return formatElo(p.rating);
         if (league?.config?.track_average) {
             return p.matches_played ? (p.total_score / p.matches_played).toFixed(1) : '0.0';
         }
@@ -713,12 +714,12 @@ export default function LeaderboardDetailScreen() {
                         {league.config?.track_elo && (
                             <View style={styles.primaryMetric}>
                                 <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
-                                    {Math.round(t.rating)}
+                                    {formatElo(t.rating)}
                                 </ThemedText>
                                 <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
                                     ELO
                                     {typeof t.last_rating_change === 'number' && t.matches_played > 0
-                                        ? ` ${t.last_rating_change > 0 ? '+' : ''}${Math.round(t.last_rating_change)}`
+                                        ? ` ${formatEloChange(t.last_rating_change)}`
                                         : ''}
                                 </ThemedText>
                             </View>
@@ -750,12 +751,6 @@ export default function LeaderboardDetailScreen() {
         />
     );
 
-    const formatEloChange = (change: number) => {
-        const rounded = Math.round(change);
-        if (rounded === 0) return '±0';
-        return `${rounded > 0 ? '+' : ''}${rounded}`;
-    };
-
     const eloTone = (change: number) => {
         if (change > 0) return Brand.success;
         if (change < 0) return Brand.danger;
@@ -772,7 +767,7 @@ export default function LeaderboardDetailScreen() {
                     </ThemedText>
                 ) : null}
                 <ThemedText style={[styles.eloAfter, { color: surfaces.text }]}>
-                    {Math.round(snap.after)}
+                    {formatElo(snap.after)}
                 </ThemedText>
                 <ThemedText style={[styles.eloDelta, { color: eloTone(snap.change) }]}>
                     {formatEloChange(snap.change)}
@@ -1130,7 +1125,7 @@ export default function LeaderboardDetailScreen() {
                                                                                     ),
                                                                                 }}
                                                                             >
-                                                                                {Math.round(snap.after)}{' '}
+                                                                                {formatElo(snap.after)}{' '}
                                                                                 {formatEloChange(
                                                                                     snap.change
                                                                                 )}

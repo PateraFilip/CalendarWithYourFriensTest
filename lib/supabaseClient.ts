@@ -36,10 +36,15 @@ const customStorage = {
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
+function missingSupabaseEnvMessage() {
+  if (Platform.OS === 'web') {
+    return 'Chybí EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY. Na Vercelu nastav Environment Variables a znovu deployni.';
+  }
+  return 'Chybí EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY. Nastav je v EAS Environment Variables (expo.dev) nebo v lokálním .env a znovu sestav APK (eas build).';
+}
+
 export const supabaseConfigError =
-  !SUPABASE_URL || !SUPABASE_ANON_KEY
-    ? 'Chybí EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY. Na Vercelu nastav Environment Variables a znovu deployni.'
-    : null;
+  !SUPABASE_URL || !SUPABASE_ANON_KEY ? missingSupabaseEnvMessage() : null;
 
 if (supabaseConfigError) {
   console.error('[supabase]', supabaseConfigError);

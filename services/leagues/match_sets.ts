@@ -15,6 +15,21 @@ export const ELO_K_MATCH = 32;
 export const ELO_SETS_TO_WIN = 2;
 export const ELO_K_SET = ELO_K_MATCH / ELO_SETS_TO_WIN; // 16
 
+/** Zaokrouhlení Elo na 2 desetinná místa (výpočet i zobrazení). */
+export function roundElo(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+export function formatElo(n: number): string {
+  return roundElo(n).toFixed(2);
+}
+
+export function formatEloChange(change: number): string {
+  const r = roundElo(change);
+  if (r === 0) return '±0.00';
+  return `${r > 0 ? '+' : ''}${r.toFixed(2)}`;
+}
+
 /** Spočítá sety a gamy ze seznamu setů. */
 export function summarizeSets(sets: MatchSetScore[]) {
   let sets1 = 0;
@@ -149,7 +164,7 @@ export function computeSequentialSetElo(opts: {
     change2 += delta2;
   }
 
-  return { change1, change2 };
+  return { change1: roundElo(change1), change2: roundElo(change2) };
 }
 
 export function buildSetsMetadata(sets: MatchSetScore[]): MatchSetsMetadata {

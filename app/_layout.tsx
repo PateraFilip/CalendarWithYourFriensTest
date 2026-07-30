@@ -13,7 +13,7 @@ import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useMemo } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
-import { ActivityIndicator, Text, View } from 'react-native'
+import { ActivityIndicator, Platform, Text, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { MD3DarkTheme, MD3LightTheme, Provider } from 'react-native-paper'
 import 'react-native-reanimated'
@@ -124,7 +124,9 @@ export default function RootLayout() {
                         textAlign: 'center',
                     }}
                 >
-                    Web není nakonfigurovaný
+                    {Platform.OS === 'web'
+                        ? 'Web není nakonfigurovaný'
+                        : 'Aplikace není nakonfigurovaná'}
                 </Text>
                 <Text style={{ fontSize: 14, textAlign: 'center', opacity: 0.8, lineHeight: 20 }}>
                     {supabaseConfigError}
