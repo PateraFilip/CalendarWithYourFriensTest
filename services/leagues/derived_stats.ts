@@ -104,6 +104,117 @@ export function enrichPlayersFromMatches(
   return result;
 }
 
+export type EnrichedTeam = {
+  form?: string;
+  winrate?: number;
+  sets_won?: number;
+  sets_lost?: number;
+  games_for?: number;
+  games_against?: number;
+  best_score?: number | null;
+  last_played?: string | null;
+  total_score?: number;
+};
+
+/** Odvozené statistiky sestav z historie (forma, sety, best, last, winrate). */
+export function enrichTeamsFromMatches(
+  teams: { id: string; matches_played?: number; wins?: number }[],
+  matches: any[],
+  config: any,
+  lowerIsBetter?: boolean
+): Map<string, EnrichedTeam> {
+  const result = new Map<string, EnrichedTeam>();
+  for (const t of teams) {
+    const played = t.matches_played || 0;
+    result.set(String(t.id), {
+      form: '',
+      winrate: played ? Math.round(((t.wins || 0) / played) * 100) : 0,
+      sets_won: 0,
+      sets_lost: 0,
+      games_for: 0,
+      games_against: 0,
+      best_score: null,
+      last_played: null,
+      total_score: 0,
+    });
+  }
+
+  const chronological = [...matches].sort(
+    (a, b) =>
+      new Date(a.played_at || a.created_at).getTime() -
+      new Date(b.played_at || b.created_at).getTime()
+  );
+
+  const formLetters = new Map<string, string[]>();
+
+  for (const match of chronological) {
+    const parts = match.league_match_participants || [];
+    const byTeam = new Map<number, any[]>();
+    for (const p of parts) {
+      const t = Number(p.team);
+      if (!byTeam.has(t)) byTeam.set(t, []);
+      byTeam.get(t)!.push(p);
+    }
+
+    const setsMeta = match.metadata?.scoring_mode === 'sets' ? match.metadata : null;
+    const anyWinner = parts.some((p: any) => p.is_winner);
+
+    for (const [teamIndex, participants] of byTeam.entries()) {
+      if (participants.length < 2) continue;
+      const key = makePairKey(participants.map((x: any) => x.user_id));
+      const enriched = result.get(key);
+      if (!enriched) continue;
+
+      enriched.last_played = match.played_at || match.created_at;
+
+      let scoreFor = Number(participants[0]?.score) || 0;
+      let scoreAgainst = 0;
+      if (setsMeta) {
+        scoreFor = teamIndex === 1 ? setsMeta.games.team1 : setsMeta.games.team2;
+        scoreAgainst = teamIndex === 1 ? setsMeta.games.team2 : setsMeta.games.team1;
+        if (config?.track_set_stats) {
+          const won = teamIndex === 1 ? setsMeta.sets_won.team1 : setsMeta.sets_won.team2;
+          const lost = teamIndex === 1 ? setsMeta.sets_won.team2 : setsMeta.sets_won.team1;
+          enriched.sets_won = (enriched.sets_won || 0) + (won || 0);
+          enriched.sets_lost = (enriched.sets_lost || 0) + (lost || 0);
+          enriched.games_for = (enriched.games_for || 0) + (scoreFor || 0);
+          enriched.games_against = (enriched.games_against || 0) + (scoreAgainst || 0);
+        }
+      } else {
+        const other = [...byTeam.entries()].find(([idx]) => idx !== teamIndex);
+        scoreAgainst = Number(other?.[1]?.[0]?.score) || 0;
+      }
+
+      enriched.total_score = (enriched.total_score || 0) + scoreFor;
+
+      if (config?.track_best_score || config?.track_average) {
+        if (enriched.best_score === null || enriched.best_score === undefined) {
+          enriched.best_score = scoreFor;
+        } else if (lowerIsBetter) {
+          enriched.best_score = Math.min(enriched.best_score, scoreFor);
+        } else {
+          enriched.best_score = Math.max(enriched.best_score, scoreFor);
+        }
+      }
+
+      if (config?.track_form) {
+        let letter = 'L';
+        if (participants.some((p: any) => p.is_winner)) letter = 'W';
+        else if (!anyWinner) letter = 'D';
+        if (!formLetters.has(key)) formLetters.set(key, []);
+        formLetters.get(key)!.push(letter);
+      }
+    }
+  }
+
+  for (const [key, letters] of formLetters.entries()) {
+    const enriched = result.get(key);
+    if (enriched) enriched.form = letters.slice(-5).join('');
+  }
+
+  return result;
+}
+
 export function formatLastPlayed(iso?: string | null) {
   if (!iso) return '—';
   return dayjs(iso).format('D.M.');

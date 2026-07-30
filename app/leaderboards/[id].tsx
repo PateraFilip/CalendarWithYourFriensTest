@@ -26,6 +26,7 @@ import { deleteMatch } from '@/services/leagues/recompute_league';
 import {
     computeLeagueElo,
     enrichPlayersFromMatches,
+    enrichTeamsFromMatches,
     formatLastPlayed,
     type EloSnap,
 } from '@/services/leagues/derived_stats';
@@ -110,6 +111,17 @@ export default function LeaderboardDetailScreen() {
     const enrichedMap = useMemo(
         () => enrichPlayersFromMatches(players, matches, league?.config, league?.config?.lower_is_better),
         [players, matches, league?.config]
+    );
+
+    const enrichedTeamMap = useMemo(
+        () =>
+            enrichTeamsFromMatches(
+                teamStats,
+                matches,
+                league?.config,
+                league?.config?.lower_is_better
+            ),
+        [teamStats, matches, league?.config]
     );
 
     const leagueElo = useMemo(
@@ -358,8 +370,12 @@ export default function LeaderboardDetailScreen() {
         return [...arr].sort((a, b) => {
             let valA = 0;
             let valB = 0;
-            const enA = !isTeam ? enrichedMap.get(String(a.user_id)) : undefined;
-            const enB = !isTeam ? enrichedMap.get(String(b.user_id)) : undefined;
+            const enA = !isTeam
+                ? enrichedMap.get(String(a.user_id))
+                : enrichedTeamMap.get(String(a.id));
+            const enB = !isTeam
+                ? enrichedMap.get(String(b.user_id))
+                : enrichedTeamMap.get(String(b.id));
 
             if (sortBy === 'matches') {
                 valA = a.matches_played;
@@ -385,8 +401,13 @@ export default function LeaderboardDetailScreen() {
                     ? (leagueElo.pairRatings.get(String(b.id))?.rating ?? b.rating)
                     : (leagueElo.playerRatings.get(String(b.user_id)) ?? b.rating);
             } else if (sortBy === 'avg') {
-                valA = a.matches_played ? a.total_score / a.matches_played : 0;
-                valB = b.matches_played ? b.total_score / b.matches_played : 0;
+                if (isTeam) {
+                    valA = a.matches_played ? (enA?.total_score || 0) / a.matches_played : 0;
+                    valB = b.matches_played ? (enB?.total_score || 0) / b.matches_played : 0;
+                } else {
+                    valA = a.matches_played ? a.total_score / a.matches_played : 0;
+                    valB = b.matches_played ? b.total_score / b.matches_played : 0;
+                }
             } else if (sortBy === 'sets') {
                 valA = enA?.sets_won || 0;
                 valB = enB?.sets_won || 0;
@@ -405,8 +426,13 @@ export default function LeaderboardDetailScreen() {
                         ? (leagueElo.pairRatings.get(String(b.id))?.rating ?? b.rating)
                         : (leagueElo.playerRatings.get(String(b.user_id)) ?? b.rating);
                 } else if (league?.config?.track_average) {
-                    valA = a.matches_played ? a.total_score / a.matches_played : 0;
-                    valB = b.matches_played ? b.total_score / b.matches_played : 0;
+                    if (isTeam) {
+                        valA = a.matches_played ? (enA?.total_score || 0) / a.matches_played : 0;
+                        valB = b.matches_played ? (enB?.total_score || 0) / b.matches_played : 0;
+                    } else {
+                        valA = a.matches_played ? a.total_score / a.matches_played : 0;
+                        valB = b.matches_played ? b.total_score / b.matches_played : 0;
+                    }
                 } else {
                     valA = a.matches_played ? a.wins / a.matches_played : 0;
                     valB = b.matches_played ? b.wins / b.matches_played : 0;
@@ -477,11 +503,11 @@ export default function LeaderboardDetailScreen() {
         if (league?.config?.track_winrate) chips.push({ key: 'winrate', label: '%' });
         if (!forTeams && league?.config?.track_positions) chips.push({ key: 'positions', label: '1-2-3' });
         if (league?.config?.track_score_diff) chips.push({ key: 'score_diff', label: 'Rozdíl' });
-        if (!forTeams && league?.config?.track_set_stats) chips.push({ key: 'sets', label: 'Sety' });
+        if (league?.config?.track_set_stats) chips.push({ key: 'sets', label: 'Sety' });
         if (league?.config?.track_elo) chips.push({ key: 'elo', label: 'ELO' });
-        if (!forTeams && league?.config?.track_average) chips.push({ key: 'avg', label: 'Průměr' });
-        if (!forTeams && league?.config?.track_best_score) chips.push({ key: 'best', label: 'Best' });
-        if (!forTeams && league?.config?.track_last_played) chips.push({ key: 'last', label: 'Posl.' });
+        if (league?.config?.track_average) chips.push({ key: 'avg', label: 'Průměr' });
+        if (league?.config?.track_best_score) chips.push({ key: 'best', label: 'Best' });
+        if (league?.config?.track_last_played) chips.push({ key: 'last', label: 'Posl.' });
 
         return (
             <ScrollView
@@ -690,7 +716,34 @@ export default function LeaderboardDetailScreen() {
                     Zatím nebyly odehrány žádné týmové zápasy.
                 </ThemedText>
             }
-            renderItem={({ item: t, index }) => (
+            renderItem={({ item: t, index }) => {
+                const en = enrichedTeamMap.get(String(t.id));
+                const eloRating =
+                    leagueElo.pairRatings.get(String(t.id))?.rating ?? t.rating;
+                const winrate =
+                    en?.winrate ??
+                    (t.matches_played ? Math.round((t.wins / t.matches_played) * 100) : 0);
+                const avg =
+                    t.matches_played && en?.total_score != null
+                        ? (en.total_score / t.matches_played).toFixed(1)
+                        : t.matches_played && t.score_for != null
+                          ? (t.score_for / t.matches_played).toFixed(1)
+                          : '0.0';
+
+                let primaryValue = String(t.matches_played);
+                let primaryLabel = 'Záp';
+                if (league.config?.track_elo) {
+                    primaryValue = formatElo(eloRating);
+                    primaryLabel = 'ELO';
+                } else if (league.config?.track_average) {
+                    primaryValue = avg;
+                    primaryLabel = 'Průměr';
+                } else if (league.config?.track_winrate || league.config?.track_wins_losses) {
+                    primaryValue = `${winrate}%`;
+                    primaryLabel = '%';
+                }
+
+                return (
                 <View
                     style={[
                         styles.playerCard,
@@ -721,24 +774,24 @@ export default function LeaderboardDetailScreen() {
                             </ThemedText>
                             <ThemedText style={{ color: surfaces.textSecondary, fontSize: 12 }}>
                                 {t.matches_played} zápas{t.matches_played === 1 ? '' : 'ů'}
+                                {league.config?.track_form && en?.form ? ` · ${en.form}` : ''}
                             </ThemedText>
                         </View>
-                        {league.config?.track_elo && (
-                            <View style={styles.primaryMetric}>
-                                <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
-                                    {formatElo(
-                                        leagueElo.pairRatings.get(String(t.id))?.rating ?? t.rating
-                                    )}
-                                </ThemedText>
-                                <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
-                                    ELO
-                                </ThemedText>
-                            </View>
-                        )}
+                        <View style={styles.primaryMetric}>
+                            <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
+                                {primaryValue}
+                            </ThemedText>
+                            <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
+                                {primaryLabel}
+                            </ThemedText>
+                        </View>
                     </View>
                     <View style={styles.statRow}>
                         {league.config?.track_wins_losses && (
                             <StatChip label="V–R–P" value={`${t.wins}-${t.draws}-${t.losses}`} />
+                        )}
+                        {league.config?.track_winrate && (
+                            <StatChip label="Výhry" value={`${winrate}%`} />
                         )}
                         {league.config?.track_score && (
                             <StatChip label="Skóre" value={`${t.score_for}:${t.score_against}`} />
@@ -756,9 +809,31 @@ export default function LeaderboardDetailScreen() {
                                 }
                             />
                         )}
+                        {league.config?.track_set_stats && (
+                            <StatChip
+                                label="Sety"
+                                value={`${en?.sets_won || 0}:${en?.sets_lost || 0}`}
+                            />
+                        )}
+                        {league.config?.track_elo && league.config?.track_average && (
+                            <StatChip label="Průměr" value={avg} />
+                        )}
+                        {league.config?.track_best_score && (
+                            <StatChip label="Best" value={String(en?.best_score ?? '—')} />
+                        )}
+                        {league.config?.track_last_played && (
+                            <StatChip
+                                label="Poslední"
+                                value={formatLastPlayed(en?.last_played) || '—'}
+                            />
+                        )}
+                        {league.config?.track_elo && !league.config?.track_average && (
+                            <StatChip label="Zápasy" value={String(t.matches_played)} />
+                        )}
                     </View>
                 </View>
-            )}
+                );
+            }}
         />
     );
 
