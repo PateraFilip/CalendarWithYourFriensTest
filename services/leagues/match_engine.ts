@@ -188,7 +188,8 @@ export function applyMatchToPlayerMap(
         baseRating = 1500;
       }
 
-      stats.rating = roundElo((baseRating || 0) + ratingChange);
+      const applied = roundElo(ratingChange);
+      stats.rating = roundElo((baseRating || 0) + applied);
       stats.matches_played += 1;
       stats.total_score += scoreFor;
       stats.score_for += scoreFor;

@@ -24,7 +24,7 @@ import {
 } from '@/services/leagues/league_image';
 import { deleteMatch } from '@/services/leagues/recompute_league';
 import {
-    buildMatchEloHistory,
+    computeLeagueElo,
     enrichPlayersFromMatches,
     formatLastPlayed,
     type EloSnap,
@@ -112,10 +112,11 @@ export default function LeaderboardDetailScreen() {
         [players, matches, league?.config]
     );
 
-    const matchEloHistory = useMemo(
-        () => buildMatchEloHistory(matches, league),
+    const leagueElo = useMemo(
+        () => computeLeagueElo(matches, league),
         [matches, league]
     );
+    const matchEloHistory = leagueElo.byMatch;
 
     const handleSort = (column: typeof sortBy) => {
         if (sortBy === column) {
@@ -377,8 +378,12 @@ export default function LeaderboardDetailScreen() {
                 valA = a.score_diff;
                 valB = b.score_diff;
             } else if (sortBy === 'elo') {
-                valA = a.rating;
-                valB = b.rating;
+                valA = isTeam
+                    ? (leagueElo.pairRatings.get(String(a.id))?.rating ?? a.rating)
+                    : (leagueElo.playerRatings.get(String(a.user_id)) ?? a.rating);
+                valB = isTeam
+                    ? (leagueElo.pairRatings.get(String(b.id))?.rating ?? b.rating)
+                    : (leagueElo.playerRatings.get(String(b.user_id)) ?? b.rating);
             } else if (sortBy === 'avg') {
                 valA = a.matches_played ? a.total_score / a.matches_played : 0;
                 valB = b.matches_played ? b.total_score / b.matches_played : 0;
@@ -393,8 +398,12 @@ export default function LeaderboardDetailScreen() {
                 valB = enB?.last_played ? new Date(enB.last_played).getTime() : 0;
             } else {
                 if (league?.config?.track_elo) {
-                    valA = a.rating;
-                    valB = b.rating;
+                    valA = isTeam
+                        ? (leagueElo.pairRatings.get(String(a.id))?.rating ?? a.rating)
+                        : (leagueElo.playerRatings.get(String(a.user_id)) ?? a.rating);
+                    valB = isTeam
+                        ? (leagueElo.pairRatings.get(String(b.id))?.rating ?? b.rating)
+                        : (leagueElo.playerRatings.get(String(b.user_id)) ?? b.rating);
                 } else if (league?.config?.track_average) {
                     valA = a.matches_played ? a.total_score / a.matches_played : 0;
                     valB = b.matches_played ? b.total_score / b.matches_played : 0;
@@ -446,7 +455,10 @@ export default function LeaderboardDetailScreen() {
     };
 
     const playerPrimaryValue = (p: any, en?: ReturnType<typeof enrichedMap.get>) => {
-        if (league?.config?.track_elo) return formatElo(p.rating);
+        if (league?.config?.track_elo) {
+            const live = leagueElo.playerRatings.get(String(p.user_id));
+            return formatElo(live ?? p.rating);
+        }
         if (league?.config?.track_average) {
             return p.matches_played ? (p.total_score / p.matches_played).toFixed(1) : '0.0';
         }
@@ -714,13 +726,23 @@ export default function LeaderboardDetailScreen() {
                         {league.config?.track_elo && (
                             <View style={styles.primaryMetric}>
                                 <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
-                                    {formatElo(t.rating)}
+                                    {formatElo(
+                                        leagueElo.pairRatings.get(String(t.id))?.rating ?? t.rating
+                                    )}
                                 </ThemedText>
                                 <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
                                     ELO
-                                    {typeof t.last_rating_change === 'number' && t.matches_played > 0
-                                        ? ` ${formatEloChange(t.last_rating_change)}`
-                                        : ''}
+                                    {(() => {
+                                        const live = leagueElo.pairRatings.get(String(t.id));
+                                        const change =
+                                            live?.lastChange ??
+                                            (typeof t.last_rating_change === 'number'
+                                                ? t.last_rating_change
+                                                : null);
+                                        return change != null && t.matches_played > 0
+                                            ? ` ${formatEloChange(change)}`
+                                            : '';
+                                    })()}
                                 </ThemedText>
                             </View>
                         )}
@@ -751,9 +773,13 @@ export default function LeaderboardDetailScreen() {
         />
     );
 
-    const eloTone = (change: number) => {
-        if (change > 0) return Brand.success;
-        if (change < 0) return Brand.danger;
+    const eloTone = (change: number, before?: number, after?: number) => {
+        const display =
+            before != null && after != null
+                ? Math.round(after) - Math.round(before)
+                : Math.round(change);
+        if (display > 0) return Brand.success;
+        if (display < 0) return Brand.danger;
         return surfaces.textSecondary;
     };
 
@@ -769,8 +795,13 @@ export default function LeaderboardDetailScreen() {
                 <ThemedText style={[styles.eloAfter, { color: surfaces.text }]}>
                     {formatElo(snap.after)}
                 </ThemedText>
-                <ThemedText style={[styles.eloDelta, { color: eloTone(snap.change) }]}>
-                    {formatEloChange(snap.change)}
+                <ThemedText
+                    style={[
+                        styles.eloDelta,
+                        { color: eloTone(snap.change, snap.before, snap.after) },
+                    ]}
+                >
+                    {formatEloChange(snap.change, snap.before, snap.after)}
                 </ThemedText>
             </View>
         );
@@ -1121,13 +1152,17 @@ export default function LeaderboardDetailScreen() {
                                                                                     fontSize: 11,
                                                                                     fontWeight: '600',
                                                                                     color: eloTone(
-                                                                                        snap.change
+                                                                                        snap.change,
+                                                                                        snap.before,
+                                                                                        snap.after
                                                                                     ),
                                                                                 }}
                                                                             >
                                                                                 {formatElo(snap.after)}{' '}
                                                                                 {formatEloChange(
-                                                                                    snap.change
+                                                                                    snap.change,
+                                                                                    snap.before,
+                                                                                    snap.after
                                                                                 )}
                                                                             </ThemedText>
                                                                         )}

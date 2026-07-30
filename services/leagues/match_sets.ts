@@ -15,17 +15,32 @@ export const ELO_K_MATCH = 32;
 export const ELO_SETS_TO_WIN = 2;
 export const ELO_K_SET = ELO_K_MATCH / ELO_SETS_TO_WIN; // 16
 
-/** Zaokrouhlení Elo na celá čísla (výpočet i zobrazení). */
+/**
+ * Interní přesnost Elo (2 desetinná místa) — drobné změny se sčítají
+ * a neztratí se jako u celých čísel.
+ */
 export function roundElo(n: number): number {
-  return Math.round(Number(n) || 0);
+  return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/** Zobrazení v tabulce / historii — celá čísla (vizuálně čistší). */
 export function formatElo(n: number): string {
-  return String(roundElo(n));
+  return String(Math.round(Number(n) || 0));
 }
 
-export function formatEloChange(change: number): string {
-  const r = roundElo(change);
+/**
+ * Změna pro UI. Když máš before/after, spočti delta z celých čísel,
+ * ať nesedí „1500 ±0 → 1501“.
+ */
+export function formatEloChange(
+  change: number,
+  before?: number,
+  after?: number
+): string {
+  const r =
+    before != null && after != null
+      ? Math.round(Number(after) || 0) - Math.round(Number(before) || 0)
+      : Math.round(Number(change) || 0);
   if (r === 0) return '±0';
   return `${r > 0 ? '+' : ''}${r}`;
 }
@@ -67,7 +82,7 @@ export function setsFromMetadata(metadata: any): MatchSetScore[] {
 
 /**
  * Typické vítězné skóre setu z historie tabulky.
- * Medián horní poloviny max(team1, team2) — dokončené sety bývají výš.
+ * Preferuje modus (badminton 21, padel 6); jinak medián horní poloviny.
  */
 export function inferSetWinTarget(sets: MatchSetScore[]): number | null {
   const winners = sets
@@ -76,6 +91,23 @@ export function inferSetWinTarget(sets: MatchSetScore[]): number | null {
     .sort((a, b) => a - b);
 
   if (winners.length === 0) return null;
+
+  const freq = new Map<number, number>();
+  for (const w of winners) freq.set(w, (freq.get(w) || 0) + 1);
+
+  let mode = winners[winners.length - 1];
+  let modeCount = 0;
+  for (const [val, count] of freq.entries()) {
+    if (count > modeCount || (count === modeCount && val > mode)) {
+      mode = val;
+      modeCount = count;
+    }
+  }
+
+  // Jasný shluk (typicky dohrané sety na 6 / 11 / 15 / 21)
+  if (modeCount >= 2 || modeCount / winners.length >= 0.35) {
+    return mode;
+  }
 
   const upper = winners.slice(Math.floor(winners.length / 2));
   const mid = Math.floor(upper.length / 2);
@@ -100,7 +132,8 @@ export function setCompletionWeight(
 
 /**
  * Actual score S ∈ [0, 1] pro team1 z jednoho setu.
- * 75 % výhra setu + 25 % dominance gamů.
+ * 75 % výhra setu + 25 % dominance bodů.
+ * Dominance podle bodového rozdílu (ne / součet) — 21:19 ≈ 6:4, ne „skoro remíza“.
  */
 export function setActualScore(set: MatchSetScore): { s1: number; s2: number } {
   const t1 = Number(set.team1) || 0;
@@ -112,7 +145,10 @@ export function setActualScore(set: MatchSetScore): { s1: number; s2: number } {
   }
 
   const sWin1 = t1 > t2 ? 1 : t2 > t1 ? 0 : 0.5;
-  const sGames1 = 0.5 + 0.5 * ((t1 - t2) / total);
+  // ~4 body rozdílu = plná dominance v gamové složce (funguje pro padel i badminton)
+  const winner = Math.max(t1, t2);
+  const marginScale = Math.max(4, Math.round(winner * 0.2));
+  const sGames1 = 0.5 + 0.5 * Math.max(-1, Math.min(1, (t1 - t2) / marginScale));
   const s1 = Math.min(1, Math.max(0, 0.75 * sWin1 + 0.25 * sGames1));
   return { s1, s2: 1 - s1 };
 }

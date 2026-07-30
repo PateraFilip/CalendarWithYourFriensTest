@@ -116,20 +116,34 @@ export type MatchEloSnapshot = {
   pairs: Map<string, EloSnap>;
 };
 
+export type LeagueEloComputed = {
+  byMatch: Map<number, MatchEloSnapshot>;
+  /** Finální Elo hráčů po přehrání historie (stejný zdroj jako výpis zápasů). */
+  playerRatings: Map<string, number>;
+  /** Finální Elo párů + poslední změna. */
+  pairRatings: Map<string, { rating: number; lastChange: number }>;
+};
+
 /**
  * ELO po každém zápase — hráči i páry přehráním stejné logiky jako match engine
  * (včetně sekvenčního Elo po setech).
  */
-export function buildMatchEloHistory(
+export function computeLeagueElo(
   matches: any[],
   league: { team_size: number; config?: any } | null
-): Map<number, MatchEloSnapshot> {
-  const result = new Map<number, MatchEloSnapshot>();
-  if (!league?.config?.track_elo) return result;
+): LeagueEloComputed {
+  const byMatch = new Map<number, MatchEloSnapshot>();
+  const empty: LeagueEloComputed = {
+    byMatch,
+    playerRatings: new Map(),
+    pairRatings: new Map(),
+  };
+  if (!league?.config?.track_elo) return empty;
 
   const playerStatsMap = new Map<string, PlayerStatRow>();
   const pairStatsMap = new Map<string, PairStatRow>();
   const priorSets: MatchSetScore[] = [];
+  const lastPairChange = new Map<string, number>();
 
   const chronological = [...matches].sort((a, b) => {
     const ta = new Date(a.played_at || a.created_at).getTime();
@@ -193,22 +207,48 @@ export function buildMatchEloHistory(
 
         const after1 = pairStatsMap.get(key1)!.rating;
         const after2 = pairStatsMap.get(key2)!.rating;
+        const change1 = roundElo(after1 - before1);
+        const change2 = roundElo(after2 - before2);
         pairsSnap.set(key1, {
           before: roundElo(before1),
           after: roundElo(after1),
-          change: roundElo(after1 - before1),
+          change: change1,
         });
         pairsSnap.set(key2, {
           before: roundElo(before2),
           after: roundElo(after2),
-          change: roundElo(after2 - before2),
+          change: change2,
         });
+        lastPairChange.set(key1, change1);
+        lastPairChange.set(key2, change2);
       }
     }
 
     priorSets.push(...setsFromMetadata(match.metadata));
-    result.set(Number(match.id), { players: playersSnap, pairs: pairsSnap });
+    byMatch.set(Number(match.id), { players: playersSnap, pairs: pairsSnap });
   }
 
-  return result;
+  const playerRatings = new Map<string, number>();
+  for (const [uid, stats] of playerStatsMap.entries()) {
+    playerRatings.set(uid, roundElo(stats.rating));
+  }
+
+  const pairRatings = new Map<string, { rating: number; lastChange: number }>();
+  for (const [key, row] of pairStatsMap.entries()) {
+    pairRatings.set(key, {
+      rating: roundElo(row.rating),
+      lastChange: lastPairChange.get(key) ?? roundElo(row.last_rating_change || 0),
+    });
+  }
+
+  return { byMatch, playerRatings, pairRatings };
 }
+
+/** Zpětná kompatibilita — jen mapa po zápasech. */
+export function buildMatchEloHistory(
+  matches: any[],
+  league: { team_size: number; config?: any } | null
+): Map<number, MatchEloSnapshot> {
+  return computeLeagueElo(matches, league).byMatch;
+}
+
