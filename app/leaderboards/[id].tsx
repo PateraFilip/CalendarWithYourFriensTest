@@ -732,17 +732,6 @@ export default function LeaderboardDetailScreen() {
                                 </ThemedText>
                                 <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
                                     ELO
-                                    {(() => {
-                                        const live = leagueElo.pairRatings.get(String(t.id));
-                                        const change =
-                                            live?.lastChange ??
-                                            (typeof t.last_rating_change === 'number'
-                                                ? t.last_rating_change
-                                                : null);
-                                        return change != null && t.matches_played > 0
-                                            ? ` ${formatEloChange(change)}`
-                                            : '';
-                                    })()}
                                 </ThemedText>
                             </View>
                         )}
