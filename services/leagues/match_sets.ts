@@ -15,19 +15,19 @@ export const ELO_K_MATCH = 32;
 export const ELO_SETS_TO_WIN = 2;
 export const ELO_K_SET = ELO_K_MATCH / ELO_SETS_TO_WIN; // 16
 
-/** Zaokrouhlení Elo na 2 desetinná místa (výpočet i zobrazení). */
+/** Zaokrouhlení Elo na celá čísla (výpočet i zobrazení). */
 export function roundElo(n: number): number {
-  return Math.round((Number(n) || 0) * 100) / 100;
+  return Math.round(Number(n) || 0);
 }
 
 export function formatElo(n: number): string {
-  return roundElo(n).toFixed(2);
+  return String(roundElo(n));
 }
 
 export function formatEloChange(change: number): string {
   const r = roundElo(change);
-  if (r === 0) return '±0.00';
-  return `${r > 0 ? '+' : ''}${r.toFixed(2)}`;
+  if (r === 0) return '±0';
+  return `${r > 0 ? '+' : ''}${r}`;
 }
 
 /** Spočítá sety a gamy ze seznamu setů. */
