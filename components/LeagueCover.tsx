@@ -11,7 +11,7 @@ type Props = {
 };
 
 /** Cover tabulky — vlastní obrázek, jinak trofej. */
-export function LeagueCover({ uri, size = 44, mine = false, style }: Props) {
+export function LeagueCover({ uri, size = 64, mine = false, style }: Props) {
   if (uri) {
     return (
       <Image

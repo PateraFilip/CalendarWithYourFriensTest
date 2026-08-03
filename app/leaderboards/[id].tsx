@@ -100,9 +100,15 @@ export default function LeaderboardDetailScreen() {
             const url = await uploadLeagueCover(String(user.id), league.id, picked);
             await updateLeagueImageUrl(league.id, url);
             setLeague({ ...league, image_url: url });
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            showAlert('Obrázek', 'Nahrání selhalo. Zkontroluj, že v Supabase běží migrace league-covers.');
+            const detail = e?.message || e?.error || String(e);
+            showAlert(
+                'Obrázek',
+                detail
+                    ? `Nahrání selhalo: ${detail}`
+                    : 'Nahrání selhalo. Zkontroluj bucket league-covers v Supabase Storage.'
+            );
         } finally {
             setUploadingCover(false);
         }
@@ -1286,10 +1292,10 @@ export default function LeaderboardDetailScreen() {
                     disabled={!isCreator || uploadingCover}
                     style={styles.coverWrap}
                 >
-                    <LeagueCover uri={league.image_url} size={52} mine={isCreator} />
+                    <LeagueCover uri={league.image_url} size={72} mine={isCreator} />
                     {isCreator && (
                         <View style={styles.cameraBadge}>
-                            <MaterialCommunityIcons name="camera" size={12} color="#fff" />
+                            <MaterialCommunityIcons name="camera" size={14} color="#fff" />
                         </View>
                     )}
                 </Pressable>
@@ -1424,9 +1430,9 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: -2,
         bottom: -2,
-        width: 20,
-        height: 20,
-        borderRadius: 10,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
         backgroundColor: Brand.primary,
         alignItems: 'center',
         justifyContent: 'center',

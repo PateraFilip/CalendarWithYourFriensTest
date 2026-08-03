@@ -154,7 +154,7 @@ export default function TabulkyScreen() {
       >
         <LeagueCover
           uri={item.image_url}
-          size={44}
+          size={64}
           mine={isMine}
         />
 

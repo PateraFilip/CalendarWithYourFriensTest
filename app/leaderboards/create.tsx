@@ -194,7 +194,7 @@ export default function CreateLeaderboardScreen() {
           {cover ? (
             <Image source={{ uri: cover.uri }} style={styles.coverPreview} />
           ) : (
-            <LeagueCover size={96} mine />
+            <LeagueCover size={112} mine />
           )}
           <View style={styles.coverMeta}>
             <ThemedText style={[styles.coverTitle, { color: surfaces.text }]}>
