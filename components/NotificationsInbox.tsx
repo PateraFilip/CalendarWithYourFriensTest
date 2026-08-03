@@ -62,6 +62,12 @@ export default function NotificationsInbox({ currentUserId }: NotificationsInbox
       );
       refreshUnread();
     }
+
+    if (item.type === 'friend_request' || item.type === 'friend_accept') {
+      router.push('/(tabs)/explore');
+      return;
+    }
+
     const seriesId = item.series_id ?? extractEventId(item.message);
     if (seriesId) {
       router.push(`/events/${seriesId}`);

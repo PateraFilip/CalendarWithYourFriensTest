@@ -115,13 +115,29 @@ serve(async (req) => {
     }
 
     // 1. Žádosti o přátelství (INSERT) + přijetí (UPDATE pending → accepted)
+    // Uloží se do user_notifications (historie) + push. Push z user_notifications se pro tyto typy přeskočí.
     if (table === 'friendships') {
       // friend_id = ten, komu žádost přišla. user_id = ten, kdo ji poslal.
       if (payload.type === 'INSERT' && record.status === 'pending') {
         const { data: user } = await supabaseClient.from('users').select('notify_friend_requests').eq('id', record.friend_id).single()
+        const { data: fromUser } = await supabaseClient.from('users').select('username').eq('id', record.user_id).single()
+        const fromName = fromUser?.username || 'Někdo'
+        const message = 'ti poslal žádost o přátelství.'
+
+        await supabaseClient.from('user_notifications').insert({
+          recipient_id: record.friend_id,
+          actor_id: record.user_id,
+          type: 'friend_request',
+          message,
+        })
+
         if (user?.notify_friend_requests !== false) {
-          const { data: fromUser } = await supabaseClient.from('users').select('username').eq('id', record.user_id).single()
-          await notifyUser(record.friend_id, "Nová žádost o přátelství", `${fromUser?.username || 'Někdo'} ti poslal žádost o přátelství!`, { type: 'friend_request' });
+          await notifyUser(
+            record.friend_id,
+            'Nová žádost o přátelství',
+            `${fromName} ${message}`,
+            { type: 'friend_request' }
+          )
         }
       }
 
@@ -130,16 +146,25 @@ serve(async (req) => {
         record.status === 'accepted' &&
         payload.old_record?.status === 'pending'
       ) {
-        // Upozorni odesílatele žádosti, že ji druhá strana přijala
         const { data: user } = await supabaseClient.from('users').select('notify_friend_requests').eq('id', record.user_id).single()
+        const { data: accepter } = await supabaseClient.from('users').select('username').eq('id', record.friend_id).single()
+        const accepterName = accepter?.username || 'Někdo'
+        const message = 'přijal(a) tvoji žádost o přátelství.'
+
+        await supabaseClient.from('user_notifications').insert({
+          recipient_id: record.user_id,
+          actor_id: record.friend_id,
+          type: 'friend_accept',
+          message,
+        })
+
         if (user?.notify_friend_requests !== false) {
-          const { data: accepter } = await supabaseClient.from('users').select('username').eq('id', record.friend_id).single()
           await notifyUser(
             record.user_id,
-            "Žádost přijata",
-            `${accepter?.username || 'Někdo'} přijal(a) tvoji žádost o přátelství!`,
+            'Žádost přijata',
+            `${accepterName} ${message}`,
             { type: 'friend_accept' }
-          );
+          )
         }
       }
     }
@@ -172,6 +197,13 @@ serve(async (req) => {
 
     // 3. Osobní inbox notifikací (nahrazuje global_messages)
     if (table === 'user_notifications' && payload.type === 'INSERT') {
+      // Přátelství už poslalo push z friendships webhooku — jen historie
+      if (record.type === 'friend_request' || record.type === 'friend_accept') {
+        return new Response(JSON.stringify({ success: true, skipped: 'friend_push_already_sent' }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
       const { data: user } = await supabaseClient.from('users').select('notify_global_chat').eq('id', record.recipient_id).single()
       if (user?.notify_global_chat === false) {
         return new Response(JSON.stringify({ success: true, skipped: true }), { headers: { "Content-Type": "application/json" } })
