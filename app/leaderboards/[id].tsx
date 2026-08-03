@@ -1,37 +1,12 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import {
-    View,
-    ScrollView,
-    TouchableOpacity,
-    StyleSheet,
-    FlatList,
-    Pressable,
-    Modal,
-    Image,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BackButton } from '@/components/BackButton';
+import { LeagueCover } from '@/components/LeagueCover';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
-import { LeagueCover } from '@/components/LeagueCover';
-import { BackButton } from '@/components/BackButton';
+import { Brand, BrandSurfaces } from '@/constants/brand';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
-import { useLocalSearchParams, router, useFocusEffect, Stack } from 'expo-router';
-import {
-    fetchLeagueDetails,
-    fetchLeagueLeaderboard,
-    fetchLeagueMatches,
-    canViewLeague,
-    updateLeagueConfig,
-    League,
-    LeaguePlayer,
-} from '@/services/leagues/leagues';
-import {
-    pickLeagueImage,
-    updateLeagueImageUrl,
-    uploadLeagueCover,
-} from '@/services/leagues/league_image';
-import { deleteMatch } from '@/services/leagues/recompute_league';
+import { showAlert, showConfirm } from '@/lib/alert';
+import { safeGoBack } from '@/lib/navigation';
 import {
     computeLeagueElo,
     enrichPlayersFromMatches,
@@ -39,15 +14,39 @@ import {
     formatLastPlayed,
     type EloSnap,
 } from '@/services/leagues/derived_stats';
-import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
+import {
+    pickLeagueImage,
+    updateLeagueImageUrl,
+    uploadLeagueCover,
+} from '@/services/leagues/league_image';
+import {
+    canViewLeague,
+    fetchLeagueDetails,
+    fetchLeagueLeaderboard,
+    fetchLeagueMatches,
+    League,
+    LeaguePlayer,
+    updateLeagueConfig,
+} from '@/services/leagues/leagues';
 import { formatElo, formatEloChange } from '@/services/leagues/match_sets';
-import { showAlert, showConfirm } from '@/lib/alert';
-import { safeGoBack } from '@/lib/navigation';
-import { Button, ActivityIndicator, FAB, Menu, Switch } from 'react-native-paper';
+import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
+import { deleteMatch } from '@/services/leagues/recompute_league';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Brand, BrandSurfaces } from '@/constants/brand';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+    FlatList,
+    Image,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    View
+} from 'react-native';
+import { ActivityIndicator, Button, FAB, Menu, Switch } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 dayjs.locale('cs');
 
@@ -673,8 +672,8 @@ export default function LeaderboardDetailScreen() {
                                         p.score_diff > 0
                                             ? Brand.success
                                             : p.score_diff < 0
-                                              ? Brand.danger
-                                              : undefined
+                                                ? Brand.danger
+                                                : undefined
                                     }
                                 />
                             )}
@@ -743,8 +742,8 @@ export default function LeaderboardDetailScreen() {
                     t.matches_played && en?.total_score != null
                         ? (en.total_score / t.matches_played).toFixed(1)
                         : t.matches_played && t.score_for != null
-                          ? (t.score_for / t.matches_played).toFixed(1)
-                          : '0.0';
+                            ? (t.score_for / t.matches_played).toFixed(1)
+                            : '0.0';
 
                 let primaryValue = String(t.matches_played);
                 let primaryLabel = 'Záp';
@@ -760,94 +759,94 @@ export default function LeaderboardDetailScreen() {
                 }
 
                 return (
-                <View
-                    style={[
-                        styles.playerCard,
-                        {
-                            backgroundColor: surfaces.surface,
-                            borderColor: surfaces.border,
-                            borderWidth: StyleSheet.hairlineWidth,
-                        },
-                    ]}
-                >
-                    <View style={styles.playerTop}>
-                        <View
-                            style={[
-                                styles.rankBadge,
-                                { backgroundColor: index < 3 ? Brand.primarySoft : surfaces.surfaceElevated },
-                            ]}
-                        >
-                            <ThemedText style={[styles.rankText, { color: rankColor(index) }]}>
-                                {index + 1}
-                            </ThemedText>
-                        </View>
-                        <View style={styles.playerIdentity}>
-                            <ThemedText
-                                style={[styles.playerName, { color: surfaces.text }]}
-                                numberOfLines={2}
+                    <View
+                        style={[
+                            styles.playerCard,
+                            {
+                                backgroundColor: surfaces.surface,
+                                borderColor: surfaces.border,
+                                borderWidth: StyleSheet.hairlineWidth,
+                            },
+                        ]}
+                    >
+                        <View style={styles.playerTop}>
+                            <View
+                                style={[
+                                    styles.rankBadge,
+                                    { backgroundColor: index < 3 ? Brand.primarySoft : surfaces.surfaceElevated },
+                                ]}
                             >
-                                {t.names}
-                            </ThemedText>
-                            <ThemedText style={{ color: surfaces.textSecondary, fontSize: 12 }}>
-                                {t.matches_played} zápas{t.matches_played === 1 ? '' : 'ů'}
-                                {league.config?.track_form && en?.form ? ` · ${en.form}` : ''}
-                            </ThemedText>
+                                <ThemedText style={[styles.rankText, { color: rankColor(index) }]}>
+                                    {index + 1}
+                                </ThemedText>
+                            </View>
+                            <View style={styles.playerIdentity}>
+                                <ThemedText
+                                    style={[styles.playerName, { color: surfaces.text }]}
+                                    numberOfLines={2}
+                                >
+                                    {t.names}
+                                </ThemedText>
+                                <ThemedText style={{ color: surfaces.textSecondary, fontSize: 12 }}>
+                                    {t.matches_played} zápas{t.matches_played === 1 ? '' : 'ů'}
+                                    {league.config?.track_form && en?.form ? ` · ${en.form}` : ''}
+                                </ThemedText>
+                            </View>
+                            <View style={styles.primaryMetric}>
+                                <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
+                                    {primaryValue}
+                                </ThemedText>
+                                <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
+                                    {primaryLabel}
+                                </ThemedText>
+                            </View>
                         </View>
-                        <View style={styles.primaryMetric}>
-                            <ThemedText style={[styles.primaryValue, { color: Brand.primary }]}>
-                                {primaryValue}
-                            </ThemedText>
-                            <ThemedText style={[styles.primaryLabel, { color: surfaces.textSecondary }]}>
-                                {primaryLabel}
-                            </ThemedText>
+                        <View style={styles.statRow}>
+                            {league.config?.track_wins_losses && (
+                                <StatChip label="V–R–P" value={`${t.wins}-${t.draws}-${t.losses}`} />
+                            )}
+                            {league.config?.track_winrate && (
+                                <StatChip label="Výhry" value={`${winrate}%`} />
+                            )}
+                            {league.config?.track_score && (
+                                <StatChip label="Skóre" value={`${t.score_for}:${t.score_against}`} />
+                            )}
+                            {league.config?.track_score_diff && (
+                                <StatChip
+                                    label="Rozdíl"
+                                    value={`${t.score_diff > 0 ? '+' : ''}${t.score_diff}`}
+                                    tone={
+                                        t.score_diff > 0
+                                            ? Brand.success
+                                            : t.score_diff < 0
+                                                ? Brand.danger
+                                                : undefined
+                                    }
+                                />
+                            )}
+                            {league.config?.track_set_stats && (
+                                <StatChip
+                                    label="Sety"
+                                    value={`${en?.sets_won || 0}:${en?.sets_lost || 0}`}
+                                />
+                            )}
+                            {league.config?.track_elo && league.config?.track_average && (
+                                <StatChip label="Průměr" value={avg} />
+                            )}
+                            {league.config?.track_best_score && (
+                                <StatChip label="Best" value={String(en?.best_score ?? '—')} />
+                            )}
+                            {league.config?.track_last_played && (
+                                <StatChip
+                                    label="Poslední"
+                                    value={formatLastPlayed(en?.last_played) || '—'}
+                                />
+                            )}
+                            {league.config?.track_elo && !league.config?.track_average && (
+                                <StatChip label="Zápasy" value={String(t.matches_played)} />
+                            )}
                         </View>
                     </View>
-                    <View style={styles.statRow}>
-                        {league.config?.track_wins_losses && (
-                            <StatChip label="V–R–P" value={`${t.wins}-${t.draws}-${t.losses}`} />
-                        )}
-                        {league.config?.track_winrate && (
-                            <StatChip label="Výhry" value={`${winrate}%`} />
-                        )}
-                        {league.config?.track_score && (
-                            <StatChip label="Skóre" value={`${t.score_for}:${t.score_against}`} />
-                        )}
-                        {league.config?.track_score_diff && (
-                            <StatChip
-                                label="Rozdíl"
-                                value={`${t.score_diff > 0 ? '+' : ''}${t.score_diff}`}
-                                tone={
-                                    t.score_diff > 0
-                                        ? Brand.success
-                                        : t.score_diff < 0
-                                          ? Brand.danger
-                                          : undefined
-                                }
-                            />
-                        )}
-                        {league.config?.track_set_stats && (
-                            <StatChip
-                                label="Sety"
-                                value={`${en?.sets_won || 0}:${en?.sets_lost || 0}`}
-                            />
-                        )}
-                        {league.config?.track_elo && league.config?.track_average && (
-                            <StatChip label="Průměr" value={avg} />
-                        )}
-                        {league.config?.track_best_score && (
-                            <StatChip label="Best" value={String(en?.best_score ?? '—')} />
-                        )}
-                        {league.config?.track_last_played && (
-                            <StatChip
-                                label="Poslední"
-                                value={formatLastPlayed(en?.last_played) || '—'}
-                            />
-                        )}
-                        {league.config?.track_elo && !league.config?.track_average && (
-                            <StatChip label="Zápasy" value={String(t.matches_played)} />
-                        )}
-                    </View>
-                </View>
                 );
             }}
         />
@@ -1167,8 +1166,8 @@ export default function LeaderboardDetailScreen() {
                                                 const pairKey =
                                                     members.length >= 2
                                                         ? makePairKey(
-                                                              members.map((m: any) => m.user_id)
-                                                          )
+                                                            members.map((m: any) => m.user_id)
+                                                        )
                                                         : null;
                                                 const pairSnap = pairKey
                                                     ? eloSnap?.pairs.get(pairKey)
@@ -1333,13 +1332,13 @@ export default function LeaderboardDetailScreen() {
                         {league.team_size === 0
                             ? 'Všichni proti všem'
                             : league.team_size > 1
-                              ? `Týmy ${league.team_size}v${league.team_size}`
-                              : '1v1'}
+                                ? `Týmy ${league.team_size}v${league.team_size}`
+                                : '1v1'}
                         {league.image_url
-                            ? ' · klepni na obrázek'
+                            ? ''
                             : isCreator
-                              ? ' · nastavit obrázek'
-                              : ''}
+                                ? ' · nastavit obrázek'
+                                : ''}
                     </ThemedText>
                 </View>
             </View>
