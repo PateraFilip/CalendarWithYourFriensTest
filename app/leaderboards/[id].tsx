@@ -1,5 +1,14 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet, FlatList, Pressable } from 'react-native';
+import {
+    View,
+    ScrollView,
+    TouchableOpacity,
+    StyleSheet,
+    FlatList,
+    Pressable,
+    Modal,
+    Image,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedSafeView } from '@/components/ThemedSafeView';
@@ -70,6 +79,7 @@ export default function LeaderboardDetailScreen() {
     >('default');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
     const [uploadingCover, setUploadingCover] = useState(false);
+    const [coverPreviewOpen, setCoverPreviewOpen] = useState(false);
     const [savingSetsConfig, setSavingSetsConfig] = useState(false);
     const [deletingMatchId, setDeletingMatchId] = useState<number | null>(null);
 
@@ -1287,18 +1297,33 @@ export default function LeaderboardDetailScreen() {
                     style={styles.backBtn}
                 />
 
-                <Pressable
-                    onPress={isCreator ? handleChangeCover : undefined}
-                    disabled={!isCreator || uploadingCover}
-                    style={styles.coverWrap}
-                >
-                    <LeagueCover uri={league.image_url} size={72} mine={isCreator} />
+                <View style={styles.coverWrap}>
+                    <Pressable
+                        onPress={() => {
+                            if (league.image_url) setCoverPreviewOpen(true);
+                            else if (isCreator && !uploadingCover) void handleChangeCover();
+                        }}
+                        disabled={uploadingCover}
+                        accessibilityLabel={
+                            league.image_url ? 'Zobrazit obrázek tabulky' : 'Nastavit obrázek tabulky'
+                        }
+                    >
+                        <LeagueCover uri={league.image_url} size={52} mine={isCreator} />
+                    </Pressable>
                     {isCreator && (
-                        <View style={styles.cameraBadge}>
-                            <MaterialCommunityIcons name="camera" size={14} color="#fff" />
-                        </View>
+                        <Pressable
+                            onPress={() => {
+                                if (!uploadingCover) void handleChangeCover();
+                            }}
+                            disabled={uploadingCover}
+                            hitSlop={8}
+                            style={styles.cameraBadge}
+                            accessibilityLabel="Změnit obrázek tabulky"
+                        >
+                            <MaterialCommunityIcons name="camera" size={12} color="#fff" />
+                        </Pressable>
                     )}
-                </Pressable>
+                </View>
 
                 <View style={styles.headerText}>
                     <ThemedText style={[styles.leagueName, { color: surfaces.text }]} numberOfLines={1}>
@@ -1310,10 +1335,33 @@ export default function LeaderboardDetailScreen() {
                             : league.team_size > 1
                               ? `Týmy ${league.team_size}v${league.team_size}`
                               : '1v1'}
-                        {isCreator ? ' · změnit obrázek' : ''}
+                        {league.image_url
+                            ? ' · klepni na obrázek'
+                            : isCreator
+                              ? ' · nastavit obrázek'
+                              : ''}
                     </ThemedText>
                 </View>
             </View>
+
+            <Modal
+                visible={coverPreviewOpen && !!league.image_url}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setCoverPreviewOpen(false)}
+            >
+                <Pressable
+                    style={styles.coverPreviewBackdrop}
+                    onPress={() => setCoverPreviewOpen(false)}
+                    accessibilityLabel="Zavřít náhled"
+                >
+                    <Image
+                        source={{ uri: league.image_url! }}
+                        style={styles.coverPreviewImage}
+                        resizeMode="contain"
+                    />
+                </Pressable>
+            </Modal>
 
             {isCreator &&
                 !!league.config?.track_score &&
@@ -1430,12 +1478,26 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: -2,
         bottom: -2,
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         backgroundColor: Brand.primary,
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 1,
+    },
+    coverPreviewBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.92)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 16,
+    },
+    coverPreviewImage: {
+        width: '100%',
+        height: '100%',
+        maxWidth: 560,
+        maxHeight: '85%',
     },
     headerText: { flex: 1, minWidth: 0, gap: 2 },
     leagueName: { fontSize: 20, fontWeight: '700' },
