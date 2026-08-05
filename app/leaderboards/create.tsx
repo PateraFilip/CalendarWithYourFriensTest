@@ -344,6 +344,7 @@ export default function CreateLeaderboardScreen() {
                 track_average: false,
                 track_score_diff: !prev.track_score ? prev.track_score_diff : false,
                 track_set_stats: !prev.track_score ? prev.track_set_stats : false,
+                set_points_to: !prev.track_score ? prev.set_points_to : null,
                 track_best_score: false,
               }))
             }
@@ -361,6 +362,7 @@ export default function CreateLeaderboardScreen() {
                 track_score: false,
                 track_score_diff: false,
                 track_set_stats: false,
+                set_points_to: null,
                 track_best_score: !prev.track_average ? true : prev.track_best_score,
               }))
             }
@@ -382,55 +384,67 @@ export default function CreateLeaderboardScreen() {
                 label="Zapisovat sety"
                 help="Padel, tenis, badminton — výchozí zápis po setech + statistiky"
                 checked={config.track_set_stats}
-                onPress={() => toggle('track_set_stats')}
+                onPress={() =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    track_set_stats: !prev.track_set_stats,
+                    set_points_to: prev.track_set_stats ? null : prev.set_points_to,
+                  }))
+                }
                 surfaces={surfaces}
                 accent={accent}
+                last={!config.track_set_stats && !config.track_average}
               />
-              <View
-                style={[
-                  styles.setPointsBlock,
-                  !config.track_average && { borderBottomWidth: 0 },
-                  { borderBottomColor: surfaces.border },
-                ]}
-              >
-                <ThemedText style={[styles.optionTitle, { color: surfaces.text }]}>
-                  Délka setu
-                </ThemedText>
-                <ThemedText
-                  style={[styles.optionHelp, { color: surfaces.textSecondary, marginBottom: 10 }]}
+              {config.track_set_stats && (
+                <View
+                  style={[
+                    styles.setPointsBlock,
+                    !config.track_average && { borderBottomWidth: 0 },
+                    { borderBottomColor: surfaces.border },
+                  ]}
                 >
-                  Kolik bodů má plný set (pro Elo). Auto odvodí z historie zápasů.
-                </ThemedText>
-                <View style={styles.chipRow}>
-                  {setPointsPresets.map((p) => {
-                    const selected = config.set_points_to === p.value;
-                    return (
-                      <Pressable
-                        key={String(p.value)}
-                        onPress={() =>
-                          setConfig((prev) => ({ ...prev, set_points_to: p.value }))
-                        }
-                        style={[
-                          styles.chip,
-                          {
-                            borderColor: selected ? accent : surfaces.border,
-                            backgroundColor: selected ? accent : 'transparent',
-                          },
-                        ]}
-                      >
-                        <ThemedText
+                  <ThemedText style={[styles.optionTitle, { color: surfaces.text }]}>
+                    Délka setu
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.optionHelp,
+                      { color: surfaces.textSecondary, marginBottom: 10 },
+                    ]}
+                  >
+                    Kolik bodů má plný set (pro Elo). Auto odvodí z historie zápasů.
+                  </ThemedText>
+                  <View style={styles.chipRow}>
+                    {setPointsPresets.map((p) => {
+                      const selected = config.set_points_to === p.value;
+                      return (
+                        <Pressable
+                          key={String(p.value)}
+                          onPress={() =>
+                            setConfig((prev) => ({ ...prev, set_points_to: p.value }))
+                          }
                           style={[
-                            styles.chipLabel,
-                            { color: selected ? onAccent : surfaces.text },
+                            styles.chip,
+                            {
+                              borderColor: selected ? accent : surfaces.border,
+                              backgroundColor: selected ? accent : 'transparent',
+                            },
                           ]}
                         >
-                          {p.label}
-                        </ThemedText>
-                      </Pressable>
-                    );
-                  })}
+                          <ThemedText
+                            style={[
+                              styles.chipLabel,
+                              { color: selected ? onAccent : surfaces.text },
+                            ]}
+                          >
+                            {p.label}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
-              </View>
+              )}
             </>
           )}
           {config.track_average && (

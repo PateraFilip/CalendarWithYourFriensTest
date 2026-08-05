@@ -26,7 +26,6 @@ import {
     fetchLeagueMatches,
     League,
     LeaguePlayer,
-    updateLeagueConfig,
 } from '@/services/leagues/leagues';
 import { formatElo, formatEloChange } from '@/services/leagues/match_sets';
 import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
@@ -45,7 +44,7 @@ import {
     StyleSheet,
     View
 } from 'react-native';
-import { ActivityIndicator, Button, FAB, Menu, Switch } from 'react-native-paper';
+import { ActivityIndicator, Button, FAB, Menu } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 dayjs.locale('cs');
@@ -79,26 +78,9 @@ export default function LeaderboardDetailScreen() {
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
     const [uploadingCover, setUploadingCover] = useState(false);
     const [coverPreviewOpen, setCoverPreviewOpen] = useState(false);
-    const [savingSetsConfig, setSavingSetsConfig] = useState(false);
     const [deletingMatchId, setDeletingMatchId] = useState<number | null>(null);
 
     const isCreator = String(league?.created_by) === String(user?.id);
-
-    const handleToggleSetsDefault = async (value: boolean) => {
-        if (!league || !isCreator || savingSetsConfig) return;
-        setSavingSetsConfig(true);
-        try {
-            const updated = await updateLeagueConfig(league.id, {
-                track_set_stats: value,
-            });
-            setLeague(updated);
-        } catch (e) {
-            console.error(e);
-            showAlert('Nastavení', 'Nepodařilo se uložit nastavení setů.');
-        } finally {
-            setSavingSetsConfig(false);
-        }
-    };
 
     const handleChangeCover = async () => {
         if (!user || !league || !isCreator || uploadingCover) return;
@@ -1362,43 +1344,6 @@ export default function LeaderboardDetailScreen() {
                 </Pressable>
             </Modal>
 
-            {isCreator &&
-                !!league.config?.track_score &&
-                league.team_size !== 0 && (
-                    <View
-                        style={[
-                            styles.setsConfigRow,
-                            {
-                                backgroundColor: surfaces.surface,
-                                borderBottomColor: surfaces.border,
-                            },
-                        ]}
-                    >
-                        <View style={{ flex: 1, paddingRight: 12 }}>
-                            <ThemedText
-                                style={{ fontWeight: '700', fontSize: 14 }}
-                            >
-                                Zapisovat sety
-                            </ThemedText>
-                            <ThemedText
-                                style={{
-                                    color: surfaces.textSecondary,
-                                    fontSize: 12,
-                                    marginTop: 2,
-                                }}
-                            >
-                                Výchozí zápis po setech + statistiky ve žebříčku
-                            </ThemedText>
-                        </View>
-                        <Switch
-                            value={!!league.config?.track_set_stats}
-                            onValueChange={handleToggleSetsDefault}
-                            disabled={savingSetsConfig}
-                            color={Brand.primary}
-                        />
-                    </View>
-                )}
-
             <View style={[styles.tabs, { borderBottomColor: surfaces.border, backgroundColor: surfaces.surface }]}>
                 {(
                     [
@@ -1500,13 +1445,6 @@ const styles = StyleSheet.create({
     },
     headerText: { flex: 1, minWidth: 0, gap: 2 },
     leagueName: { fontSize: 20, fontWeight: '700' },
-    setsConfigRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
     tabs: {
         flexDirection: 'row',
         borderBottomWidth: StyleSheet.hairlineWidth,
