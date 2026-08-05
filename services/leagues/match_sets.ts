@@ -159,19 +159,24 @@ function expectedScore(ratingA: number, ratingB: number): number {
 
 /**
  * Sekvenční Elo po setech (jako N jednosetových zápasů).
- * priorSets = historie ligy před tímto zápasem (bez lookaheadu).
- * Target se počítá z priorSets + ostatních setů stejného zápasu.
+ * Target: config ligy `set_points_to`, jinak inference z historie / zápasu.
  */
 export function computeSequentialSetElo(opts: {
   sets: MatchSetScore[];
   r1: number;
   r2: number;
   priorSets?: MatchSetScore[];
+  /** Plný set = tolik bodů (6 padel, 21 badminton…). null/undefined = odvodit. */
+  setPointsTo?: number | null;
   K?: number;
 }): { change1: number; change2: number } {
   const sets = opts.sets.map(normalizeSet).filter((s) => s.team1 + s.team2 > 0);
   const K = opts.K ?? ELO_K_SET;
   const prior = opts.priorSets ?? [];
+  const configured =
+    opts.setPointsTo != null && Number(opts.setPointsTo) > 0
+      ? Number(opts.setPointsTo)
+      : null;
 
   if (sets.length === 0) {
     return { change1: 0, change2: 0 };
@@ -185,7 +190,8 @@ export function computeSequentialSetElo(opts: {
   for (let i = 0; i < sets.length; i++) {
     const set = sets[i];
     const otherInMatch = sets.filter((_, j) => j !== i);
-    const target = inferSetWinTarget([...prior, ...otherInMatch]);
+    const target =
+      configured ?? inferSetWinTarget([...prior, ...otherInMatch]);
     const weight = setCompletionWeight(set, target);
     if (weight <= 0) continue;
 

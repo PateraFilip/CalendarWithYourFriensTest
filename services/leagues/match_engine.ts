@@ -76,11 +76,13 @@ export function applyMatchToPlayerMap(
         (team2.user_ids.length || 1);
 
       if (setsMeta && matchSets.length > 0) {
+        const setPointsTo = Number(config.set_points_to);
         const { change1, change2 } = computeSequentialSetElo({
           sets: matchSets,
           r1,
           r2,
           priorSets,
+          setPointsTo: setPointsTo > 0 ? setPointsTo : null,
         });
         team1Change = change1;
         team2Change = change2;
@@ -275,11 +277,13 @@ export function applyMatchToPairMap(
     const r2 = p2.rating || 1500;
 
     if (setsMeta && matchSets.length > 0) {
+      const setPointsTo = Number(config.set_points_to);
       const elo = computeSequentialSetElo({
         sets: matchSets,
         r1,
         r2,
         priorSets,
+        setPointsTo: setPointsTo > 0 ? setPointsTo : null,
       });
       change1 = elo.change1;
       change2 = elo.change2;

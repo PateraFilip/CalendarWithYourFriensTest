@@ -108,9 +108,19 @@ export default function CreateLeaderboardScreen() {
     track_best_score: false,
     track_last_played: false,
     lower_is_better: false,
+    /** Plný set = N bodů (Elo). null = Auto z historie. */
+    set_points_to: null as number | null,
   });
   const [loading, setLoading] = useState(false);
   const [cover, setCover] = useState<PickedLeagueImage | null>(null);
+
+  const setPointsPresets: { value: number | null; label: string; hint?: string }[] = [
+    { value: null, label: 'Auto', hint: 'podle historie' },
+    { value: 6, label: '6', hint: 'padel' },
+    { value: 11, label: '11' },
+    { value: 15, label: '15' },
+    { value: 21, label: '21', hint: 'badminton' },
+  ];
 
   const toggle = (key: ConfigKey, extras?: Partial<typeof config>) => {
     setConfig((prev) => ({ ...prev, [key]: !prev[key], ...extras }));
@@ -367,13 +377,57 @@ export default function CreateLeaderboardScreen() {
               />
               <OptionRow
                 label="Zapisovat sety"
-                help="Padel, tenis — výchozí zápis po setech + statistiky setů"
+                help="Padel, tenis, badminton — výchozí zápis po setech + statistiky"
                 checked={config.track_set_stats}
                 onPress={() => toggle('track_set_stats')}
                 surfaces={surfaces}
                 accent={accent}
-                last={!config.track_average}
               />
+              <View
+                style={[
+                  styles.setPointsBlock,
+                  !config.track_average && { borderBottomWidth: 0 },
+                  { borderBottomColor: surfaces.border },
+                ]}
+              >
+                <ThemedText style={[styles.optionTitle, { color: surfaces.text }]}>
+                  Délka setu
+                </ThemedText>
+                <ThemedText
+                  style={[styles.optionHelp, { color: surfaces.textSecondary, marginBottom: 10 }]}
+                >
+                  Kolik bodů má plný set (pro Elo). Auto odvodí z historie zápasů.
+                </ThemedText>
+                <View style={styles.chipRow}>
+                  {setPointsPresets.map((p) => {
+                    const selected = config.set_points_to === p.value;
+                    return (
+                      <Pressable
+                        key={String(p.value)}
+                        onPress={() =>
+                          setConfig((prev) => ({ ...prev, set_points_to: p.value }))
+                        }
+                        style={[
+                          styles.chip,
+                          {
+                            borderColor: selected ? accent : surfaces.border,
+                            backgroundColor: selected ? accent : 'transparent',
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.chipLabel,
+                            { color: selected ? onAccent : surfaces.text },
+                          ]}
+                        >
+                          {p.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
             </>
           )}
           {config.track_average && (
@@ -487,6 +541,12 @@ const styles = StyleSheet.create({
   optionText: { flex: 1, gap: 2 },
   optionTitle: { fontSize: 15, fontWeight: '600' },
   optionHelp: { fontSize: 12, lineHeight: 16 },
+  setPointsBlock: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   createBtn: { marginTop: 28, borderRadius: 14 },
   createBtnContent: { paddingVertical: 6 },
 });
