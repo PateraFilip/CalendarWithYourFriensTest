@@ -30,7 +30,7 @@ import {
 } from '@/services/leagues/leagues';
 import { formatElo, formatEloChange } from '@/services/leagues/match_sets';
 import { fetchLeaguePairRatings, makePairKey } from '@/services/leagues/pair_ratings';
-import { deleteMatch, recomputeLeagueStats } from '@/services/leagues/recompute_league';
+import { deleteMatch } from '@/services/leagues/recompute_league';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/cs';
@@ -84,14 +84,6 @@ export default function LeaderboardDetailScreen() {
 
     const isCreator = String(league?.created_by) === String(user?.id);
 
-    const setPointsPresets: { value: number | null; label: string }[] = [
-        { value: null, label: 'Auto' },
-        { value: 6, label: '6' },
-        { value: 11, label: '11' },
-        { value: 15, label: '15' },
-        { value: 21, label: '21' },
-    ];
-
     const handleToggleSetsDefault = async (value: boolean) => {
         if (!league || !isCreator || savingSetsConfig) return;
         setSavingSetsConfig(true);
@@ -103,31 +95,6 @@ export default function LeaderboardDetailScreen() {
         } catch (e) {
             console.error(e);
             showAlert('Nastavení', 'Nepodařilo se uložit nastavení setů.');
-        } finally {
-            setSavingSetsConfig(false);
-        }
-    };
-
-    const handleSetPointsTo = async (value: number | null) => {
-        if (!league || !isCreator || savingSetsConfig) return;
-        const current =
-            league.config?.set_points_to != null && Number(league.config.set_points_to) > 0
-                ? Number(league.config.set_points_to)
-                : null;
-        if (current === value) return;
-        setSavingSetsConfig(true);
-        try {
-            const updated = await updateLeagueConfig(league.id, {
-                set_points_to: value,
-            });
-            setLeague(updated);
-            if (updated.config?.track_elo) {
-                await recomputeLeagueStats(updated.id);
-                await loadData();
-            }
-        } catch (e) {
-            console.error(e);
-            showAlert('Nastavení', 'Nepodařilo se uložit délku setu.');
         } finally {
             setSavingSetsConfig(false);
         }
@@ -1400,93 +1367,35 @@ export default function LeaderboardDetailScreen() {
                 league.team_size !== 0 && (
                     <View
                         style={[
-                            styles.setsConfigBlock,
+                            styles.setsConfigRow,
                             {
                                 backgroundColor: surfaces.surface,
                                 borderBottomColor: surfaces.border,
                             },
                         ]}
                     >
-                        <View style={styles.setsConfigRow}>
-                            <View style={{ flex: 1, paddingRight: 12 }}>
-                                <ThemedText
-                                    style={{ fontWeight: '700', fontSize: 14 }}
-                                >
-                                    Zapisovat sety
-                                </ThemedText>
-                                <ThemedText
-                                    style={{
-                                        color: surfaces.textSecondary,
-                                        fontSize: 12,
-                                        marginTop: 2,
-                                    }}
-                                >
-                                    Výchozí zápis po setech + statistiky ve žebříčku
-                                </ThemedText>
-                            </View>
-                            <Switch
-                                value={!!league.config?.track_set_stats}
-                                onValueChange={handleToggleSetsDefault}
-                                disabled={savingSetsConfig}
-                                color={Brand.primary}
-                            />
-                        </View>
-                        <View style={styles.setPointsSection}>
-                            <ThemedText style={{ fontWeight: '700', fontSize: 14 }}>
-                                Délka setu
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                            <ThemedText
+                                style={{ fontWeight: '700', fontSize: 14 }}
+                            >
+                                Zapisovat sety
                             </ThemedText>
                             <ThemedText
                                 style={{
                                     color: surfaces.textSecondary,
                                     fontSize: 12,
                                     marginTop: 2,
-                                    marginBottom: 10,
                                 }}
                             >
-                                Plný set = N bodů (Elo). Auto podle historie.
+                                Výchozí zápis po setech + statistiky ve žebříčku
                             </ThemedText>
-                            <View style={styles.setPointsChips}>
-                                {setPointsPresets.map((p) => {
-                                    const current =
-                                        league.config?.set_points_to != null &&
-                                        Number(league.config.set_points_to) > 0
-                                            ? Number(league.config.set_points_to)
-                                            : null;
-                                    const selected = current === p.value;
-                                    return (
-                                        <Pressable
-                                            key={String(p.value)}
-                                            disabled={savingSetsConfig}
-                                            onPress={() => handleSetPointsTo(p.value)}
-                                            style={[
-                                                styles.setPointsChip,
-                                                {
-                                                    borderColor: selected
-                                                        ? Brand.primary
-                                                        : surfaces.border,
-                                                    backgroundColor: selected
-                                                        ? Brand.primary
-                                                        : 'transparent',
-                                                    opacity: savingSetsConfig ? 0.6 : 1,
-                                                },
-                                            ]}
-                                        >
-                                            <ThemedText
-                                                style={{
-                                                    fontWeight: '700',
-                                                    fontSize: 13,
-                                                    color: selected
-                                                        ? Brand.onPrimary
-                                                        : surfaces.text,
-                                                }}
-                                            >
-                                                {p.label}
-                                            </ThemedText>
-                                        </Pressable>
-                                    );
-                                })}
-                            </View>
                         </View>
+                        <Switch
+                            value={!!league.config?.track_set_stats}
+                            onValueChange={handleToggleSetsDefault}
+                            disabled={savingSetsConfig}
+                            color={Brand.primary}
+                        />
                     </View>
                 )}
 
@@ -1591,30 +1500,12 @@ const styles = StyleSheet.create({
     },
     headerText: { flex: 1, minWidth: 0, gap: 2 },
     leagueName: { fontSize: 20, fontWeight: '700' },
-    setsConfigBlock: {
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
     setsConfigRow: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
-    },
-    setPointsSection: {
-        paddingHorizontal: 16,
-        paddingBottom: 14,
-        paddingTop: 0,
-    },
-    setPointsChips: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-    },
-    setPointsChip: {
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1.5,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     tabs: {
         flexDirection: 'row',

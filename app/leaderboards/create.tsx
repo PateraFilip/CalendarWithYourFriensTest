@@ -81,7 +81,10 @@ function OptionRow({
           {help}
         </ThemedText>
       </View>
-      <Switch value={checked} onValueChange={() => onPress()} color={accent} />
+      {/* pointerEvents: jinak Switch + Pressable přepnou 2× a stav se vrátí */}
+      <View pointerEvents="none">
+        <Switch value={checked} color={accent} />
+      </View>
     </Pressable>
   );
 }
